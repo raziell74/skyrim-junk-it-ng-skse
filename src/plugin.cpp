@@ -1,5 +1,5 @@
 #include "log.h"
-
+#include "settings.h"
 
 void OnDataLoaded()
 {
@@ -16,113 +16,189 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 	case SKSE::MessagingInterface::kPreLoadGame:
 		break;
 	case SKSE::MessagingInterface::kPostLoadGame:
+		JunkIt::Settings::Load();
         break;
 	case SKSE::MessagingInterface::kNewGame:
 		break;
 	}
 }
 
+void RefreshDllSettings(RE::StaticFunctionTag*) {
+	SKSE::log::info(" ");
+	SKSE::log::info("RefreshDllSettings called");
+	JunkIt::Settings::Load();
+}
+
 void RefreshUIIcons(RE::StaticFunctionTag*) {
-	SKSE::log::info("RefreshUIIcons called");
-	
 	const auto UI = RE::UI::GetSingleton();
 	RE::ItemList* itemListMenu = nullptr;
-
-	const auto invMenu = UI ? UI->GetMenu<RE::InventoryMenu>() : nullptr;
-	if (invMenu && !itemListMenu) {
-		itemListMenu = invMenu->GetRuntimeData().itemList;
-		SKSE::log::info("Attempting to refresh InventoryMenu");
-	}
-
-	const auto contMenu = UI ? UI->GetMenu<RE::ContainerMenu>() : nullptr;
-	if (contMenu && !itemListMenu) {
-		itemListMenu = contMenu->GetRuntimeData().itemList;
-		SKSE::log::info("Attempting to refresh ContainerMenu");
-	}
-	
-	const auto bartMenu = UI ? UI->GetMenu<RE::BarterMenu>() : nullptr;
-	if (bartMenu && !itemListMenu) {
-		itemListMenu = bartMenu->GetRuntimeData().itemList;
-		SKSE::log::info("Attempting to refresh BarterMenu");
+	if (UI && UI->IsMenuOpen("InventoryMenu")) {
+		itemListMenu = UI->GetMenu<RE::InventoryMenu>()->GetRuntimeData().itemList;
+	} else if (UI && UI->IsMenuOpen("ContainerMenu")) {
+		itemListMenu = UI->GetMenu<RE::ContainerMenu>()->GetRuntimeData().itemList;
+	} else if (UI && UI->IsMenuOpen("BarterMenu")) {
+		itemListMenu = UI->GetMenu<RE::BarterMenu>()->GetRuntimeData().itemList;
+	} else	{
+		SKSE::log::info("No open menu found");
+		return;
 	}
 
 	if (!itemListMenu) {
 		SKSE::log::info("No ItemListMenu found");
 		return;
 	}
-
-	// Print out the entry list for SCIENCE!
-	RE::GFxValue entryList = itemListMenu->entryList;
-	if (!entryList.IsArray()) {
-		SKSE::log::info("Entry List is not an array");
-		return;
-	}
-
-	SKSE::log::info("Entry List:");
-	for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
-		RE::GFxValue entryObject;
-		entryList.GetElement(i, &entryObject);
-
-		if (!entryObject.IsObject()) {
-			SKSE::log::info("Entry {} is not an object", i);
-			continue;
-		}
-
-		RE::GFxValue formId;
-		entryObject.GetMember("formId", &formId);
-		
-		if (!formId.IsNumber())
-		{
-			SKSE::log::info("Form Id is not valid");
-			continue;
-		} else {
-			SKSE::log::info("Form Id: {}", formId.GetNumber());
-		}
-
-		RE::TESObjectREFR* entryRefr = RE::TESForm::LookupByID<RE::TESObjectREFR>(static_cast<RE::FormID>(formId.GetNumber()));
-		if (entryRefr) {
-			SKSE::log::info("Entry Editor ID: {}", entryRefr->GetFormEditorID());
-		} else {
-			SKSE::log::info("Failed to look up Form ID: {}", formId.GetNumber());
-		}
-
-		RE::GFxValue iconSource;
-		entryObject.GetMember("iconSource", &iconSource);
-
-		if (!iconSource.IsString()) {
-			SKSE::log::info("Icon Source is not a string");
-		} else {
-			SKSE::log::info("Icon Source: {}", iconSource.GetString());
-		}
-
-		RE::GFxValue iconLabel;
-		entryObject.GetMember("iconLabel", &iconLabel);
-
-		if (!iconLabel.IsString()) {
-			SKSE::log::info("Icon Label is not a string");
-		} else {
-			SKSE::log::info("Icon Label: {}", iconLabel.GetString());
-		}
-		
-		if (entryRefr) {
-			if (const auto keywordForm = entryRefr->As<RE::BGSKeywordForm>(); keywordForm) {
-				// Toggle the IsJunk keyword
-				if (keywordForm->HasKeywordString("IsJunk")) {
-					SKSE::log::info("Entry marked as junk");
-				} else {
-					SKSE::log::info("Entry is not junk");
-				}
-			}
-		}
-	}
-
-	SKSE::log::info("Updating ItemList View");
+	
 	itemListMenu->Update();
+}
+
+RE::ContainerMenu::ContainerMode GetContainerMode(RE::StaticFunctionTag*) {
+	const auto UI = RE::UI::GetSingleton();
+	const auto containerMenu = UI ? UI->GetMenu<RE::ContainerMenu>() : nullptr;
+	if (!containerMenu) {
+		SKSE::log::info("No open menu found");
+		return RE::ContainerMenu::ContainerMode::kLoot;
+	}
+
+	RE::ContainerMenu::ContainerMode mode = containerMenu->GetContainerMode();
+	SKSE::log::info("Container Mode: {}", static_cast<std::uint32_t>(mode));
+	return mode;
+}
+
+RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Transfer Initiated ----");
+
+	RE::BGSListForm* JunkList = JunkIt::Settings::GetJunkList();
+	RE::BGSListForm* transferList = JunkIt::Settings::GetTransferList();
+	transferList->ClearData();
+
+	// Get access to the UI Menu so we can limit our transfer based on the current view and Equip/Favorite state
+	const auto UI = RE::UI::GetSingleton();
+	RE::GPtr<RE::ContainerMenu> containerMenu = UI ? UI->GetMenu<RE::ContainerMenu>() : nullptr;
+	RE::ItemList* itemListMenu = containerMenu ? containerMenu->GetRuntimeData().itemList : nullptr;
+	if (!itemListMenu) {
+		SKSE::log::error("No ItemListMenu found");
+		return transferList;
+	}
+
+	// Get entry list from the ItemListMenu
+	RE::BSTArray<RE::ItemList::Item*> listItems = itemListMenu->items;
+	std::vector<RE::InventoryEntryData*> sortFormData;
+	
+	SKSE::log::info("Processing Entry List for transferable junk items");
+	for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
+		RE::ItemList::Item* entryItem = listItems[i];
+		if (!entryItem) {
+			continue;
+		}
+
+		// Skip items that are not in the JunkList
+		if (!JunkList->HasForm(entryItem->data.objDesc->GetObject())) {
+			continue;
+		}
+
+		bool equipped = entryItem->data.objDesc->IsWorn();
+		if (equipped) {
+			SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+			continue;
+		}
+		std::uint32_t favorite = entryItem->data.objDesc->IsFavorited();
+		if (favorite) {
+			SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+			continue;
+		}
+
+		sortFormData.push_back(entryItem->data.objDesc);
+	}
+
+	// Sort the list of items based on the settings
+	if (JunkIt::Settings::GetTransferPriority() == JunkIt::Settings::SortPriority::kWeightHighLow)
+	{
+		SKSE::log::info("Applying Weight [High > Low] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetWeight() > b->GetWeight();
+		});
+	}
+	else if (JunkIt::Settings::GetTransferPriority() == JunkIt::Settings::SortPriority::kWeightLowHigh)
+	{
+		SKSE::log::info("Applying Weight [Low > High] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetWeight() < b->GetWeight();
+		});
+	}
+	else if (JunkIt::Settings::GetTransferPriority() == JunkIt::Settings::SortPriority::kValueHighLow)
+	{
+		SKSE::log::info("Applying Value [High > Low] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetValue() > b->GetValue();
+		});
+	}
+	else if (JunkIt::Settings::GetTransferPriority() == JunkIt::Settings::SortPriority::kValueLowHigh)
+	{
+		SKSE::log::info("Applying Value [Low > High] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetValue() < b->GetValue();
+		});
+	}
+	else if (JunkIt::Settings::GetTransferPriority() == JunkIt::Settings::SortPriority::kValueWeightHighLow)
+	{
+		SKSE::log::info("Applying Value/Weight [High > Low] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return (a->GetValue() / a->GetWeight()) > (b->GetValue() / b->GetWeight());
+		});
+	}
+	else if (JunkIt::Settings::GetTransferPriority() == JunkIt::Settings::SortPriority::kValueWeightLowHigh)
+	{
+		SKSE::log::info("Applying Value/Weight [Low > High] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return (a->GetValue() / a->GetWeight()) < (b->GetValue() / b->GetWeight());
+		});
+	}
+
+	// Add the sorted list of items to the transfer list
+	SKSE::log::info("Final TransferList:");
+	for (const RE::InventoryEntryData* entryData : sortFormData) {
+		const RE::TESBoundObject* entryObject = entryData->GetObject();
+		if (!entryObject) {
+			continue;
+		}
+		if (!transferList->HasForm(entryObject)) {
+			SKSE::log::info("     {} - Val({}) Weight({})", entryObject->GetName(), entryData->GetValue(), entryData->GetWeight());
+			transferList->AddForm(RE::TESForm::LookupByID(entryObject->GetFormID()));
+		}
+	}
+
+	SKSE::log::info("---- Transfer Complete ----");
+	SKSE::log::info(" ");
+	return transferList;
+}
+
+void TransferJunk(RE::StaticFunctionTag*) {
+	// Coming Soon
+}
+
+void RetrieveJunk(RE::StaticFunctionTag*) {
+	// Coming Soon
+}
+
+void SellJunk(RE::StaticFunctionTag*) {
+	// Coming Soon
 }
 
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
-	SKSE::log::info("Registered Papyrus Function: RefreshUIIcons");
+	vm->RegisterFunction("TransferJunk", "JunkIt_MCM", TransferJunk);
+	vm->RegisterFunction("RetrieveJunk", "JunkIt_MCM", RetrieveJunk);
+	vm->RegisterFunction("SellJunk", "JunkIt_MCM", SellJunk);
+
+	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
+	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
+	vm->RegisterFunction("GetRetrievalFormList", "JunkIt_MCM", GetTransferFormList);
+	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetTransferFormList);
+
+	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
+	
+	SKSE::log::info("Registered Native Papyrus Functions");
     return true;
 }
 

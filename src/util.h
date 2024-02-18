@@ -11,6 +11,10 @@
 
 using namespace RE;
 
+
+[[nodiscard]] inline RE::hkVector4 NiPointToHkVector(const RE::NiPoint3& pt) { return { pt.x, pt.y, pt.z, 0 }; };
+
+
 namespace PointerUtil //yoinked po3's code
 {
 template <class T, class U>
@@ -137,8 +141,6 @@ namespace Util
 			return { range.begin(), range.end() };
 		}
 
-
-
         static bool iContains(std::string_view a_str1, std::string_view a_str2)
 		{
 			if (a_str2.length() > a_str1.length()) {
@@ -173,7 +175,7 @@ namespace Util
             std::vector<float> floatNumbers; 
             for(auto str : stringVector)
             {
-                float num = atof(str.c_str());
+                float num = static_cast<float>(atof(str.c_str()));
                 floatNumbers.push_back(num);
             }
             return floatNumbers;
@@ -195,31 +197,37 @@ namespace Util
 
     };
 
+    struct Numbers
+    {
+        static float GenerateRandomFloat(float afMin, float afMax)
+        {
+            std::random_device rd;
+
+            std::mt19937 engine{rd()};
+
+            std::uniform_real_distribution<float> dist(afMin, afMax);
+
+            return dist(engine);
+        }
+
+        static uint32_t GenerateRandomInt(uint32_t afMin, uint32_t afMax)
+        {
+            std::random_device rd;
+
+            std::mt19937 engine{rd()};
+
+            std::uniform_int_distribution<uint32_t> dist(afMin, afMax);
+
+            return dist(engine);
+        }
+    };
+
 }
 
 namespace MathUtil
 {
-    [[nodiscard]] inline float Clamp(float value, float min, float max)
-    {
-        return value < min ? min : value < max ? value
-                                               : max;
-    }
-    [[nodiscard]] inline RE::NiPoint3 GetNiPoint3(RE::hkVector4 a_hkVector4)
-    {
-        float quad[4];
-        _mm_store_ps(quad, a_hkVector4.quad);
-        return RE::NiPoint3{quad[0], quad[1], quad[2]};
-    }
-
     struct Angle 
     {
-        struct AngleZX
-        {
-            double z;
-            double x;
-            double distance;
-        };
-
         [[nodiscard]] constexpr static float DegreeToRadian(float a_angle)
         {
             return a_angle * 0.017453292f;
@@ -261,44 +269,7 @@ namespace MathUtil
 
             // return fmod(a_angle, TWO_PI) >= 0 ? (a_angle < PI) ? a_angle : a_angle - TWO_PI : (a_angle >= -PI) ? a_angle : a_angle + TWO_PI;
         }
-        static float GetAngle(RE::NiPoint2 &a, RE::NiPoint2 &b)
-        {
-            return atan2(a.Cross(b), a.Dot(b));
-        }
-        static void GetAngle(const RE::NiPoint3 &a_from, const RE::NiPoint3 &a_to, AngleZX &angle)
-        {
-            const auto x = a_to.x - a_from.x;
-            const auto y = a_to.y - a_from.y;
-            const auto z = a_to.z - a_from.z;
-            const auto xy = sqrt(x * x + y * y);
-
-            angle.z = atan2(x, y);
-            angle.x = atan2(-z, xy);
-            angle.distance = sqrt(xy * xy + z * z);
-        }
     }; 
-
-    struct Interp
-    {
-        [[nodiscard]] static float InterpTo(float a_current, float a_target, float a_deltaTime, float a_interpSpeed)
-        {
-            if (a_interpSpeed <= 0.f)
-            {
-                return a_target;
-            }
-
-            const float distance = a_target - a_current;
-
-            if (distance * distance < FLT_EPSILON)
-            {
-                return a_target;
-            }
-
-            const float delta = distance * Clamp(a_deltaTime * a_interpSpeed, 0.f, 1.f);
-
-            return a_current + delta;
-        }
-    };
 }
 namespace ObjectUtil
 {
@@ -339,6 +310,7 @@ namespace ObjectUtil
 }
 
 
+
 namespace AnimUtil
 {
     struct Idle
@@ -358,15 +330,40 @@ namespace AnimUtil
 
 namespace FormUtil
 {
-    struct Parse
+    struct Form
     {
-            static RE::TESForm *GetFormFromMod(uint32_t formid,std::string modname)
+            static RE::TESForm *GetFormFromMod(std::string modname, uint32_t formid)
             {
             if (!modname.length() || !formid)
                 return nullptr;
             RE::TESDataHandler *dh = RE::TESDataHandler::GetSingleton();
-            return dh->LookupForm(formid, modname); 
-
+            RE::TESFile *modFile = nullptr;
+            for (auto it = dh->files.begin(); it != dh->files.end(); ++it)
+            {
+                RE::TESFile *f = *it;
+                if (strcmp(f->fileName, modname.c_str()) == 0)
+                {
+                    modFile = f;
+                    break;
+                }
+            }
+            if (!modFile)
+                return nullptr;
+            uint8_t modIndex = modFile->compileIndex;
+            uint32_t id = formid;
+            if (modIndex < 0xFE)
+            {
+                id |= ((uint32_t)modIndex) << 24;
+            }
+            else
+            {
+                uint16_t lightModIndex = modFile->smallFileCompileIndex;
+                if (lightModIndex != 0xFFFF)
+                {
+                    id |= 0xFE000000 | (uint32_t(lightModIndex) << 12);
+                }
+            }
+            return RE::TESForm::LookupByID(id);
             }
 
             static RE::TESForm *GetFormFromMod(std::string modname, std::string formIDString)
@@ -374,64 +371,17 @@ namespace FormUtil
                 if (formIDString.length() == 0) return nullptr; 
 
                 uint32_t formID = std::stoi(formIDString, 0, 16); 
-                return GetFormFromMod(formID,modname); 
+                return GetFormFromMod(modname,formID); 
             } 
 
             static RE::TESForm *GetFormFromConfigString(std::string str, std::string_view delimiter)
             {
                 std::vector<std::string> splitData = Util::String::Split(str, delimiter); 
-                if (splitData.size() < 2) return nullptr;  
-                return GetFormFromMod(splitData[1], splitData[0]);
+                return GetFormFromMod(splitData[0], splitData[1]);
             }
             static RE::TESForm *GetFormFromConfigString(std::string str)
             {
                 return GetFormFromConfigString(str, "~"sv); 
-            }
-            static RE::FormID GetFormIDFromMod(uint32_t relativeFormID, std::string modName)
-            {
-                auto *dataHandler = TESDataHandler::GetSingleton();
-
-                if (!dataHandler)
-                return -1;
-
-                return dataHandler->LookupFormID(relativeFormID, modName);
-            }
-
-            static RE::FormID GetFormIDFromMod(std::string relativeFormIDString, std::string modName)
-            {
-                if (relativeFormIDString.length() == 0) return -1; 
-
-
-                uint32_t relativeFormID = std::stoi(relativeFormIDString,  0, 16); 
-                return GetFormIDFromMod(relativeFormID, modName); 
-            }
-
-            static RE::FormID GetFormIDFromConfigString(std::string str, std::string_view delimiter)
-            {
-                std::vector<std::string> splitData = Util::String::Split(str, delimiter); 
-                if (splitData.size() < 2) return -1; 
-                return GetFormIDFromMod(splitData[0], splitData[1]);
-            }
-            static RE::FormID GetFormIDFromConfigString(std::string str)
-            {
-                return GetFormIDFromConfigString(str, "~"sv); 
-            }
-
-    };
-
-    struct Quest 
-    {
-        public:
-            static BGSBaseAlias *FindAliasByName(std::string_view name, TESQuest *owningQuest)
-            {
-                RE::BSWriteLockGuard AliasLock{owningQuest->aliasAccessLock};
-                for (auto *alias : owningQuest->aliases)
-                {
-                std::string aliasName = alias->aliasName.c_str();
-                if (aliasName == name)
-                    return alias;
-                }
-                return nullptr;
             }
     };
 }
@@ -555,5 +505,18 @@ namespace NifUtil
         }
     };
 
+    struct Effects
+    {
+        public:
+        static BSTempEffectParticle* Spawn(TESObjectCELL* a_cell, float a_lifetime, const char* a_modelName, const NiPoint3& a_rotation, const NiPoint3& a_position, float a_scale, std::uint32_t a_flags, NiAVObject* a_target)
+		{
+			using func_t = BSTempEffectParticle* (*)(TESObjectCELL*, float, const char*, const NiPoint3&, const NiPoint3&, float, std::uint32_t, NiAVObject*);
+			REL::Relocation<func_t> func{ RELOCATION_ID(29218, 30071) };
+			return func(a_cell, a_lifetime, a_modelName, a_rotation, a_position, a_scale, a_flags, a_target);
+		}
+
+    };
+
    
 }
+
