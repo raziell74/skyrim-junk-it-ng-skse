@@ -3,14 +3,11 @@
 #include "util.h"
 
 using namespace RE; 
-namespace JunkIt
-{
-    class Settings
-    {
+namespace JunkIt {
+    class Settings {
         public:
 
-            enum class SortPriority
-            {
+            enum class SortPriority {
                 kWeightHighLow = 0,
                 kWeightLowHigh = 1,
                 kValueHighLow = 2,
@@ -20,22 +17,19 @@ namespace JunkIt
                 kChaos = 6
             };
 
-            struct JunkTransfer
-            {
+            struct JunkTransfer {
                 bool ConfirmTransfer = true;
                 SortPriority TransferPriority = SortPriority::kChaos;
                 BGSListForm* TransferList;
             };
 
-            struct JunkSell
-            {
+            struct JunkSell {
                 bool ConfirmSell = true;
                 SortPriority SellPriority = SortPriority::kChaos;
                 BGSListForm* SellList;
             };
 
-            static void Load()
-            {
+            static void Load() {
                 SKSE::log::info(" ");
                 SKSE::log::info("Updating Settings...");
 
@@ -51,8 +45,7 @@ namespace JunkIt
                 JunkTransfer.TransferList = TransferList;
 
                 // Translate the SortPriority to a string for log
-                switch (JunkTransfer.TransferPriority)
-                {
+                switch (JunkTransfer.TransferPriority) {
                     case SortPriority::kWeightHighLow:
                         priorityString = "Weight [High > Low]";
                         break;
@@ -91,8 +84,7 @@ namespace JunkIt
                 JunkSell.SellList = SellList;
 
                 // Translate the SortPriority to a string for log
-                switch (JunkSell.SellPriority)
-                {
+                switch (JunkSell.SellPriority) {
                     case SortPriority::kWeightHighLow:
                         priorityString = "Weight [High > Low]";
                         break;

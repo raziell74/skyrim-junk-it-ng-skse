@@ -1,25 +1,23 @@
 #include "log.h"
 #include "settings.h"
 
-void OnDataLoaded()
-{
+void OnDataLoaded() {
    
 }
 
-void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
-{
+void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 	switch (a_msg->type) {
-	case SKSE::MessagingInterface::kDataLoaded:
-		break;
-	case SKSE::MessagingInterface::kPostLoad:
-		break;
-	case SKSE::MessagingInterface::kPreLoadGame:
-		break;
-	case SKSE::MessagingInterface::kPostLoadGame:
-		JunkIt::Settings::Load();
-        break;
-	case SKSE::MessagingInterface::kNewGame:
-		break;
+		case SKSE::MessagingInterface::kDataLoaded:
+			break;
+		case SKSE::MessagingInterface::kPostLoad:
+			break;
+		case SKSE::MessagingInterface::kPreLoadGame:
+			break;
+		case SKSE::MessagingInterface::kPostLoadGame:
+			JunkIt::Settings::Load();
+			break;
+		case SKSE::MessagingInterface::kNewGame:
+			break;
 	}
 }
 
@@ -66,7 +64,7 @@ RE::ContainerMenu::ContainerMode GetContainerMode(RE::StaticFunctionTag*) {
 
 RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
 	SKSE::log::info(" ");
-	SKSE::log::info("---- Transfer Initiated ----");
+	SKSE::log::info("---- Finding Transferrable Junk ----");
 
 	RE::BGSListForm* JunkList = JunkIt::Settings::GetJunkList();
 	RE::BGSListForm* transferList = JunkIt::Settings::GetTransferList();
@@ -168,37 +166,129 @@ RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
 		}
 	}
 
-	SKSE::log::info("---- Transfer Complete ----");
 	SKSE::log::info(" ");
 	return transferList;
 }
 
-void TransferJunk(RE::StaticFunctionTag*) {
-	// Coming Soon
-}
+RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Finding Sellable Junk ----");
 
-void RetrieveJunk(RE::StaticFunctionTag*) {
-	// Coming Soon
-}
+	RE::BGSListForm* JunkList = JunkIt::Settings::GetJunkList();
+	RE::BGSListForm* sellList = JunkIt::Settings::GetSellList();
+	sellList->ClearData();
 
-void SellJunk(RE::StaticFunctionTag*) {
-	// Coming Soon
+	// Get access to the UI Menu so we can limit our transfer based on the current view and Equip/Favorite state
+	const auto UI = RE::UI::GetSingleton();
+	RE::GPtr<RE::BarterMenu> barterMenu = UI ? UI->GetMenu<RE::BarterMenu>() : nullptr;
+	RE::ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
+	if (!itemListMenu) {
+		SKSE::log::error("No ItemListMenu found");
+		return sellList;
+	}
+
+	// Get entry list from the ItemListMenu
+	RE::BSTArray<RE::ItemList::Item*> listItems = itemListMenu->items;
+	std::vector<RE::InventoryEntryData*> sortFormData;
+	
+	SKSE::log::info("Processing Entry List for sellable junk items");
+	for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
+		RE::ItemList::Item* entryItem = listItems[i];
+		if (!entryItem) {
+			continue;
+		}
+
+		// Skip items that are not in the JunkList
+		if (!JunkList->HasForm(entryItem->data.objDesc->GetObject())) {
+			continue;
+		}
+
+		bool equipped = entryItem->data.objDesc->IsWorn();
+		if (equipped) {
+			SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+			continue;
+		}
+		std::uint32_t favorite = entryItem->data.objDesc->IsFavorited();
+		if (favorite) {
+			SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+			continue;
+		}
+
+		sortFormData.push_back(entryItem->data.objDesc);
+	}
+
+	// Sort the list of items based on the settings
+	if (JunkIt::Settings::GetSellPriority() == JunkIt::Settings::SortPriority::kWeightHighLow)
+	{
+		SKSE::log::info("Applying Weight [High > Low] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetWeight() > b->GetWeight();
+		});
+	}
+	else if (JunkIt::Settings::GetSellPriority() == JunkIt::Settings::SortPriority::kWeightLowHigh)
+	{
+		SKSE::log::info("Applying Weight [Low > High] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetWeight() < b->GetWeight();
+		});
+	}
+	else if (JunkIt::Settings::GetSellPriority() == JunkIt::Settings::SortPriority::kValueHighLow)
+	{
+		SKSE::log::info("Applying Value [High > Low] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetValue() > b->GetValue();
+		});
+	}
+	else if (JunkIt::Settings::GetSellPriority() == JunkIt::Settings::SortPriority::kValueLowHigh)
+	{
+		SKSE::log::info("Applying Value [Low > High] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return a->GetValue() < b->GetValue();
+		});
+	}
+	else if (JunkIt::Settings::GetSellPriority() == JunkIt::Settings::SortPriority::kValueWeightHighLow)
+	{
+		SKSE::log::info("Applying Value/Weight [High > Low] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return (a->GetValue() / a->GetWeight()) > (b->GetValue() / b->GetWeight());
+		});
+	}
+	else if (JunkIt::Settings::GetSellPriority() == JunkIt::Settings::SortPriority::kValueWeightLowHigh)
+	{
+		SKSE::log::info("Applying Value/Weight [Low > High] Sort Priority");
+		std::sort(sortFormData.begin(), sortFormData.end(), [](const RE::InventoryEntryData* a, const RE::InventoryEntryData* b) {
+			return (a->GetValue() / a->GetWeight()) < (b->GetValue() / b->GetWeight());
+		});
+	}
+
+	// Add the sorted list of items to the transfer list
+	SKSE::log::info("Final SellList:");
+	for (const RE::InventoryEntryData* entryData : sortFormData) {
+		const RE::TESBoundObject* entryObject = entryData->GetObject();
+		if (!entryObject) {
+			continue;
+		}
+		if (!sellList->HasForm(entryObject)) {
+			SKSE::log::info("     {} - Val({}) Weight({})", entryObject->GetName(), entryData->GetValue(), entryData->GetWeight());
+			sellList->AddForm(RE::TESForm::LookupByID(entryObject->GetFormID()));
+		}
+	}
+
+	SKSE::log::info("---- Bulk Sell Complete ----");
+	SKSE::log::info(" ");
+	return sellList;
 }
 
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
-	vm->RegisterFunction("TransferJunk", "JunkIt_MCM", TransferJunk);
-	vm->RegisterFunction("RetrieveJunk", "JunkIt_MCM", RetrieveJunk);
-	vm->RegisterFunction("SellJunk", "JunkIt_MCM", SellJunk);
 
 	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
 	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
-	vm->RegisterFunction("GetRetrievalFormList", "JunkIt_MCM", GetTransferFormList);
-	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetTransferFormList);
+	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
 
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
 	
-	SKSE::log::info("Registered Native Papyrus Functions");
+	SKSE::log::info("Registered JunkIt Native Functions");
     return true;
 }
 
