@@ -27,6 +27,34 @@ void RefreshDllSettings(RE::StaticFunctionTag*) {
 	JunkIt::Settings::Load();
 }
 
+std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
+	SKSE::log::info("Adding IsJunk keyword to {}", a_form->GetName());
+	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
+
+	RE::BGSKeywordForm* keywordForm = a_form->As<RE::BGSKeywordForm>();
+	if (!keywordForm) {
+		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", a_form->GetName());
+		return false;
+	}
+
+	keywordForm->AddKeyword(isJunkKYWD);
+	return true;
+}
+
+std::int32_t RemoveJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
+	SKSE::log::info("Remove IsJunk keyword from {}", a_form->GetName());
+	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
+
+	RE::BGSKeywordForm* keywordForm = a_form->As<RE::BGSKeywordForm>();
+	if (!keywordForm) {
+		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", a_form->GetName());
+		return false;
+	}
+
+	keywordForm->RemoveKeyword(isJunkKYWD);
+	return true;
+}
+
 void RefreshUIIcons(RE::StaticFunctionTag*) {
 	const auto UI = RE::UI::GetSingleton();
 	RE::ItemList* itemListMenu = nullptr;
@@ -47,6 +75,62 @@ void RefreshUIIcons(RE::StaticFunctionTag*) {
 	}
 	
 	itemListMenu->Update();
+}
+
+RE::TESObjectREFR* GetContainerMenuContainer(RE::StaticFunctionTag*) {
+	RE::TESObjectREFR* container = nullptr;
+
+	const auto UI = RE::UI::GetSingleton();
+	const auto menu = UI ? UI->GetMenu<RE::ContainerMenu>() : nullptr;
+	if (menu) {
+		const auto           refHandle = menu->GetTargetRefHandle();
+		RE::TESObjectREFRPtr refr;
+		RE::LookupReferenceByHandle(refHandle, refr);
+
+		container = refr.get();
+	}
+
+	return container;
+}
+
+RE::TESObjectREFR* GetBarterMenuContainer(RE::StaticFunctionTag*) {
+	RE::TESObjectREFR* container = nullptr;
+	
+	const auto UI = RE::UI::GetSingleton();
+	const auto menu = UI ? UI->GetMenu<RE::BarterMenu>() : nullptr;
+	if (menu) {
+		const auto           refHandle = menu->GetTargetRefHandle();
+		RE::TESObjectREFRPtr refr;
+		RE::LookupReferenceByHandle(refHandle, refr);
+		container = refr.get();
+	}
+
+	return container;
+}
+
+RE::TESObjectREFR* GetBarterMenuMerchantContainer(RE::StaticFunctionTag*) {
+	RE::TESObjectREFR* container = nullptr;
+	
+	const auto UI = RE::UI::GetSingleton();
+	const auto menu = UI ? UI->GetMenu<RE::BarterMenu>() : nullptr;
+	if (menu) {
+		const auto           refHandle = menu->GetTargetRefHandle();
+		RE::TESObjectREFRPtr refr;
+		RE::LookupReferenceByHandle(refHandle, refr);
+
+		RE::TESObjectREFR* merchantRef = nullptr;
+		merchantRef = refr.get();
+		
+		RE::Actor* merchant = merchantRef->As<RE::Actor>();
+		RE::TESFaction* merchantFaction = merchant->GetVendorFaction();
+		container = merchantFaction->vendorData.merchantContainer;
+
+		if (!container) {
+			container = merchantRef;
+		}
+	}
+
+	return container;
 }
 
 RE::ContainerMenu::ContainerMode GetContainerMode(RE::StaticFunctionTag*) {
@@ -279,14 +363,68 @@ RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
 	return sellList;
 }
 
+std::int32_t GetFormUIEntryIndex(RE::StaticFunctionTag*, std::string menuName, std::int32_t formId) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Finding FormId {} EntryList Index ----", formId);
+	std::int32_t index = -1;
+	
+	// Get access to the UI Menu so we can limit our transfer based on the current view and Equip/Favorite state
+	const auto UI = RE::UI::GetSingleton();
+	
+	RE::ItemList* itemListMenu = nullptr;
+	if (menuName == "InventoryMenu") {
+		RE::GPtr<RE::InventoryMenu> invMenu = UI ? UI->GetMenu<RE::InventoryMenu>() : nullptr;
+		itemListMenu = invMenu ? invMenu->GetRuntimeData().itemList : nullptr;
+	} else if (menuName == "ContainerMenu") {
+		RE::GPtr<RE::ContainerMenu> containerMenu = UI ? UI->GetMenu<RE::ContainerMenu>() : nullptr;
+		itemListMenu = containerMenu ? containerMenu->GetRuntimeData().itemList : nullptr;
+	} else if (menuName == "BarterMenu") {
+		RE::GPtr<RE::BarterMenu> barterMenu = UI ? UI->GetMenu<RE::BarterMenu>() : nullptr;
+		itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
+	}
+	
+	if (!itemListMenu) {
+		SKSE::log::error("No ItemListMenu found");
+		return index;
+	}
+
+	// Get entry list from the ItemListMenu
+	RE::GFxValue entryList = itemListMenu->entryList;
+	SKSE::log::info("EntryList size {}", entryList.GetArraySize());
+
+	// Loop through the entry list to find the selected index for the formId
+	for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
+		RE::GFxValue entry;
+		entryList.GetElement(i, &entry);
+		RE::GFxValue formID;
+		entry.GetMember("formId", &formID);
+		RE::GFxValue itemIndex;
+		entry.GetMember("itemIndex", &itemIndex);
+		if (formID.GetNumber() == formId) {
+			SKSE::log::info("Entry formId {} with itemIndex {}", formID.GetNumber(), itemIndex.GetNumber());
+			index = itemIndex.GetNumber();
+			break;
+		}
+	}
+
+	return index;
+}
+
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 
 	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
+	vm->RegisterFunction("GetContainerMenuContainer", "JunkIt_MCM", GetContainerMenuContainer);
+	vm->RegisterFunction("GetBarterMenuContainer", "JunkIt_MCM", GetBarterMenuContainer);
+	vm->RegisterFunction("GetBarterMenuMerchantContainer", "JunkIt_MCM", GetBarterMenuMerchantContainer);
 	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
 	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
+	vm->RegisterFunction("GetFormUIEntryIndex", "JunkIt_MCM", GetFormUIEntryIndex);
 
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
+
+	vm->RegisterFunction("AddJunkKeyword", "JunkIt_MCM", AddJunkKeyword);
+	vm->RegisterFunction("RemoveJunkKeyword", "JunkIt_MCM", RemoveJunkKeyword);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;

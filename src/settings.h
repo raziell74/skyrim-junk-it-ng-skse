@@ -35,6 +35,7 @@ namespace JunkIt {
 
                 std::string priorityString = "";
                 JunkList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x804)->As<BGSListForm>();
+                IsJunkKYWD = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x802)->As<BGSKeyword>();
 
                 TESGlobal* ConfirmTransfer = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x808)->As<TESGlobal>();
                 TESGlobal* TransferPriority = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80A)->As<TESGlobal>();
@@ -117,6 +118,7 @@ namespace JunkIt {
             }
 
             [[nodiscard]] static BGSListForm* GetJunkList() { return JunkList; }
+            [[nodiscard]] static BGSKeyword* GetIsJunkKYWD() { return IsJunkKYWD; }
 
             [[nodiscard]] static bool ConfirmTransfer() { return JunkTransfer.ConfirmTransfer; }
             [[nodiscard]] static SortPriority GetTransferPriority() { return JunkTransfer.TransferPriority; }
@@ -128,6 +130,7 @@ namespace JunkIt {
 
         private: 
 
+            static inline BGSKeyword* IsJunkKYWD;
             static inline BGSListForm* JunkList;
             static inline JunkTransfer JunkTransfer;
             static inline JunkSell JunkSell;
