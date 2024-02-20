@@ -180,12 +180,12 @@ RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
 		}
 
 		bool equipped = entryItem->data.objDesc->IsWorn();
-		if (equipped) {
+		if (JunkIt::Settings::ProtectEquipped() && equipped) {
 			SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
 			continue;
 		}
 		std::uint32_t favorite = entryItem->data.objDesc->IsFavorited();
-		if (favorite) {
+		if (JunkIt::Settings::ProtectFavorites() && favorite) {
 			SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
 			continue;
 		}
@@ -288,12 +288,12 @@ RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
 		}
 
 		bool equipped = entryItem->data.objDesc->IsWorn();
-		if (equipped) {
+		if (JunkIt::Settings::ProtectEquipped() && equipped) {
 			SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
 			continue;
 		}
 		std::uint32_t favorite = entryItem->data.objDesc->IsFavorited();
-		if (favorite) {
+		if (JunkIt::Settings::ProtectFavorites() && favorite) {
 			SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
 			continue;
 		}
@@ -402,7 +402,7 @@ std::int32_t GetFormUIEntryIndex(RE::StaticFunctionTag*, std::string menuName, s
 		entry.GetMember("itemIndex", &itemIndex);
 		if (formID.GetNumber() == formId) {
 			SKSE::log::info("Entry formId {} with itemIndex {}", formID.GetNumber(), itemIndex.GetNumber());
-			index = itemIndex.GetNumber();
+			index = static_cast<std::int32_t>(itemIndex.GetNumber());
 			break;
 		}
 	}
@@ -419,7 +419,7 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("GetBarterMenuMerchantContainer", "JunkIt_MCM", GetBarterMenuMerchantContainer);
 	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
 	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
-	vm->RegisterFunction("GetFormUIEntryIndex", "JunkIt_MCM", GetFormUIEntryIndex);
+	// vm->RegisterFunction("GetFormUIEntryIndex", "JunkIt_MCM", GetFormUIEntryIndex);
 
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
 

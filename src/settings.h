@@ -29,6 +29,11 @@ namespace JunkIt {
                 BGSListForm* SellList;
             };
 
+            struct JunkProtection {
+                bool ProtectEquipped = true;
+                bool ProtectFavorites = true;
+            };
+
             static void Load() {
                 SKSE::log::info(" ");
                 SKSE::log::info("Updating Settings...");
@@ -114,6 +119,19 @@ namespace JunkIt {
                     JunkSell.ConfirmSell,
                     priorityString
                 );
+
+                TESGlobal* ProtectEquipped = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x810)->As<TESGlobal>();
+                TESGlobal* ProtectFavorites = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x811)->As<TESGlobal>();
+
+                JunkProtection.ProtectEquipped = ProtectEquipped->value != 0;
+                JunkProtection.ProtectFavorites = ProtectFavorites->value != 0;
+
+                SKSE::log::info(
+                    "Protection Settings | ProtectEquipped: {} | ProtectFavorites: {}",
+                    JunkProtection.ProtectEquipped,
+                    JunkProtection.ProtectFavorites
+                );
+
                 SKSE::log::info(" ");
             }
 
@@ -128,11 +146,15 @@ namespace JunkIt {
             [[nodiscard]] static SortPriority GetSellPriority() { return JunkSell.SellPriority; }
             [[nodiscard]] static BGSListForm* GetSellList() { return JunkSell.SellList; }
 
+            [[nodiscard]] static bool ProtectEquipped() { return JunkProtection.ProtectEquipped; }
+            [[nodiscard]] static bool ProtectFavorites() { return JunkProtection.ProtectFavorites; }
+
         private: 
 
             static inline BGSKeyword* IsJunkKYWD;
             static inline BGSListForm* JunkList;
             static inline JunkTransfer JunkTransfer;
             static inline JunkSell JunkSell;
+            static inline JunkProtection JunkProtection;
     };   
 }
