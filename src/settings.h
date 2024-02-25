@@ -32,6 +32,7 @@ namespace JunkIt {
             struct JunkProtection {
                 bool ProtectEquipped = true;
                 bool ProtectFavorites = true;
+                bool ProtectEnchanted = false;
             };
 
             static void Load() {
@@ -122,14 +123,17 @@ namespace JunkIt {
 
                 TESGlobal* ProtectEquipped = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x810)->As<TESGlobal>();
                 TESGlobal* ProtectFavorites = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x811)->As<TESGlobal>();
+                TESGlobal* ProtectEnchanted = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x813)->As<TESGlobal>();
 
                 JunkProtection.ProtectEquipped = ProtectEquipped->value != 0;
                 JunkProtection.ProtectFavorites = ProtectFavorites->value != 0;
+                JunkProtection.ProtectEnchanted = ProtectEnchanted->value != 0;
 
                 SKSE::log::info(
-                    "Protection Settings | ProtectEquipped: {} | ProtectFavorites: {}",
+                    "Protection Settings | ProtectEquipped: {} | ProtectFavorites: {} | ProtectEnchanted: {}",
                     JunkProtection.ProtectEquipped,
-                    JunkProtection.ProtectFavorites
+                    JunkProtection.ProtectFavorites,
+                    JunkProtection.ProtectEnchanted
                 );
 
                 SKSE::log::info(" ");
@@ -148,6 +152,7 @@ namespace JunkIt {
 
             [[nodiscard]] static bool ProtectEquipped() { return JunkProtection.ProtectEquipped; }
             [[nodiscard]] static bool ProtectFavorites() { return JunkProtection.ProtectFavorites; }
+            [[nodiscard]] static bool ProtectEnchanted() { return JunkProtection.ProtectEnchanted; }
 
         private: 
 

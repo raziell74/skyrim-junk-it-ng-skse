@@ -297,6 +297,11 @@ RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
 			SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
 			continue;
 		}
+		std::uint32_t enchanted = entryItem->data.objDesc->IsEnchanted();
+		if (JunkIt::Settings::ProtectEnchanted() && enchanted) {
+			SKSE::log::info("Junk Item Enchanted - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+			continue;
+		}
 
 		sortFormData.push_back(entryItem->data.objDesc);
 	}
