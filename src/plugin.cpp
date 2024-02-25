@@ -94,6 +94,8 @@ RE::TESObjectREFR* GetContainerMenuContainer(RE::StaticFunctionTag*) {
 }
 
 RE::TESObjectREFR* GetBarterMenuContainer(RE::StaticFunctionTag*) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Getting Merchant actor as container ----");
 	RE::TESObjectREFR* container = nullptr;
 	
 	const auto UI = RE::UI::GetSingleton();
@@ -105,10 +107,16 @@ RE::TESObjectREFR* GetBarterMenuContainer(RE::StaticFunctionTag*) {
 		container = refr.get();
 	}
 
+	if (!container) {
+		SKSE::log::info("No merchant actor container found");
+	}
+
 	return container;
 }
 
 RE::TESObjectREFR* GetBarterMenuMerchantContainer(RE::StaticFunctionTag*) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Getting Merchant Vendor Faction Container ----");
 	RE::TESObjectREFR* container = nullptr;
 	
 	const auto UI = RE::UI::GetSingleton();
@@ -120,13 +128,31 @@ RE::TESObjectREFR* GetBarterMenuMerchantContainer(RE::StaticFunctionTag*) {
 
 		RE::TESObjectREFR* merchantRef = nullptr;
 		merchantRef = refr.get();
+
+		if (!merchantRef) {
+			SKSE::log::info("No merchant actor found");
+		}
 		
 		RE::Actor* merchant = merchantRef->As<RE::Actor>();
 		RE::TESFaction* merchantFaction = merchant->GetVendorFaction();
-		container = merchantFaction->vendorData.merchantContainer;
+
+		if (!merchantFaction) {
+			SKSE::log::info("No merchant faction found - attempting to use individualized container map");
+			std::int32_t individualizedMerchantContainerId = JunkIt::Settings::GetIndividualizedMerchantInventory(merchantRef->GetFormID());
+
+			if (individualizedMerchantContainerId) {
+				SKSE::log::info("Using individualized merchant container id {}", individualizedMerchantContainerId);
+				container = RE::TESObjectREFR::LookupByID(individualizedMerchantContainerId)->As<RE::TESObjectREFR>();
+			} else {
+				SKSE::log::info("No individualized merchant container found - defaulting to using merchant as container");
+			}
+		} else {
+			container = merchantFaction->vendorData.merchantContainer;
+		}
 
 		if (!container) {
-			container = merchantRef;
+			SKSE::log::info("No merchant container found");
+			return merchantRef;
 		}
 	}
 
