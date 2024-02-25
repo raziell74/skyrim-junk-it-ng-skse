@@ -95,7 +95,7 @@ RE::TESObjectREFR* GetContainerMenuContainer(RE::StaticFunctionTag*) {
 
 RE::TESObjectREFR* GetBarterMenuContainer(RE::StaticFunctionTag*) {
 	SKSE::log::info(" ");
-	SKSE::log::info("---- Getting Merchant actor as container ----");
+	SKSE::log::info("---- Getting Vendor actor ----");
 	RE::TESObjectREFR* container = nullptr;
 	
 	const auto UI = RE::UI::GetSingleton();
@@ -137,21 +137,15 @@ RE::TESObjectREFR* GetBarterMenuMerchantContainer(RE::StaticFunctionTag*) {
 		RE::TESFaction* merchantFaction = merchant->GetVendorFaction();
 
 		if (!merchantFaction) {
-			SKSE::log::info("No merchant faction found - attempting to use individualized container map");
-			std::int32_t individualizedMerchantContainerId = JunkIt::Settings::GetIndividualizedMerchantInventory(merchantRef->GetFormID());
-
-			if (individualizedMerchantContainerId) {
-				SKSE::log::info("Using individualized merchant container id {}", individualizedMerchantContainerId);
-				container = RE::TESObjectREFR::LookupByID(individualizedMerchantContainerId)->As<RE::TESObjectREFR>();
-			} else {
-				SKSE::log::info("No individualized merchant container found - defaulting to using merchant as container");
-			}
+			SKSE::log::info("No merchant faction found - using vendor actor as container");
+			return merchantRef;
 		} else {
+			SKSE::log::info("Merchant faction found with id {} - using faction->merchantContainer", merchantFaction->GetFormID());
 			container = merchantFaction->vendorData.merchantContainer;
 		}
 
 		if (!container) {
-			SKSE::log::info("No merchant container found");
+			SKSE::log::info("No merchant container found for this actors merchant faction - using vendor actor as container");
 			return merchantRef;
 		}
 	}
@@ -276,6 +270,7 @@ RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
 		}
 	}
 
+	SKSE::log::info("---- Generated Junk Transfer FormList ----");
 	SKSE::log::info(" ");
 	return transferList;
 }
@@ -389,7 +384,7 @@ RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
 		}
 	}
 
-	SKSE::log::info("---- Bulk Sell Complete ----");
+	SKSE::log::info("---- Generated Junk Sell FormList ----");
 	SKSE::log::info(" ");
 	return sellList;
 }
