@@ -28,6 +28,11 @@ void RefreshDllSettings(RE::StaticFunctionTag*) {
 }
 
 std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
+	if (!a_form) {
+		SKSE::log::error("Error attempting to add IsJunk keyword to nullptr");
+		return false;
+	}
+	
 	SKSE::log::info("Adding IsJunk keyword to {}", a_form->GetName());
 	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
 
@@ -42,6 +47,10 @@ std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 }
 
 std::int32_t RemoveJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
+	if (!a_form) {
+		SKSE::log::error("Error attempting to remove IsJunk keyword to nullptr");
+		return false;
+	}
 	SKSE::log::info("Remove IsJunk keyword from {}", a_form->GetName());
 	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
 
@@ -389,6 +398,63 @@ RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
 	return sellList;
 }
 
+std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Getting Item Value as it is listed in the open menu for {} [{}] ----", a_form->GetName(), a_form->GetFormID());
+	std::int32_t goldValue = -1;
+
+	// Get access to the UI Menu so we can limit our transfer based on the current view and Equip/Favorite state
+	const auto UI = RE::UI::GetSingleton();
+
+	RE::ItemList* itemListMenu = nullptr;
+	if (UI && UI->IsMenuOpen("InventoryMenu")) {
+		itemListMenu = UI->GetMenu<RE::InventoryMenu>()->GetRuntimeData().itemList;
+	} else if (UI && UI->IsMenuOpen("ContainerMenu")) {
+		itemListMenu = UI->GetMenu<RE::ContainerMenu>()->GetRuntimeData().itemList;
+	} else if (UI && UI->IsMenuOpen("BarterMenu")) {
+		itemListMenu = UI->GetMenu<RE::BarterMenu>()->GetRuntimeData().itemList;
+	} else	{
+		SKSE::log::info("No open menu found");
+		return goldValue;
+	}
+
+	if (!itemListMenu) {
+		SKSE::log::error("No ItemListMenu found");
+		return goldValue;
+	}
+
+	// Get item list from the ItemListMenu
+	RE::BSTArray<RE::ItemList::Item*> listItems = itemListMenu->items;
+	SKSE::log::info("Parsing ItemList[{}] for the matching enchanted item", listItems.size());
+
+	// Loop through the entry list to find the selected index for the formId
+	for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
+		RE::ItemList::Item* entryItem = listItems[i];
+		if (!entryItem) {
+			continue;
+		}
+
+		RE::InventoryEntryData* entryData = entryItem->data.objDesc;
+		if (!entryData) {
+			continue;
+		}
+
+		RE::TESBoundObject* entryObject = entryData->GetObject();
+		if (!entryObject) {
+			continue;
+		}
+
+		RE::FormID formId = entryObject->GetFormID();
+		if (formId == a_form->GetFormID()) {
+			goldValue = entryData->GetValue();
+			SKSE::log::info("{} - EntryData->GetValue() {}", entryObject->GetName(), goldValue);
+			break;
+		}
+	}
+
+	return goldValue;
+}
+
 std::int32_t GetFormUIEntryIndex(RE::StaticFunctionTag*, std::string menuName, std::int32_t formId) {
 	SKSE::log::info(" ");
 	SKSE::log::info("---- Finding FormId {} EntryList Index ----", formId);
@@ -445,6 +511,7 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("GetBarterMenuMerchantContainer", "JunkIt_MCM", GetBarterMenuMerchantContainer);
 	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
 	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
+	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
 	// vm->RegisterFunction("GetFormUIEntryIndex", "JunkIt_MCM", GetFormUIEntryIndex);
 
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
