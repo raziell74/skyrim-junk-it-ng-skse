@@ -32,10 +32,19 @@ std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 		SKSE::log::error("Error attempting to add IsJunk keyword to nullptr");
 		return false;
 	}
-	
+
 	SKSE::log::info("Adding IsJunk keyword to {}", a_form->GetName());
 	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
 
+	// Ammo has to be treated differently as it does not inherit from BGSKeywordForm
+	if (a_form->GetFormType() == RE::FormType::Ammo) {
+		SKSE::log::info("Skipping Ammo FormType - Ammo is not supported");
+		RE::TESAmmo* ammo = a_form->As<RE::TESAmmo>();
+		ammo->AsKeywordForm()->AddKeyword(isJunkKYWD);
+		return true;
+	}
+
+	// Generalized handling for all other form types
 	RE::BGSKeywordForm* keywordForm = a_form->As<RE::BGSKeywordForm>();
 	if (!keywordForm) {
 		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", a_form->GetName());
@@ -51,9 +60,19 @@ std::int32_t RemoveJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 		SKSE::log::error("Error attempting to remove IsJunk keyword to nullptr");
 		return false;
 	}
+
 	SKSE::log::info("Remove IsJunk keyword from {}", a_form->GetName());
 	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
 
+	// Ammo has to be treated differently as it does not inherit from BGSKeywordForm
+	if (a_form->GetFormType() == RE::FormType::Ammo) {
+		SKSE::log::info("Skipping Ammo FormType - Ammo is not supported");
+		RE::TESAmmo* ammo = a_form->As<RE::TESAmmo>();
+		ammo->AsKeywordForm()->RemoveKeyword(isJunkKYWD);
+		return true;
+	}
+
+	// Generalized handling for all other form types
 	RE::BGSKeywordForm* keywordForm = a_form->As<RE::BGSKeywordForm>();
 	if (!keywordForm) {
 		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", a_form->GetName());
@@ -455,53 +474,6 @@ std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	return goldValue;
 }
 
-std::int32_t GetFormUIEntryIndex(RE::StaticFunctionTag*, std::string menuName, std::int32_t formId) {
-	SKSE::log::info(" ");
-	SKSE::log::info("---- Finding FormId {} EntryList Index ----", formId);
-	std::int32_t index = -1;
-	
-	// Get access to the UI Menu so we can limit our transfer based on the current view and Equip/Favorite state
-	const auto UI = RE::UI::GetSingleton();
-	
-	RE::ItemList* itemListMenu = nullptr;
-	if (menuName == "InventoryMenu") {
-		RE::GPtr<RE::InventoryMenu> invMenu = UI ? UI->GetMenu<RE::InventoryMenu>() : nullptr;
-		itemListMenu = invMenu ? invMenu->GetRuntimeData().itemList : nullptr;
-	} else if (menuName == "ContainerMenu") {
-		RE::GPtr<RE::ContainerMenu> containerMenu = UI ? UI->GetMenu<RE::ContainerMenu>() : nullptr;
-		itemListMenu = containerMenu ? containerMenu->GetRuntimeData().itemList : nullptr;
-	} else if (menuName == "BarterMenu") {
-		RE::GPtr<RE::BarterMenu> barterMenu = UI ? UI->GetMenu<RE::BarterMenu>() : nullptr;
-		itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
-	}
-	
-	if (!itemListMenu) {
-		SKSE::log::error("No ItemListMenu found");
-		return index;
-	}
-
-	// Get entry list from the ItemListMenu
-	RE::GFxValue entryList = itemListMenu->entryList;
-	SKSE::log::info("EntryList size {}", entryList.GetArraySize());
-
-	// Loop through the entry list to find the selected index for the formId
-	for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
-		RE::GFxValue entry;
-		entryList.GetElement(i, &entry);
-		RE::GFxValue formID;
-		entry.GetMember("formId", &formID);
-		RE::GFxValue itemIndex;
-		entry.GetMember("itemIndex", &itemIndex);
-		if (formID.GetNumber() == formId) {
-			SKSE::log::info("Entry formId {} with itemIndex {}", formID.GetNumber(), itemIndex.GetNumber());
-			index = static_cast<std::int32_t>(itemIndex.GetNumber());
-			break;
-		}
-	}
-
-	return index;
-}
-
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 
@@ -512,7 +484,6 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
 	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
 	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
-	// vm->RegisterFunction("GetFormUIEntryIndex", "JunkIt_MCM", GetFormUIEntryIndex);
 
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
 
