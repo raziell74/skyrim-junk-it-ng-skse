@@ -65,11 +65,6 @@ RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
 	}
 
 	RE::InventoryEntryData* inventoryEntry = selectedItem->data.objDesc;
-	if (inventoryEntry->IsQuestObject()) {
-		SKSE::log::info("Cannot mark quest item {} as junk", inventoryEntry->GetDisplayName());
-		return nullptr;
-	}
-
 	RE::TESForm* itemForm = inventoryEntry->GetObject()->As<RE::TESForm>();
 	if (!itemForm) {
 		SKSE::log::error("Error getting item as form for {}", inventoryEntry->GetDisplayName());
@@ -91,6 +86,13 @@ RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
 	if (!keywordForm) {
 		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", itemForm->GetName());
 		return nullptr;
+	}
+
+	if (inventoryEntry->IsQuestObject()) {
+		SKSE::log::info("Cannot mark quest item {} as junk", inventoryEntry->GetDisplayName());
+		if (!keywordForm->HasKeyword(isJunkKYWD)) { // Allow removal of keyword if it has it already for backward compatibility
+			return nullptr;
+		}
 	}
 
 	if (keywordForm->HasKeyword(isJunkKYWD)) {
