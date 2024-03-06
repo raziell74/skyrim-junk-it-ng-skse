@@ -51,6 +51,60 @@ RE::ItemList* GetItemListMenu() {
 	return itemListMenu;
 }
 
+RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (!itemListMenu) {
+		SKSE::log::error("No ItemListMenu found");
+		return nullptr;
+	}
+
+	RE::ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
+	if(!selectedItem) {
+		SKSE::log::error("No item selected in ItemListMenu");
+		return nullptr;
+	}
+
+	RE::InventoryEntryData* inventoryEntry = selectedItem->data.objDesc;
+	if (inventoryEntry->IsQuestObject()) {
+		SKSE::log::info("Cannot mark quest item {} as junk", inventoryEntry->GetDisplayName());
+		return nullptr;
+	}
+
+	RE::TESForm* itemForm = inventoryEntry->GetObject()->As<RE::TESForm>();
+	if (!itemForm) {
+		SKSE::log::error("Error getting item as form for {}", inventoryEntry->GetDisplayName());
+		return nullptr;
+	}
+
+	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
+	RE::BGSKeywordForm* keywordForm = nullptr;
+
+	// Ammo has to be treated differently as it does not inherit from BGSKeywordForm
+	if (itemForm->GetFormType() == RE::FormType::Ammo) {
+		RE::TESAmmo* ammo = itemForm->As<RE::TESAmmo>();
+		keywordForm = ammo->AsKeywordForm();
+	} else {
+		// Generalized handling for all other form types
+		keywordForm = itemForm->As<RE::BGSKeywordForm>();
+	}
+	
+	if (!keywordForm) {
+		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", itemForm->GetName());
+		return nullptr;
+	}
+
+	if (keywordForm->HasKeyword(isJunkKYWD)) {
+		SKSE::log::info("Removing IsJunk keyword to {}", itemForm->GetName());
+		keywordForm->RemoveKeyword(isJunkKYWD);
+	} else {
+		SKSE::log::info("Adding IsJunk keyword to {}", itemForm->GetName());
+		keywordForm->AddKeyword(isJunkKYWD);
+	}
+
+	itemListMenu->Update();
+	return itemForm;
+}
+
 std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	if (!a_form) {
 		SKSE::log::error("Error attempting to add IsJunk keyword to nullptr");
@@ -562,6 +616,8 @@ std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
+
+	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
 
 	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
 	vm->RegisterFunction("GetContainerMenuContainer", "JunkIt_MCM", GetContainerMenuContainer);
