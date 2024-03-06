@@ -41,7 +41,11 @@ namespace JunkIt {
 
                 std::string priorityString = "";
                 JunkList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x804)->As<BGSListForm>();
+                UnjunkedList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80E)->As<BGSListForm>();
                 IsJunkKYWD = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x802)->As<BGSKeyword>();
+
+                MarkJunkKey = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x817)->As<TESGlobal>()->value;
+                TransferJunkKey = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x818)->As<TESGlobal>()->value;
 
                 TESGlobal* ConfirmTransfer = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x808)->As<TESGlobal>();
                 TESGlobal* TransferPriority = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80A)->As<TESGlobal>();
@@ -140,6 +144,7 @@ namespace JunkIt {
             }
 
             [[nodiscard]] static BGSListForm* GetJunkList() { return JunkList; }
+            [[nodiscard]] static BGSListForm* GetUnjunkedList() { return UnjunkedList; }
             [[nodiscard]] static BGSKeyword* GetIsJunkKYWD() { return IsJunkKYWD; }
 
             [[nodiscard]] static bool ConfirmTransfer() { return JunkTransfer.ConfirmTransfer; }
@@ -154,10 +159,17 @@ namespace JunkIt {
             [[nodiscard]] static bool ProtectFavorites() { return JunkProtection.ProtectFavorites; }
             [[nodiscard]] static bool ProtectEnchanted() { return JunkProtection.ProtectEnchanted; }
 
+            [[nodiscard]] static float GetMarkJunkKey() { return MarkJunkKey; }
+            [[nodiscard]] static float GetTransferJunkKey() { return TransferJunkKey; }
+
         private: 
+
+            static inline float MarkJunkKey = 0x32;
+            static inline float TransferJunkKey = 0x49;
 
             static inline BGSKeyword* IsJunkKYWD;
             static inline BGSListForm* JunkList;
+            static inline BGSListForm* UnjunkedList;
             static inline JunkTransfer JunkTransfer;
             static inline JunkSell JunkSell;
             static inline JunkProtection JunkProtection;

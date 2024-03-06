@@ -1,5 +1,6 @@
 #include "log.h"
 #include "settings.h"
+#include "junk.h"
 
 void OnDataLoaded() {
    
@@ -15,6 +16,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			JunkIt::Settings::Load();
+			JunkIt::JunkHandler::UpdateItemKeywords();
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 			break;
@@ -25,6 +27,28 @@ void RefreshDllSettings(RE::StaticFunctionTag*) {
 	SKSE::log::info(" ");
 	SKSE::log::info("RefreshDllSettings called");
 	JunkIt::Settings::Load();
+}
+
+RE::ItemList* GetItemListMenu() {
+	const auto UI = RE::UI::GetSingleton();
+	RE::ItemList* itemListMenu = nullptr;
+	if (UI && UI->IsMenuOpen("InventoryMenu")) {
+		itemListMenu = UI->GetMenu<RE::InventoryMenu>()->GetRuntimeData().itemList;
+	} else if (UI && UI->IsMenuOpen("ContainerMenu")) {
+		itemListMenu = UI->GetMenu<RE::ContainerMenu>()->GetRuntimeData().itemList;
+	} else if (UI && UI->IsMenuOpen("BarterMenu")) {
+		itemListMenu = UI->GetMenu<RE::BarterMenu>()->GetRuntimeData().itemList;
+	} else	{
+		SKSE::log::info("No open menu found");
+		return nullptr;
+	}
+
+	if (!itemListMenu) {
+		SKSE::log::info("No ItemListMenu found");
+		return nullptr;
+	}
+
+	return itemListMenu;
 }
 
 std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
@@ -38,7 +62,6 @@ std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 
 	// Ammo has to be treated differently as it does not inherit from BGSKeywordForm
 	if (a_form->GetFormType() == RE::FormType::Ammo) {
-		SKSE::log::info("Skipping Ammo FormType - Ammo is not supported");
 		RE::TESAmmo* ammo = a_form->As<RE::TESAmmo>();
 		ammo->AsKeywordForm()->AddKeyword(isJunkKYWD);
 		return true;
@@ -52,6 +75,12 @@ std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	}
 
 	keywordForm->AddKeyword(isJunkKYWD);
+
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (itemListMenu) {
+		itemListMenu->Update();
+	}
+
 	return true;
 }
 
@@ -66,7 +95,6 @@ std::int32_t RemoveJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 
 	// Ammo has to be treated differently as it does not inherit from BGSKeywordForm
 	if (a_form->GetFormType() == RE::FormType::Ammo) {
-		SKSE::log::info("Skipping Ammo FormType - Ammo is not supported");
 		RE::TESAmmo* ammo = a_form->As<RE::TESAmmo>();
 		ammo->AsKeywordForm()->RemoveKeyword(isJunkKYWD);
 		return true;
@@ -80,29 +108,40 @@ std::int32_t RemoveJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	}
 
 	keywordForm->RemoveKeyword(isJunkKYWD);
+	
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (itemListMenu) {
+		itemListMenu->Update();
+	}
+	
 	return true;
 }
 
-void RefreshUIIcons(RE::StaticFunctionTag*) {
-	const auto UI = RE::UI::GetSingleton();
-	RE::ItemList* itemListMenu = nullptr;
-	if (UI && UI->IsMenuOpen("InventoryMenu")) {
-		itemListMenu = UI->GetMenu<RE::InventoryMenu>()->GetRuntimeData().itemList;
-	} else if (UI && UI->IsMenuOpen("ContainerMenu")) {
-		itemListMenu = UI->GetMenu<RE::ContainerMenu>()->GetRuntimeData().itemList;
-	} else if (UI && UI->IsMenuOpen("BarterMenu")) {
-		itemListMenu = UI->GetMenu<RE::BarterMenu>()->GetRuntimeData().itemList;
-	} else	{
-		SKSE::log::info("No open menu found");
-		return;
+void FreezeItemListUI(RE::StaticFunctionTag*) {
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (itemListMenu) {
+		itemListMenu->view->SetPause(true);
 	}
+}
 
-	if (!itemListMenu) {
-		SKSE::log::info("No ItemListMenu found");
-		return;
+void ThawItemListUI(RE::StaticFunctionTag*) {
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (itemListMenu) {
+		itemListMenu->view->SetPause(false);
 	}
-	
-	itemListMenu->Update();
+}
+
+void RefreshUIIcons(RE::StaticFunctionTag*) {
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (itemListMenu) {
+		if (itemListMenu->view->IsPaused()) {
+			itemListMenu->view->SetPause(false);
+			itemListMenu->Update();
+		} else {
+			itemListMenu->Update();
+		}
+		itemListMenu->Update();
+	}
 }
 
 RE::TESObjectREFR* GetContainerMenuContainer(RE::StaticFunctionTag*) {
@@ -192,6 +231,53 @@ RE::ContainerMenu::ContainerMode GetContainerMode(RE::StaticFunctionTag*) {
 	RE::ContainerMenu::ContainerMode mode = containerMenu->GetContainerMode();
 	SKSE::log::info("Container Mode: {}", static_cast<std::uint32_t>(mode));
 	return mode;
+}
+
+std::int32_t TransferJunkList(RE::StaticFunctionTag*, RE::BGSListForm* Items, RE::TESObjectREFR* fromContainer, RE::TESObjectREFR* toContainer, std::int32_t a_count = -1) {
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Transferring Junk ----");
+
+	std::int32_t transferCount = 0;
+
+	RE::ItemList* itemListMenu = GetItemListMenu();
+	if (itemListMenu) {
+		SKSE::log::info("Pausing ItemListMenu");
+		itemListMenu->view->SetPause(true);
+	}
+
+	// For each form in the Items RE::BGSListForm, get the count of items in the fromContainer and removeItem from fromContainer and addItem to toContainer
+	Items->ForEachForm([&](RE::TESForm& form) {
+		RE::TESBoundObject* item = form.As<RE::TESBoundObject>();
+		if (!item) {
+			return RE::BSContainer::ForEachResult::kContinue;
+		}
+
+		std::int32_t itemCount = a_count;
+
+		// If a_count is -1, get the count of items in the fromContainer
+		if (a_count == -1) {
+			TESContainer* container = fromContainer->GetContainer();
+			itemCount = container->CountObjectsInContainer(item);
+			SKSE::log::info("Counting {} {} in {}", itemCount, item->GetName(), fromContainer->GetName());
+		}
+
+		// If the item is not in the fromContainer, skip it
+		if (itemCount > 0) {
+			SKSE::log::info("Transferring {} {} from {} to {}", itemCount, item->GetName(), fromContainer->GetName(), toContainer->GetName());
+			fromContainer->AddObjectToContainer(item, nullptr, itemCount, toContainer);
+			transferCount += itemCount;
+		}
+
+		return RE::BSContainer::ForEachResult::kContinue;
+	});
+
+	if (itemListMenu) {
+		SKSE::log::info("Resuming ItemListMenu and Updating");
+		itemListMenu->view->SetPause(false);
+		itemListMenu->Update();
+	}
+	
+	return transferCount;
 }
 
 RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
@@ -484,7 +570,10 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
 	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
 	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
-
+	vm->RegisterFunction("FreezeItemListUI", "JunkIt_MCM", FreezeItemListUI);
+	vm->RegisterFunction("ThawItemListUI", "JunkIt_MCM", ThawItemListUI);
+	vm->RegisterFunction("TransferJunkList", "JunkIt_MCM", TransferJunkList);
+	
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
 
 	vm->RegisterFunction("AddJunkKeyword", "JunkIt_MCM", AddJunkKeyword);
