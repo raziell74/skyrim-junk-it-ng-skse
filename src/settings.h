@@ -181,6 +181,13 @@ namespace JunkIt {
                 // Convert the JunkList to a string array of Editor Ids
                 BSTArray<TESForm*> forms = JunkList->forms;
                 std::int32_t count = forms.size();
+
+                if (count <= 0) {
+                    SKSE::log::error("JunkList is empty. Nothing to save.");
+                    RE::DebugNotification("JunkList is empty. Nothing to save.");
+                    return;
+                }
+
                 for (std::int32_t i = 0; i < count; i++) {
                     TESForm* itemForm = forms[i];
 
