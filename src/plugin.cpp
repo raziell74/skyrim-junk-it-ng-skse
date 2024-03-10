@@ -20,6 +20,11 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 			break;
+		case SKSE::MessagingInterface::kSaveGame:
+			if (JunkIt::Settings::GetAutoSaveJunkListToFile()) {
+				JunkIt::Settings::SaveJunkListToFile();
+			}
+			break;
 	}
 }
 
@@ -51,26 +56,48 @@ RE::ItemList* GetItemListMenu() {
 	return itemListMenu;
 }
 
+/**
+ * @brief Toggles the selected item in the ItemListMenu as junk
+ * 
+ * @return std::int32_t 
+ * 		0 = No Item Selected
+ * 		1 = Successfully marked/unmarked item as junk
+ * 		2 = Generalized Error
+ * 		3 = Cannot Mark Quest item
+ * 		4 = Equipped items are Protected
+ * 		5 = Favorited item are Protected
+ */
 RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
 	RE::ItemList* itemListMenu = GetItemListMenu();
 	if (!itemListMenu) {
 		SKSE::log::error("No ItemListMenu found");
+		RE::DebugNotification("JunkIt - No item selected!");
 		return nullptr;
 	}
 
 	RE::ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
 	if(!selectedItem) {
-		SKSE::log::error("No item selected in ItemListMenu");
-		return nullptr;
+		// Item list possibly wasn't updated yet after a freeze, run update and try again
+		itemListMenu->Update();
+
+		selectedItem = itemListMenu->GetSelectedItem();
+		if (!selectedItem) {
+			SKSE::log::error("No item selected in ItemListMenu");
+			RE::DebugNotification("JunkIt - No item selected!");
+			return nullptr;
+		}
 	}
 
 	RE::InventoryEntryData* inventoryEntry = selectedItem->data.objDesc;
 	RE::TESForm* itemForm = inventoryEntry->GetObject()->As<RE::TESForm>();
 	if (!itemForm) {
 		SKSE::log::error("Error getting item as form for {}", inventoryEntry->GetDisplayName());
+		RE::DebugNotification("JunkIt - Failed to mark item as junk!");
 		return nullptr;
 	}
 
+	std::string itemName = itemForm->GetName();
+	std::string hexFormId = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());
 	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
 	RE::BGSKeywordForm* keywordForm = nullptr;
 
@@ -84,25 +111,48 @@ RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
 	}
 	
 	if (!keywordForm) {
-		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", itemForm->GetName());
+		SKSE::log::error("Error attempting to add IsJunk keyword to {} [{}]. Failed to typecast to BGSKeywordForm", itemName, hexFormId);
+		RE::DebugNotification("JunkIt - Failed to mark item as junk!");
 		return nullptr;
 	}
 
+	// Quest Items cannot be marked as junk
 	if (inventoryEntry->IsQuestObject()) {
-		SKSE::log::info("Cannot mark quest item {} as junk", inventoryEntry->GetDisplayName());
+		SKSE::log::info("Cannot mark quest item {} [{}] as junk", itemName, hexFormId);
 		if (!keywordForm->HasKeyword(isJunkKYWD)) { // Allow removal of keyword if it has it already for backward compatibility
+			RE::DebugNotification("JunkIt - Quest Items cannot be marked as Junk");
 			return nullptr;
 		}
 	}
 
-	if (keywordForm->HasKeyword(isJunkKYWD)) {
-		SKSE::log::info("Removing IsJunk keyword to {}", itemForm->GetName());
+	// Equipped Items cannot be marked as junk
+	if (JunkIt::Settings::ProtectEquipped() && inventoryEntry->IsWorn()) {
+		SKSE::log::info("Cannot mark equipped item {} [{}] as junk", itemName, hexFormId);
+		if (!keywordForm->HasKeyword(isJunkKYWD)) { // Allow removal of keyword if it has it already for backward compatibility
+			RE::DebugNotification("JunkIt - Equipped Items are protected and cannot be marked as Junk");
+			return nullptr;
+		}
+	}
+
+	// Favorited Items cannot be marked as junk
+	if (JunkIt::Settings::ProtectFavorites() && inventoryEntry->IsFavorited()) {
+		SKSE::log::info("Cannot mark favorited item {} [{}] as junk", itemName, hexFormId);
+		if (!keywordForm->HasKeyword(isJunkKYWD)) { // Allow removal of keyword if it has it already for backward compatibility
+			RE::DebugNotification("JunkIt - Favorited Items are protected and cannot be marked as Junk");
+			return nullptr;
+		}
+	}
+
+	bool isJunk = keywordForm->HasKeyword(isJunkKYWD);
+	if (isJunk) {
+		SKSE::log::info("Removing IsJunk keyword to {} [{}]", itemName, hexFormId);
 		keywordForm->RemoveKeyword(isJunkKYWD);
 	} else {
-		SKSE::log::info("Adding IsJunk keyword to {}", itemForm->GetName());
+		SKSE::log::info("Adding IsJunk keyword to {} [{}]", itemName, hexFormId);
 		keywordForm->AddKeyword(isJunkKYWD);
 	}
 
+	// Update ItemList UI
 	itemListMenu->Update();
 	return itemForm;
 }
@@ -253,14 +303,14 @@ RE::TESObjectREFR* GetBarterMenuMerchantContainer(RE::StaticFunctionTag*) {
 		merchantRef = refr.get();
 
 		if (!merchantRef) {
-			SKSE::log::info("No merchant actor found");
+			SKSE::log::error("No merchant actor found");
 		}
 		
 		RE::Actor* merchant = merchantRef->As<RE::Actor>();
 		RE::TESFaction* merchantFaction = merchant->GetVendorFaction();
 
 		if (!merchantFaction) {
-			SKSE::log::info("No merchant faction found - using vendor actor as container");
+			SKSE::log::error("No merchant faction found - using vendor actor as container");
 			return merchantRef;
 		} else {
 			SKSE::log::info("Merchant faction found with id {} - using faction->merchantContainer", merchantFaction->GetFormID());
@@ -616,10 +666,23 @@ std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	return goldValue;
 }
 
+void SaveJunkListToFile(RE::StaticFunctionTag*) {
+	JunkIt::Settings::SaveJunkListToFile();
+}
+
+RE::BGSListForm* LoadJunkListFromFile(RE::StaticFunctionTag*) {
+	return JunkIt::Settings::LoadJunkListFromFile();
+}
+
+void UpdateItemKeywords(RE::StaticFunctionTag*) {
+	JunkIt::JunkHandler::UpdateItemKeywords();
+}
+
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 
 	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
+	vm->RegisterFunction("UpdateItemKeywords", "JunkIt_MCM", UpdateItemKeywords);
 
 	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
 	vm->RegisterFunction("GetContainerMenuContainer", "JunkIt_MCM", GetContainerMenuContainer);
@@ -636,6 +699,9 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 
 	vm->RegisterFunction("AddJunkKeyword", "JunkIt_MCM", AddJunkKeyword);
 	vm->RegisterFunction("RemoveJunkKeyword", "JunkIt_MCM", RemoveJunkKeyword);
+
+	vm->RegisterFunction("SaveJunkListToFile", "JunkIt_MCM", SaveJunkListToFile);
+	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;
