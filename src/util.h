@@ -377,7 +377,7 @@ namespace FormUtil
             static RE::TESForm *GetFormFromConfigString(std::string str, std::string_view delimiter)
             {
                 std::vector<std::string> splitData = Util::String::Split(str, delimiter); 
-                return GetFormFromMod(splitData[0], splitData[1]);
+                return GetFormFromMod(splitData[1], splitData[0]);
             }
             static RE::TESForm *GetFormFromConfigString(std::string str)
             {

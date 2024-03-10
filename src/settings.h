@@ -153,10 +153,14 @@ namespace JunkIt {
                 TESGlobal* AutoSaveJunkListToFileGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81B)->As<TESGlobal>();
                 AutoSaveJunkListToFile = AutoSaveJunkListToFileGlobal->value != 0;
 
+                TESGlobal* ReplaceJunkListOnLoadGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81E)->As<TESGlobal>();
+                ReplaceJunkListOnLoad = ReplaceJunkListOnLoadGlobal->value != 0;
+
                 SKSE::log::info(
-                    "Auto Load/Save Settings | AutoLoadJunkListFromFile: {} | AutoSaveJunkListToFile: {}",
+                    "Auto Load/Save Settings | AutoLoadJunkListFromFile: {} | AutoSaveJunkListToFile: {} | ReplaceJunkListOnLoad: {}",
                     AutoLoadJunkListFromFile,
-                    AutoSaveJunkListToFile
+                    AutoSaveJunkListToFile,
+                    ReplaceJunkListOnLoad
                 );
 
                 SKSE::log::info(" ");
@@ -167,47 +171,58 @@ namespace JunkIt {
             };
 
             static void SaveJunkListToFile() {
+                SKSE::log::info(" ");
+                SKSE::log::info("Saving JunkList to file...");
+
                 // create an empty structure (null)
                 json junkListJson;
-                std::vector<std::string> junkEditorIdList = {};
+                std::vector<std::string> junkFormIdList = {};
 
                 // Convert the JunkList to a string array of Editor Ids
                 BSTArray<TESForm*> forms = JunkList->forms;
                 std::int32_t count = forms.size();
                 for (std::int32_t i = 0; i < count; i++) {
-                    TESForm* form = forms[i];
+                    TESForm* itemForm = forms[i];
 
-                    if (!form) {
+                    if (!itemForm) {
                         SKSE::log::error("Form is null for index: {}", i);
                         continue;
                     }
                     
-                    std::string formConfigString = fmt::format("{}~0x{:X}", form->GetFile(0)->GetFilename(), form->GetLocalFormID());
-                    // SKSE::log::info("Adding {} for item {} to save list", formConfigString, form->GetName());
-                    junkEditorIdList.push_back(formConfigString);
+                    std::string formConfigString = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());;
+                    // SKSE::log::info("Adding {} - {} to save list", itemForm->GetName(), formConfigString);
+                    junkFormIdList.push_back(formConfigString);
                 }
 
-                junkListJson["Junk"] = junkEditorIdList;
+                junkListJson["Junk"] = junkFormIdList;
 
                 // Write the JSON to a file
                 std::ofstream file(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
                 file << junkListJson.dump(4) << "\n\n"; 
                 file.close();
 
-                SKSE::log::info("Saving JunkList to file...");
-                SKSE::log::info("{}", junkListJson.dump());
+                SKSE::log::info("JunkList saved to file 'Data/SKSE/Plugins/JunkIt/JunkList.json'.");
+                // SKSE::log::info("{}", junkListJson.dump());
             }
 
             static RE::BGSListForm* LoadJunkListFromFile() {
-                std::ifstream f(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
-                json junkListJson = json::parse(f);
-                std::vector<std::string> junkFormIdList = junkListJson["Junk"];
+                SKSE::log::info(" ");
+                SKSE::log::info("Loading JunkList From file 'Data/SKSE/Plugins/JunkIt/JunkList.json'...");
 
                 // We don't want to create a new local variable for the new list so we'll repurpose the existing transfer list to save memory
                 BGSListForm* NewJunkList = JunkTransfer.TransferList;
                 NewJunkList->ClearData();
 
-                SKSE::log::info("Loading JunkList from file...");
+                std::ifstream f(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
+                // exit if file not found
+                if (!f.good()) {
+                    SKSE::log::error("JunkList file not found.");
+                    return NewJunkList;
+                }
+
+                // Parse the JSON file and get the JunkList array
+                json junkListJson = json::parse(f);
+                std::vector<std::string> junkFormIdList = junkListJson["Junk"];
 
                 // Loop through the string array of Editor Ids and then add each form to the JunkList
                 for (std::int32_t i = 0; i < junkFormIdList.size(); i++) {
@@ -220,12 +235,11 @@ namespace JunkIt {
                         continue;
                     }
                     
-                    // Loading from the file is Additive, so we don't need to clear the list beforehand
                     NewJunkList->AddForm(form);
                     SKSE::log::info("Adding form to JunkList: {} [{}]", form->GetName(), formConfigString);
                 }
 
-                SKSE::log::info("JunkList loaded from file. Updating Item keywords...");
+                SKSE::log::info("JunkList loaded from file.");
                 return NewJunkList;
             }
 
@@ -258,6 +272,7 @@ namespace JunkIt {
             
             static inline bool AutoSaveJunkListToFile = false;
             static inline bool AutoLoadJunkListFromFile = false;
+            static inline bool ReplaceJunkListOnLoad = false;
 
             static inline BGSKeyword* IsJunkKYWD;
             static inline BGSListForm* JunkList;
