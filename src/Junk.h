@@ -22,7 +22,7 @@ namespace JunkIt {
                     }
 
                     if (keywordForm && !keywordForm->HasKeyword(isJunkKYWD)) {
-                        SKSE::log::info("[OnGameLoad] keyword correction: Adding IsJunk keyword on {}", form.GetName());
+                        // SKSE::log::info("[OnGameLoad] keyword correction: Adding IsJunk keyword on {}", form.GetName());
                         keywordForm->AddKeyword(isJunkKYWD);
                     }
 
@@ -43,7 +43,7 @@ namespace JunkIt {
                     }
 
                     if (keywordForm && keywordForm->HasKeyword(isJunkKYWD)) {
-                        SKSE::log::info("[OnGameLoad] keyword correction: Removing IsJunk keyword on {}", form.GetName());
+                        // SKSE::log::info("[OnGameLoad] keyword correction: Removing IsJunk keyword on {}", form.GetName());
                         keywordForm->RemoveKeyword(isJunkKYWD);
                     }
 
@@ -55,9 +55,6 @@ namespace JunkIt {
 
         private:
 
-            // static bool CanDrop(TESBoundObject* loot);
-            // static void DropLoot(Actor *actor, TESBoundObject *loot, const std::pair<int32_t, std::unique_ptr<InventoryEntryData>> &inventoryData);
-            
             static inline ItemList* ItemListMenu;
             static inline std::string MenuName;
     };
