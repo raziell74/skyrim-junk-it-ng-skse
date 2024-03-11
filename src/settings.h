@@ -166,8 +166,11 @@ namespace JunkIt {
                 SKSE::log::info(" ");
             }
 
-            struct JunkListJson {
-                std::list<char*> Junk = {};
+            struct JsonJunkListItem {
+                std::string name;
+                std::string editorId;
+                std::string type;
+                std::string source;
             };
 
             static void SaveJunkListToFile() {
@@ -176,13 +179,14 @@ namespace JunkIt {
 
                 // create an empty structure (null)
                 json junkListJson;
-                std::vector<std::string> junkFormIdList = {};
+                std::vector<JsonJunkListItem> jsonJunkListItems = {};
 
                 // Convert the JunkList to a string array of Editor Ids
                 BSTArray<TESForm*> forms = JunkList->forms;
                 std::int32_t count = forms.size();
 
-                if (count <= 0) {
+                // Don't save if no item has ever been marked as junk - Typically happens on a new game
+                if (count <= 0 && UnjunkedList->forms.size() <= 0) {
                     SKSE::log::error("JunkList is empty. Nothing to save.");
                     RE::DebugNotification("JunkList is empty. Nothing to save.");
                     return;
@@ -196,12 +200,31 @@ namespace JunkIt {
                         continue;
                     }
                     
-                    std::string formConfigString = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());;
+                    std::string formConfigString = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());
                     // SKSE::log::info("Adding {} - {} to save list", itemForm->GetName(), formConfigString);
-                    junkFormIdList.push_back(formConfigString);
+                    JsonJunkListItem junkListItem = {};
+                    junkListItem.name = itemForm->GetName();
+                    junkListItem.editorId = itemForm->GetFormEditorID(); // This does not work, @todo find a workaround to get the editor id
+                    junkListItem.type = std::to_string(itemForm->GetFormType());
+                    junkListItem.source = formConfigString;
+
+                    jsonJunkListItems.push_back(junkListItem);
                 }
 
-                junkListJson["Junk"] = junkFormIdList;
+                // Convert the vector to a JSON array
+                json jsonJunkList = json::array();
+                for (const auto& item : jsonJunkListItems) {
+                    json jsonItem = {
+                        {"name", item.name},
+                        {"type", item.type},
+                        {"source", item.source}
+                    };
+                    jsonJunkList.push_back(jsonItem);
+                }
+
+                // Assign the JSON array to junkListJson["Junk"]
+                junkListJson["JunkItemCount"] = count;
+                junkListJson["Junk"] = jsonJunkList;
 
                 // Write the JSON to a file
                 std::ofstream file(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
@@ -229,21 +252,22 @@ namespace JunkIt {
 
                 // Parse the JSON file and get the JunkList array
                 json junkListJson = json::parse(f);
-                std::vector<std::string> junkFormIdList = junkListJson["Junk"];
+                json jsonJunkListItems = junkListJson["Junk"];
 
                 // Loop through the string array of Editor Ids and then add each form to the JunkList
-                for (std::int32_t i = 0; i < junkFormIdList.size(); i++) {
-                    std::string formConfigString = junkFormIdList[i];
-                    // SKSE::log::info("Looking Up Form Config String: {}", formConfigString);
+                for (std::int32_t i = 0; i < jsonJunkListItems.size(); i++) {
+                    json junkItem = jsonJunkListItems[i];
+                    auto junkItemConfigString = junkItem["source"];
+                    // SKSE::log::info("Looking Up Form Config String: {}", junkItemConfigString);
 
-                    TESForm* form = FormUtil::Form::GetFormFromConfigString(formConfigString);
+                    TESForm* form = FormUtil::Form::GetFormFromConfigString(junkItemConfigString);
                     if (!form) {
-                        SKSE::log::error("Form not found for Config String: {}", formConfigString);
+                        SKSE::log::error("Form not found for Config String: {}", junkItemConfigString);
                         continue;
                     }
                     
                     NewJunkList->AddForm(form);
-                    SKSE::log::info("Adding form to JunkList: {} [{}]", form->GetName(), formConfigString);
+                    SKSE::log::info("Adding form to JunkList: {} [{}]", form->GetName(), junkItemConfigString);
                 }
 
                 SKSE::log::info("JunkList loaded from file.");
