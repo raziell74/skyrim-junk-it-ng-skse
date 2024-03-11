@@ -223,7 +223,7 @@ namespace JunkIt {
                 }
 
                 // Assign the JSON array to junkListJson["Junk"]
-                junkListJson["JunkItemCount"] = count;
+                junkListJson["Count"] = count;
                 junkListJson["Junk"] = jsonJunkList;
 
                 // Write the JSON to a file
