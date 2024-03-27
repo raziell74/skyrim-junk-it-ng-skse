@@ -1,6 +1,5 @@
 #pragma once
 
-
 #define PI 3.1415926535897932f
 #define TWOTHIRDS_PI 2.0943951023931955f
 #define TWO_PI 6.2831853071795865f
@@ -10,7 +9,6 @@
 #define PI8 0.3926990816987242f
 
 using namespace RE;
-
 
 [[nodiscard]] inline RE::hkVector4 NiPointToHkVector(const RE::NiPoint3& pt) { return { pt.x, pt.y, pt.z, 0 }; };
 
@@ -332,6 +330,30 @@ namespace FormUtil
 {
     struct Form
     {
+            static std::string GetFormConfigString(TESForm* form)
+            {
+                if (!form) return ""; 
+                
+                std::string prefix = "";
+                std::string fileName = "Skyrim.esm";
+                FormID formId = form->GetFormID();
+
+                // Try getting the local form id and the plugin that it belongs to
+                TESFileContainer fileContainer = form->sourceFiles;
+                if (fileContainer.array && fileContainer.array->size() > 0 && !fileContainer.array->empty()) {
+                    TESFile* file = form->GetFile(0);
+                    if (file) {
+                        fileName = file->GetFilename();
+                        formId = form->GetLocalFormID();
+                        prefix = "0x";
+                    }
+                }
+
+                std::string hexFormId = fmt::format("{}{:X}~{}", prefix, formId, fileName);
+
+                return hexFormId;
+            }
+
             static RE::TESForm *GetFormFromMod(std::string modname, uint32_t formid)
             {
             if (!modname.length() || !formid)
@@ -516,7 +538,130 @@ namespace NifUtil
 		}
 
     };
-
-   
 }
 
+namespace UIUtil { // Sourced from JunkIt
+    struct ItemList {
+        /**
+         * @brief Get the Item List Menu object from ContainerMenu, BarterMenu, or InventoryMenu
+         * 
+         * @return RE::ItemList* 
+         */
+        static RE::ItemList* GetOpenList() {
+            const auto UI = RE::UI::GetSingleton();
+            RE::ItemList* itemListMenu = nullptr;
+
+            if (!UI) {
+                // UI is not available
+                return nullptr;
+            }
+
+            if (UI->IsMenuOpen("ContainerMenu")) {
+                itemListMenu = UI->GetMenu<ContainerMenu>()->GetRuntimeData().itemList;
+            } else if (UI && UI->IsMenuOpen("BarterMenu")) { 
+                itemListMenu = UI->GetMenu<BarterMenu>()->GetRuntimeData().itemList;
+            } else if (UI && UI->IsMenuOpen("InventoryMenu")) { 
+                itemListMenu = UI->GetMenu<InventoryMenu>()->GetRuntimeData().itemList;
+            } else	{
+                // None of the menus are open
+                return nullptr;
+            }
+
+            if (!itemListMenu) {
+                // Couldn't find an item list menu
+                return nullptr;
+            }
+
+            return itemListMenu;
+        }
+
+        /**
+         * @brief Refresh the Item List UI
+         * 
+         */
+        static void Refresh() {
+            RE::ItemList* itemListMenu = GetOpenList();
+            if (itemListMenu) {
+                itemListMenu->Update();
+            }
+        }
+    };
+    
+    struct Menu {
+        /**
+         * @brief Get the Container Menu Mode
+         *         kLoot = 0, kSteal = 1, kPickpocket = 2, kNPCMode = 3
+         * @return ContainerMenu::ContainerMode 
+         */
+        static ContainerMenu::ContainerMode GetContainerMenuMode() {
+            const auto UI = RE::UI::GetSingleton();
+            const auto containerMenu = UI ? UI->GetMenu<ContainerMenu>() : nullptr;
+            if (!containerMenu) {
+                SKSE::log::info("No open menu found");
+                return ContainerMenu::ContainerMode::kLoot;
+            }
+
+            ContainerMenu::ContainerMode mode = containerMenu->GetContainerMode();
+            SKSE::log::info("Container Mode: {}", static_cast<std::uint32_t>(mode));
+            return mode;
+        }
+
+        /**
+         * @brief Get a UIs Menu Container
+         *        Acceptable Template Types: ContainerMenu, BarterMenu, InventoryMenu
+         * 
+         * @return TESObjectREFR* 
+         */
+        template <typename T>
+        static TESObjectREFR* GetContainer() {
+            TESObjectREFR* actor = nullptr;
+            const auto UI = RE::UI::GetSingleton();
+
+            // If T is not a valid menu type, Look for an open menu's that use containers
+            if (!std::is_base_of_v<RE::IMenu, T>) {
+                return nullptr;
+            }
+
+            const auto menu = UI ? UI->GetMenu<T>() : nullptr;
+            if (menu) {
+                const auto refHandle = menu->GetTargetRefHandle();
+                TESObjectREFRPtr refr;
+                LookupReferenceByHandle(refHandle, refr);
+                actor = refr.get();
+            }
+
+            return actor;
+        }
+
+        /**
+         * @brief Get the Barter Menu Merchant Container object
+         *        If the BarterMenu is open and the Vendor Actor 
+         *        has a Vendor Faction, returns the Merchant Container
+         * 
+         * @return TESObjectREFR* 
+         */
+        static TESObjectREFR* GetMerchantContainer() {
+            TESObjectREFR* vendorRef = GetContainer<BarterMenu>();
+            if (!vendorRef) { 
+                // This would really open happen if the function is called and the BarterMenu is not open
+                return nullptr;
+            }
+            
+            TESFaction* merchantFaction = vendorRef->As<Actor>()->GetVendorFaction();
+            if (!merchantFaction) {
+                // No merchant faction found - using vendor actor as merchantContainer
+                return vendorRef;
+            }
+            
+            // SKSE::log::info("Merchant faction found with id {:X} - using faction->merchantContainer", merchantFaction->GetFormID());
+            TESObjectREFR* merchantContainer = merchantFaction->vendorData.merchantContainer;
+
+            if (!merchantContainer) {
+                // No merchant merchantContainer found for this actors merchant faction - using vendor actor as merchantContainer
+                return vendorRef;
+            }
+
+            return merchantContainer;
+        }
+    };
+}
