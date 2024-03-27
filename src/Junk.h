@@ -51,8 +51,6 @@ namespace JunkIt {
                 });
             }
 
-            static ItemList* GetItemListMenu();
-
             static void TransferItem(TESBoundObject* a_item, TESObjectREFR* a_fromContainer, TESObjectREFR* a_toContainer, ITEM_REMOVE_REASON a_reason, std::int32_t a_count, InventoryEntryData* a_invData);
 
         private:
