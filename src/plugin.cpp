@@ -77,6 +77,8 @@ TESForm* ToggleSelectedAsJunk(StaticFunctionTag*) {
 
 	ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
 	if(!selectedItem) {
+		SKSE::log::info("No item selected in ItemListMenu. Updating UI and trying again");
+
 		// Item list possibly wasn't updated yet after a freeze, run update and try again
 		itemListMenu->Update();
 
@@ -89,7 +91,20 @@ TESForm* ToggleSelectedAsJunk(StaticFunctionTag*) {
 	}
 
 	InventoryEntryData* inventoryEntry = selectedItem->data.objDesc;
-	TESForm* itemForm = inventoryEntry->GetObject()->As<TESForm>();
+	if (!inventoryEntry) {
+		SKSE::log::error("Error getting InventoryEntryData for {}", selectedItem->data.objDesc->GetDisplayName());
+		DebugNotification("JunkIt - Failed to mark item as junk!");
+		return nullptr;
+	}
+	
+	TESBoundObject* itemObject = inventoryEntry->GetObject();
+	if (!itemObject) {
+		SKSE::log::error("Error getting item as object for {}", inventoryEntry->GetDisplayName());
+		DebugNotification("JunkIt - Failed to mark item as junk!");
+		return nullptr;
+	}
+
+	TESForm* itemForm = itemObject->As<TESForm>();
 	if (!itemForm) {
 		SKSE::log::error("Error getting item as form for {}", inventoryEntry->GetDisplayName());
 		DebugNotification("JunkIt - Failed to mark item as junk!");
@@ -97,11 +112,17 @@ TESForm* ToggleSelectedAsJunk(StaticFunctionTag*) {
 	}
 
 	std::string itemName = itemForm->GetName();
-	std::string hexFormId = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());
+	std::string hexFormId = FormUtil::Form::GetFormConfigString(itemForm);
 	BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
 	BGSKeywordForm* keywordForm = nullptr;
 
-	// Ammo has to be treated differently as it does not inherit from BGSKeywordForm
+	// Send notification if the item is FromType light since lights (like torches) cannot get keywords
+	if (itemForm->GetFormType() == FormType::Light) {
+		DebugNotification("JunkIt - Lights cannot be marked as Junk");
+		return nullptr;
+	}
+	
+	// Ammo forms do not inherit from BGSKeywordForm, but have their own keyword management structure
 	if (itemForm->GetFormType() == FormType::Ammo) {
 		TESAmmo* ammo = itemForm->As<TESAmmo>();
 		keywordForm = ammo->AsKeywordForm();
@@ -157,6 +178,7 @@ TESForm* ToggleSelectedAsJunk(StaticFunctionTag*) {
 	return itemForm;
 }
 
+/** @deprecated */
 std::int32_t AddJunkKeyword(StaticFunctionTag*, TESForm* a_form) {
 	if (!a_form) {
 		SKSE::log::error("Error attempting to add IsJunk keyword to nullptr");
@@ -190,6 +212,7 @@ std::int32_t AddJunkKeyword(StaticFunctionTag*, TESForm* a_form) {
 	return true;
 }
 
+/** @deprecated */
 std::int32_t RemoveJunkKeyword(StaticFunctionTag*, TESForm* a_form) {
 	if (!a_form) {
 		SKSE::log::error("Error attempting to remove IsJunk keyword to nullptr");
@@ -223,6 +246,7 @@ std::int32_t RemoveJunkKeyword(StaticFunctionTag*, TESForm* a_form) {
 	return true;
 }
 
+/** @deprecated */
 void FreezeItemListUI(StaticFunctionTag*) {
 	ItemList* itemListMenu = GetItemListMenu();
 	if (itemListMenu) {
@@ -230,6 +254,7 @@ void FreezeItemListUI(StaticFunctionTag*) {
 	}
 }
 
+/** @deprecated */
 void ThawItemListUI(StaticFunctionTag*) {
 	ItemList* itemListMenu = GetItemListMenu();
 	if (itemListMenu) {
@@ -339,6 +364,7 @@ ContainerMenu::ContainerMode GetContainerMode(StaticFunctionTag*) {
 	return mode;
 }
 
+/** @deprecated */
 std::int32_t TransferJunkList(StaticFunctionTag*, BGSListForm* Items, TESObjectREFR* fromContainer, TESObjectREFR* toContainer, std::int32_t a_count = -1) {
 	SKSE::log::info(" ");
 	SKSE::log::info("---- Transferring Junk ----");
@@ -478,19 +504,43 @@ BGSListForm* GetTransferFormList(StaticFunctionTag*) {
 	}
 
 	// Add the sorted list of items to the transfer list
-	SKSE::log::info("Final TransferList:");
+	SKSE::log::info("Finalized TransferList:");
 	for (const InventoryEntryData* entryData : sortFormData) {
 		const TESBoundObject* entryObject = entryData->GetObject();
 		if (!entryObject) {
 			continue;
 		}
-		if (!transferList->HasForm(entryObject)) {
-			SKSE::log::info("     {} - Val({}) Weight({})", entryObject->GetName(), entryData->GetValue(), entryData->GetWeight());
-			transferList->AddForm(TESForm::LookupByID(entryObject->GetFormID()));
+		if (!transferList->HasForm(entryObject->GetFormID())) {
+			TESForm* itemForm = entryData->object->As<TESForm>();
+			SKSE::log::info("     {} [{}] - Val({}) Weight({})", 
+				entryObject->GetName(),
+				FormUtil::Form::GetFormConfigString(itemForm), 
+				entryData->GetValue(),
+				entryData->GetWeight()
+			);
+			transferList->AddForm(itemForm);
 		}
 	}
 
-	SKSE::log::info("---- Generated Junk Transfer FormList ----");
+	// Log out each form name in the transferList
+	SKSE::log::info("[DEBUG] Listing TransferList::Base Forms");
+	std::for_each(transferList->forms.begin(), transferList->forms.end(), [](TESForm* form) {
+		SKSE::log::info("------- TransferList Base Form - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+	});
+
+	// Log out each form id in the transferList->scriptAddedTempForms
+	SKSE::log::info("[DEBUG] Listing TransferList::Script Added Temp Forms");
+	std::for_each(transferList->scriptAddedTempForms->begin(), transferList->scriptAddedTempForms->end(), [](FormID id) {
+		TESForm* form = TESForm::LookupByID(id);
+
+		if (!form) {
+			SKSE::log::info("Failed to look up TESForm for FormID {:X}", id);
+		} else {
+			SKSE::log::info("Found TESForm for Temp List FormID - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+		}
+	});
+
+	SKSE::log::info("---- Completed Junk Transfer List Generation ----");
 	SKSE::log::info(" ");
 	return transferList;
 }
@@ -592,17 +642,40 @@ BGSListForm* GetSellFormList(StaticFunctionTag*) {
 	}
 
 	// Add the sorted list of items to the transfer list
-	SKSE::log::info("Final SellList:");
+	SKSE::log::info("Finalized SellList:");
 	for (const InventoryEntryData* entryData : sortFormData) {
 		const TESBoundObject* entryObject = entryData->GetObject();
 		if (!entryObject) {
 			continue;
 		}
-		if (!sellList->HasForm(entryObject)) {
-			SKSE::log::info("     {} - Val({}) Weight({})", entryObject->GetName(), entryData->GetValue(), entryData->GetWeight());
-			sellList->AddForm(TESForm::LookupByID(entryObject->GetFormID()));
+		if (!sellList->HasForm(entryObject->GetFormID())) {
+			TESForm* itemForm = entryData->object->As<TESForm>();
+			SKSE::log::info("     {} [{}] - Val({}) Weight({})", 
+				entryObject->GetName(),
+				FormUtil::Form::GetFormConfigString(itemForm), 
+				entryData->GetValue(), 
+				entryData->GetWeight()
+			);
+			sellList->AddForm(itemForm);
 		}
 	}
+
+	// Log out each form name in the sellList
+	std::for_each(sellList->forms.begin(), sellList->forms.end(), [](TESForm* form) {
+		SKSE::log::info("sellList->forms {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+	});
+
+	// Log out each form id in the sellList->scriptAddedTempForms
+	std::for_each(sellList->scriptAddedTempForms->begin(), sellList->scriptAddedTempForms->end(), [](FormID id) {
+		SKSE::log::info("sellList->scriptAddedTempForms FormID {}", id);
+		TESForm* form = TESForm::LookupByID(id);
+
+		if (!form) {
+			SKSE::log::info("Failed to look up TESForm for FormID {:X}", id);
+		} else {
+			SKSE::log::info("sellList->scriptAddedTempForms {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+		}
+	});
 
 	SKSE::log::info("---- Generated Junk Sell FormList ----");
 	SKSE::log::info(" ");
@@ -733,6 +806,70 @@ std::int32_t ProcessItemListTransfer(StaticFunctionTag*, BGSListForm* a_itemList
 	return totalTransferred;
 }
 
+std::int32_t GetContainerItemListCount(StaticFunctionTag*, TESObjectREFR* a_container, BGSListForm* a_itemList) {
+	using Count = std::int32_t;
+	using InventoryItemMap = std::map<TESBoundObject*, std::pair<Count, std::unique_ptr<InventoryEntryData>>>;
+	
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Initiating GetContainerItemListCount ----");
+
+	Count totalCount = 0;
+	
+	if (a_itemList->scriptAddedFormCount == 0) {
+		SKSE::log::info("Provided FormList is empty");
+		SKSE::log::info("---- GetContainerItemListCount is {} ----", totalCount);
+		SKSE::log::info(" ");
+		return totalCount;
+	}
+
+	// Get InventoryMap filtered by the item list 
+	InventoryItemMap filteredInventoryMap = a_container->GetInventory([&](TESBoundObject& obj) {
+		return a_itemList->HasForm(obj.GetFormID());
+	});
+
+	// Traverse the filtered InventoryItemMap and transfer each item
+	for(auto const& [item, inventoryData] : filteredInventoryMap) {
+		totalCount += inventoryData.first;
+	}
+
+	SKSE::log::info("---- GetContainerItemListCount is {} ----", totalCount);
+	SKSE::log::info(" ");
+
+	return totalCount;
+}
+
+std::int32_t GetContainerSingleItemCount(StaticFunctionTag*, TESObjectREFR* a_container, TESForm* a_item) {
+	using Count = std::int32_t;
+	using InventoryItemMap = std::map<TESBoundObject*, std::pair<Count, std::unique_ptr<InventoryEntryData>>>;
+	
+	SKSE::log::info(" ");
+	SKSE::log::info("---- Initiating GetContainerItemListCount ----");
+
+	Count totalCount = 0;
+	
+	if (!a_item) {
+		SKSE::log::info("Provided FormList is empty");
+		SKSE::log::info("---- GetContainerItemListCount is {} ----", totalCount);
+		SKSE::log::info(" ");
+		return totalCount;
+	}
+
+	// Get InventoryMap filtered by the item id 
+	InventoryItemMap filteredInventoryMap = a_container->GetInventory([&](TESBoundObject& obj) {
+		return a_item->GetFormID() == obj.GetFormID();
+	});
+
+	// Traverse the filtered InventoryItemMap and transfer the item
+	for(auto const& [item, inventoryData] : filteredInventoryMap) {
+		totalCount += inventoryData.first;
+	}
+
+	SKSE::log::info("---- GetContainerItemListCount is {} ----", totalCount);
+	SKSE::log::info(" ");
+
+	return totalCount;
+}
+
 bool BindPapyrusFunctions(BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 
@@ -759,6 +896,8 @@ bool BindPapyrusFunctions(BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
 
 	vm->RegisterFunction("ProcessItemListTransfer", "JunkIt_MCM", ProcessItemListTransfer);
+	vm->RegisterFunction("GetContainerItemListCount", "JunkIt_MCM", GetContainerItemListCount);
+	vm->RegisterFunction("GetContainerSingleItemCount", "JunkIt_MCM", GetContainerSingleItemCount);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;
