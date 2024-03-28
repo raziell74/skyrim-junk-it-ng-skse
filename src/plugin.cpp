@@ -523,22 +523,23 @@ BGSListForm* GetTransferFormList(StaticFunctionTag*) {
 	}
 
 	// Log out each form name in the transferList
-	SKSE::log::info("[DEBUG] Listing TransferList::Base Forms");
-	std::for_each(transferList->forms.begin(), transferList->forms.end(), [](TESForm* form) {
-		SKSE::log::info("------- TransferList Base Form - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
-	});
+	// SKSE::log::info("[DEBUG] Listing TransferList::Base Forms");
+	// std::for_each(transferList->forms.begin(), transferList->forms.end(), [](TESForm* form) {
+	// 	SKSE::log::info("------- TransferList Base Form - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+	// });
 
-	// Log out each form id in the transferList->scriptAddedTempForms
-	SKSE::log::info("[DEBUG] Listing TransferList::Script Added Temp Forms");
-	std::for_each(transferList->scriptAddedTempForms->begin(), transferList->scriptAddedTempForms->end(), [](FormID id) {
-		TESForm* form = TESForm::LookupByID(id);
-
-		if (!form) {
-			SKSE::log::info("Failed to look up TESForm for FormID {:X}", id);
-		} else {
-			SKSE::log::info("Found TESForm for Temp List FormID - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
-		}
-	});
+	// // Log out each form id in the transferList->scriptAddedTempForms
+	// SKSE::log::info("[DEBUG] Listing TransferList::Script Added Temp Forms");
+	// std::for_each(transferList->scriptAddedTempForms->begin(), transferList->scriptAddedTempForms->end(), [](FormID id) {
+	// 	SKSE::log::info("Looking Up FormID {:X}", id);
+	// 	TESForm* form = TESForm::LookupByID(id);
+	// 	if (!form) {
+	// 		SKSE::log::info("Failed to look up TESForm for FormID {:X}", id);
+	// 	} else {
+	// 		// SKSE::log::info("Found TESForm for Temp List FormID - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+	// 		SKSE::log::info("Found TESForm for Temp List FormID - {} [0x{:X}]", form->GetName(), id);
+	// 	}
+	// });
 
 	SKSE::log::info("---- Completed Junk Transfer List Generation ----");
 	SKSE::log::info(" ");
@@ -661,21 +662,20 @@ BGSListForm* GetSellFormList(StaticFunctionTag*) {
 	}
 
 	// Log out each form name in the sellList
-	std::for_each(sellList->forms.begin(), sellList->forms.end(), [](TESForm* form) {
-		SKSE::log::info("sellList->forms {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
-	});
+	// std::for_each(sellList->forms.begin(), sellList->forms.end(), [](TESForm* form) {
+	// 	SKSE::log::info("sellList->forms {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+	// });
 
-	// Log out each form id in the sellList->scriptAddedTempForms
-	std::for_each(sellList->scriptAddedTempForms->begin(), sellList->scriptAddedTempForms->end(), [](FormID id) {
-		SKSE::log::info("sellList->scriptAddedTempForms FormID {}", id);
-		TESForm* form = TESForm::LookupByID(id);
-
-		if (!form) {
-			SKSE::log::info("Failed to look up TESForm for FormID {:X}", id);
-		} else {
-			SKSE::log::info("sellList->scriptAddedTempForms {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
-		}
-	});
+	// // Log out each form id in the sellList->scriptAddedTempForms
+	// std::for_each(sellList->scriptAddedTempForms->begin(), sellList->scriptAddedTempForms->end(), [](FormID id) {
+	// 	TESForm* form = TESForm::LookupByID(id);
+	// 	SKSE::log::info("Looking Up FormID {:X}", id);
+	// 	if (!form) {
+	// 		SKSE::log::info("Failed to look up TESForm for FormID {:X}", id);
+	// 	} else {
+	// 		SKSE::log::info("Found TESForm for Temp List FormID - {} [{}]", form->GetName(), FormUtil::Form::GetFormConfigString(form));
+	// 	}
+	// });
 
 	SKSE::log::info("---- Generated Junk Sell FormList ----");
 	SKSE::log::info(" ");
@@ -784,18 +784,10 @@ std::int32_t ProcessItemListTransfer(StaticFunctionTag*, BGSListForm* a_itemList
 
 	// Traverse the filtered InventoryItemMap and transfer each item
 	for(auto const& [item, inventoryData] : filteredInventoryMap) {
-		// SKSE::log::info(" ");
-        // SKSE::log::info("==================== Item Transfer ====================");
-        // SKSE::log::info(" ");
-
 		Count itemCount = inventoryData.first;
 		InventoryEntryData* invData = inventoryData.second.get();
 		JunkIt::JunkHandler::TransferItem(item, a_fromContainer, a_toContainer, reason, itemCount, invData);
 		totalTransferred += itemCount;
-
-		// SKSE::log::info(" ");
-        // SKSE::log::info("=======================================================");
-        // SKSE::log::info(" ");
 	}
 
 	RefreshItemListUI();
