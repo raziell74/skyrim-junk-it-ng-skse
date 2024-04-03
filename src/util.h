@@ -330,29 +330,33 @@ namespace FormUtil
 {
     struct Form
     {
-            static std::string GetFormConfigString(TESForm* form)
-            {
-                if (!form) return ""; 
+            static std::string GetFormConfigString(TESForm* form) {
+                if (!form) return "";
                 
-                std::string prefix = "";
-                std::string fileName = "Skyrim.esm";
+                std::string_view fileName = "Skyrim.esm";
                 FormID formId = form->GetFormID();
-
-                // Try getting the local form id and the plugin that it belongs to
-                TESFileContainer fileContainer = form->sourceFiles;
-                if (fileContainer.array && fileContainer.array->size() > 0 && !fileContainer.array->empty()) {
-                    TESFile* file = form->GetFile(0);
-                    if (file) {
-                        fileName = file->GetFilename();
-                        formId = form->GetLocalFormID();
-                        prefix = "0x";
-                    }
+                std::string hexFormId = fmt::format("0x{:X}", formId);
+                if (form->IsDynamicForm()) {
+                    return hexFormId;
                 }
 
-                std::string hexFormId = fmt::format("{}{:X}~{}", prefix, formId, fileName);
+                // Try getting the local form id and the plugin that it belongs to
+                try {
+                    TESFileContainer fileContainer = form->sourceFiles;
+                    if (fileContainer.array && fileContainer.array->size() > 0 && !fileContainer.array->empty()) {
+                        TESFile* file = form->GetFile(0);
+                        if (file) {
+                            fileName = file->GetFilename();
+                            formId = form->GetLocalFormID();
+                            hexFormId = fmt::format("0x{:X}~{}", formId, fileName);
+                        }
+                    }
+                } catch (...) {
+                    // Do nothing
+                }
 
                 return hexFormId;
-            }
+            } 
 
             static RE::TESForm *GetFormFromMod(std::string modname, uint32_t formid)
             {
@@ -588,6 +592,34 @@ namespace UIUtil { // Sourced from JunkIt
     };
     
     struct Menu {
+        static RE::TESObjectREFR* GetBarterMenuTargetRef() {
+            const auto UI = UI::GetSingleton();
+            const auto menu = UI ? UI->GetMenu<BarterMenu>() : nullptr;
+            if (!menu) return nullptr;
+
+            const auto refHandle = menu->GetTargetRefHandle();
+            TESObjectREFRPtr refr;
+
+            // Invalid refHandle, this is the Player Reference's handle
+            if (refHandle == 0x100000) { 
+                uint32_t seAe_RefHandleMemAddress = 0x62840; // 0x62840 [(int32)403520] is the SE/AE memory address used in BarterMenu.h for the target ref handle
+                uint32_t offset161170 = 0x70; // Manually found offset for Skyrim AE Version 1.6.1170
+                
+                REL::Relocation<RefHandle*> handle{ REL::ID(seAe_RefHandleMemAddress + offset161170) };
+                const auto newRefHandle = *handle;
+                LookupReferenceByHandle(newRefHandle, refr);
+            } else {
+                LookupReferenceByHandle(refHandle, refr);
+            }
+
+            if(!refr) {
+                SKSE::log::error("===== ERROR could not determine the Vendor Actor for the BarterMenu");
+                return nullptr;
+            }
+
+            return refr.get();
+		}
+
         /**
          * @brief Get the Container Menu Mode
          *         kLoot = 0, kSteal = 1, kPickpocket = 2, kNPCMode = 3

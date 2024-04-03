@@ -4,11 +4,10 @@
 #include <list>
 #include <string>
 #include <fstream>
-#include <nlohmann/json.hpp> // Add this line for JSON functionality
+#include <nlohmann/json.hpp>
 
 using namespace RE;
-
-using nlohmann::json; // Add this line for JSON functionality
+using nlohmann::json;
 
 namespace JunkIt {
     class Settings {

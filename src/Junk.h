@@ -4,6 +4,9 @@ using namespace RE;
 
 namespace JunkIt {
     class JunkHandler {
+        using Count = std::int32_t;
+		using InventoryCountMap = std::map<TESBoundObject*, Count>;
+
         public: 
             static void UpdateItemKeywords() {
                 BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
@@ -53,7 +56,27 @@ namespace JunkIt {
 
             static void TransferItem(TESBoundObject* a_item, TESObjectREFR* a_fromContainer, TESObjectREFR* a_toContainer, ITEM_REMOVE_REASON a_reason, std::int32_t a_count, InventoryEntryData* a_invData);
 
+            [[nodiscard]] static InventoryCountMap* GetContainerInventoryCountMap(TESObjectREFR* a_container) {
+                if (cInventoryContainerId == a_container->GetFormID()) return &cInventoryCountMap;
+                
+                // Get the containers InventoryCountMap and set the containerId
+                cInventoryCountMap.clear();
+                cInventoryCountMap = a_container->GetInventoryCounts();
+                cInventoryContainerId = a_container->GetFormID();
+                return &cInventoryCountMap;
+            }
+
+            static InventoryCountMap* SetContainerInventoryCountMap(InventoryCountMap a_invCountMap, TESObjectREFR* a_container) { 
+                if (cInventoryContainerId != a_container->GetFormID()) cInventoryContainerId = a_container->GetFormID();
+                cInventoryCountMap.clear();
+                cInventoryCountMap = a_invCountMap;
+                return &cInventoryCountMap;
+            }
+
         private:
+
+            static inline FormID cInventoryContainerId = 0;
+            static inline InventoryCountMap cInventoryCountMap = {};
 
             static inline ItemList* ItemListMenu;
             static inline std::string MenuName;
