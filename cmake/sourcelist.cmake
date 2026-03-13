@@ -3,5 +3,6 @@ set(sources ${sources}
     src/hook.cpp
     src/event.cpp
     src/junk.cpp
+    src/JunkData.cpp
     src/SendUIMessage.cpp
 )

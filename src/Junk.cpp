@@ -1,48 +1,9 @@
 #include "junk.h"
+#include "JunkData.h"
 
 namespace JunkIt {
 
     std::atomic<bool> JunkHandler::operationInProgress{ false };
-
-    void JunkHandler::UpdateItemKeywords() {
-        BGSKeyword* isJunkKYWD = Settings::GetIsJunkKYWD();
-
-        BGSListForm* junkList = Settings::GetJunkList();
-        junkList->ForEachForm([&](TESForm& form) {
-            BGSKeywordForm* keywordForm = nullptr;
-
-            if (form.GetFormType() == FormType::Ammo) {
-                TESAmmo* ammo = form.As<TESAmmo>();
-                keywordForm = ammo->AsKeywordForm();
-            } else {
-                keywordForm = form.As<BGSKeywordForm>();
-            }
-
-            if (keywordForm && !keywordForm->HasKeyword(isJunkKYWD)) {
-                keywordForm->AddKeyword(isJunkKYWD);
-            }
-
-            return BSContainer::ForEachResult::kContinue;
-        });
-
-        BGSListForm* unjunkedList = Settings::GetUnjunkedList();
-        unjunkedList->ForEachForm([&](TESForm& form) {
-            BGSKeywordForm* keywordForm = nullptr;
-
-            if (form.GetFormType() == FormType::Ammo) {
-                TESAmmo* ammo = form.As<TESAmmo>();
-                keywordForm = ammo->AsKeywordForm();
-            } else {
-                keywordForm = form.As<BGSKeywordForm>();
-            }
-
-            if (keywordForm && keywordForm->HasKeyword(isJunkKYWD)) {
-                keywordForm->RemoveKeyword(isJunkKYWD);
-            }
-
-            return BSContainer::ForEachResult::kContinue;
-        });
-    }
 
     bool JunkHandler::WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2) {
         std::int32_t count1 = static_cast<std::int32_t>(a_container1->GetContainerForms().size());
@@ -74,13 +35,11 @@ namespace JunkIt {
         messageBoxData->QueueMessage();
     }
 
-    BGSListForm* JunkHandler::BuildTransferFormList() {
+    std::vector<InventoryEntryData*> JunkHandler::BuildTransferList() {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Transferrable Junk ----");
 
-        BGSListForm* junkList = Settings::GetJunkList();
-        BGSListForm* transferList = Settings::GetTransferList();
-        transferList->ClearData();
+        std::vector<InventoryEntryData*> transferList;
 
         const auto ui = RE::UI::GetSingleton();
         GPtr<ContainerMenu> containerMenu = ui ? ui->GetMenu<ContainerMenu>() : nullptr;
@@ -94,11 +53,13 @@ namespace JunkIt {
         std::vector<InventoryEntryData*> sortFormData;
 
         SKSE::log::info("Processing Entry List for transferable junk items");
+        auto& junkManager = JunkDataManager::GetSingleton();
+        
         for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
             ItemList::Item* entryItem = listItems[i];
             if (!entryItem) continue;
 
-            if (!junkList->HasForm(entryItem->data.objDesc->GetObject())) continue;
+            if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
 
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
                 SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
@@ -136,14 +97,11 @@ namespace JunkIt {
         }
 
         SKSE::log::info("Finalized TransferList:");
-        for (const InventoryEntryData* entryData : sortFormData) {
+        for (InventoryEntryData* entryData : sortFormData) {
             const TESBoundObject* entryObject = entryData->GetObject();
             if (!entryObject) continue;
-            if (!transferList->HasForm(entryObject->GetFormID())) {
-                TESForm* itemForm = entryData->object->As<TESForm>();
-                transferList->AddForm(itemForm);
-                SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(itemForm));
-            }
+            transferList.push_back(entryData);
+            SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
         }
 
         SKSE::log::info("---- Completed Junk Transfer List Generation ----");
@@ -151,13 +109,11 @@ namespace JunkIt {
         return transferList;
     }
 
-    BGSListForm* JunkHandler::BuildSellFormList() {
+    std::vector<InventoryEntryData*> JunkHandler::BuildSellList() {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Sellable Junk ----");
 
-        BGSListForm* junkList = Settings::GetJunkList();
-        BGSListForm* sellList = Settings::GetSellList();
-        sellList->ClearData();
+        std::vector<InventoryEntryData*> sellList;
 
         const auto ui = RE::UI::GetSingleton();
         GPtr<BarterMenu> barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
@@ -171,11 +127,13 @@ namespace JunkIt {
         std::vector<InventoryEntryData*> sortFormData;
 
         SKSE::log::info("Processing Entry List for sellable junk items");
+        auto& junkManager = JunkDataManager::GetSingleton();
+        
         for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
             ItemList::Item* entryItem = listItems[i];
             if (!entryItem) continue;
 
-            if (!junkList->HasForm(entryItem->data.objDesc->GetObject())) continue;
+            if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
 
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
                 SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
@@ -217,14 +175,11 @@ namespace JunkIt {
         }
 
         SKSE::log::info("Finalized SellList:");
-        for (const InventoryEntryData* entryData : sortFormData) {
+        for (InventoryEntryData* entryData : sortFormData) {
             const TESBoundObject* entryObject = entryData->GetObject();
             if (!entryObject) continue;
-            if (!sellList->HasForm(entryObject->GetFormID())) {
-                TESForm* itemForm = entryData->object->As<TESForm>();
-                sellList->AddForm(itemForm);
-                SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(itemForm));
-            }
+            sellList.push_back(entryData);
+            SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
         }
 
         SKSE::log::info("---- Generated Junk Sell FormList ----");
@@ -233,53 +188,35 @@ namespace JunkIt {
     }
 
     void JunkHandler::ToggleIsJunk() {
-        TESForm* itemForm = ToggleSelectedItemKeyword();
+        TESForm* itemForm = ToggleSelectedItemJunk();
         if (!itemForm) return;
 
-        BGSKeyword* isJunkKYWD = Settings::GetIsJunkKYWD();
-        BGSListForm* junkList = Settings::GetJunkList();
-        BGSListForm* junkHistory = Settings::GetJunkHistory();
-        BGSListForm* unjunkedList = Settings::GetUnjunkedList();
-
-        BGSKeywordForm* keywordForm = nullptr;
-        if (itemForm->GetFormType() == FormType::Ammo) {
-            keywordForm = itemForm->As<TESAmmo>()->AsKeywordForm();
-        } else {
-            keywordForm = itemForm->As<BGSKeywordForm>();
+        ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
+        if (!itemListMenu) {
+            SKSE::log::error("No ItemListMenu found");
+            return;
         }
 
-        if (!keywordForm) return;
+        ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
+        if (!selectedItem || !selectedItem->data.objDesc) {
+            SKSE::log::error("No item selected");
+            return;
+        }
 
-        if (keywordForm->HasKeyword(isJunkKYWD)) {
+        auto& junkManager = JunkDataManager::GetSingleton();
+        bool isNowJunk = junkManager.IsJunk(selectedItem->data.objDesc);
+
+        if (isNowJunk) {
             SKSE::log::info("Form: {} has been marked as junk", itemForm->GetName());
             if (Settings::GetNotifyOnMarkUnmark()) {
                 std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
                 DebugNotification(msg.c_str());
-            }
-
-            if (!junkList->HasForm(itemForm)) {
-                junkList->AddForm(itemForm);
-                if (junkHistory) {
-                    junkHistory->AddForm(itemForm);
-                }
-            }
-
-            if (unjunkedList->HasForm(itemForm)) {
-                unjunkedList->RemoveAddedForm(itemForm);
             }
         } else {
             SKSE::log::info("Form: {} is no longer marked as junk", itemForm->GetName());
             if (Settings::GetNotifyOnMarkUnmark()) {
                 std::string msg = fmt::format("JunkIt - {} is no longer marked as junk", itemForm->GetName());
                 DebugNotification(msg.c_str());
-            }
-
-            if (junkList->HasForm(itemForm)) {
-                junkList->RemoveAddedForm(itemForm);
-            }
-
-            if (!unjunkedList->HasForm(itemForm)) {
-                unjunkedList->AddForm(itemForm);
             }
         }
     }
@@ -291,8 +228,8 @@ namespace JunkIt {
             return;
         }
 
-        BGSListForm* junkList = Settings::GetJunkList();
-        if (!junkList || junkList->forms.size() <= 0) {
+        auto& junkManager = JunkDataManager::GetSingleton();
+        if (junkManager.Size() == 0) {
             operationInProgress.store(false);
             return;
         }
@@ -326,10 +263,10 @@ namespace JunkIt {
         menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
         int menuView = static_cast<int>(result.GetNumber());
 
-        BGSListForm* transferList = BuildTransferFormList();
+        auto transferList = BuildTransferList();
 
         if (menuView == 0) {
-            if (GetContainerItemListCount(transferContainer, transferList) <= 0) {
+            if (transferList.empty()) {
                 SKSE::log::info("No Junk to retrieve!");
                 RE::DebugMessageBox("No Junk to take!");
                 operationInProgress.store(false);
@@ -356,7 +293,7 @@ namespace JunkIt {
                 operationInProgress.store(false);
             }
         } else {
-            if (GetContainerItemListCount(player, transferList) <= 0) {
+            if (transferList.empty()) {
                 SKSE::log::info("No Junk to transfer!");
                 RE::DebugMessageBox("No Junk to transfer!");
                 operationInProgress.store(false);
@@ -385,100 +322,105 @@ namespace JunkIt {
         }
     }
 
-    void JunkHandler::ExecuteTransfer(BGSListForm* transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView) {
+    void JunkHandler::ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView) {
         auto player = RE::PlayerCharacter::GetSingleton();
 
         WarnLargeInventory(player, transferContainer);
 
+        ITEM_REMOVE_REASON reason = ITEM_REMOVE_REASON::kStoreInContainer;
+        if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
+            reason = ITEM_REMOVE_REASON::kStoreInTeammate;
+        }
+
+        Count totalTransferred = 0;
+
         if (menuView == 0) {
+            // Retrieve from container
             if (Settings::GetNotifyOnJunkTransfer()) {
                 DebugNotification("JunkIt - Processing Retrieval...");
             }
 
-            Count iRetrievedCount = ProcessItemListTransfer(transferList, transferContainer, player, 0);
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) continue;
+                
+                Count itemCount = transferContainer->GetItemCount(entryData->object);
+                if (itemCount > 0) {
+                    TransferItem(entryData->object, transferContainer, player, reason, itemCount, entryData);
+                    totalTransferred += itemCount;
+                }
+            }
 
             SKSE::log::info("Junk Retrieved!");
             if (Settings::GetNotifyOnJunkTransfer()) {
-                std::string msg = fmt::format("JunkIt - {} Junk Items Retrieved!", iRetrievedCount);
+                std::string msg = fmt::format("JunkIt - {} Junk Items Retrieved!", totalTransferred);
                 DebugNotification(msg.c_str());
             }
-
-            if (Settings::GetAggressiveRefresh()) {
-                UIUtil::ItemList::Refresh();
+        } else {
+            // Transfer to container
+            if (Settings::GetNotifyOnJunkTransfer()) {
+                DebugNotification("JunkIt - Processing Transfer...");
             }
-            return;
-        }
 
-        if (Settings::GetNotifyOnJunkTransfer()) {
-            DebugNotification("JunkIt - Processing Transfer...");
-        }
+            if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
+                Actor* transferActor = transferContainer->As<Actor>();
+                float maxWeight = transferActor->GetActorValue(RE::ActorValue::kCarryWeight);
+                float currentWeight = transferContainer->GetTotalItemWeight();
+                SKSE::log::info("[NPC Mode] CarryWeight {}/{}", currentWeight, maxWeight);
 
-        if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
-            Actor* transferActor = transferContainer->As<Actor>();
-            float maxWeight = transferActor->GetActorValue(RE::ActorValue::kCarryWeight);
-            float currentWeight = transferContainer->GetTotalItemWeight();
-            SKSE::log::info("[NPC Mode] CarryWeight {}/{}", currentWeight, maxWeight);
+                Count totalPossibleTransferred = 0;
 
-            BSTArray<TESForm*> transferForms = transferList->forms;
-            Count iTotal = transferForms.size();
-            Count totalTransferred = 0;
-            Count totalPossibleTransferred = 0;
+                for (auto* entryData : transferList) {
+                    if (!entryData || !entryData->object) continue;
+                    
+                    Count iCount = player->GetItemCount(entryData->object);
+                    Count iTotalCount = iCount;
+                    totalPossibleTransferred += iCount;
 
-            BGSListForm* transferAllList = transferList;
+                    if (iCount > 0) {
+                        float itemWeight = entryData->object->GetWeight();
+                        float currentWeightWithItems = (itemWeight * iCount) + currentWeight;
 
-            for (Count iCurrent = 0; iCurrent < iTotal; iCurrent++) {
-                TESForm* item = transferForms[iCurrent];
-                if (!item) continue;
+                        while (currentWeightWithItems > maxWeight && iCount > 0) {
+                            iCount -= 1;
+                            currentWeightWithItems = (itemWeight * iCount) + currentWeight;
+                        }
 
-                Count iCount = GetContainerSingleItemCount(player, item);
-                Count iTotalCount = iCount;
-                totalPossibleTransferred += iCount;
-
-                if (iCount > 0) {
-                    float itemWeight = item->GetWeight();
-                    float currentWeightWithItems = (itemWeight * iCount) + currentWeight;
-
-                    while (currentWeightWithItems > maxWeight && iCount > 0) {
-                        iCount -= 1;
-                        currentWeightWithItems = (itemWeight * iCount) + currentWeight;
-                    }
-
-                    if (iCount > 0 && iCount < iTotalCount) {
-                        player->RemoveItem(item->As<TESBoundObject>(), iCount, ITEM_REMOVE_REASON::kStoreInTeammate, nullptr, transferContainer);
-                        currentWeight += (itemWeight * iCount);
-                        totalTransferred += iCount;
-                        transferAllList->RemoveAddedForm(item);
-                        SKSE::log::info("Transferred limited quantity {} {} [{}/{}]", iCount, item->GetName(), RoundNumber(currentWeight), RoundNumber(maxWeight));
-                    } else if (iCount <= 0) {
-                        transferAllList->RemoveAddedForm(item);
-                    } else {
-                        totalTransferred += iCount;
-                        currentWeight += (itemWeight * iCount);
-                        SKSE::log::info("Listing {} {} for full quantity transfer [{}/{}]", iCount, item->GetName(), RoundNumber(currentWeight), RoundNumber(maxWeight));
+                        if (iCount > 0) {
+                            TransferItem(entryData->object, player, transferContainer, reason, iCount, entryData);
+                            currentWeight += (itemWeight * iCount);
+                            totalTransferred += iCount;
+                            SKSE::log::info("Transferred {} {} [{}/{}]", iCount, entryData->object->GetName(), RoundNumber(currentWeight), RoundNumber(maxWeight));
+                        }
                     }
                 }
-            }
 
-            ProcessItemListTransfer(transferAllList, player, transferContainer, 0);
+                if (totalTransferred == 0) {
+                    SKSE::log::info("[NPC Mode] NPC cannot carry any more junk");
+                    RE::DebugMessageBox("This person cannot carry any more");
+                } else if (Settings::GetNotifyOnJunkTransfer()) {
+                    if (totalTransferred >= totalPossibleTransferred) {
+                        std::string msg = fmt::format("JunkIt - Transferred All {} Junk Items!", totalTransferred);
+                        DebugNotification(msg.c_str());
+                    } else {
+                        std::string msg = fmt::format("JunkIt - Transferred {} Junk Items!", totalTransferred);
+                        DebugNotification(msg.c_str());
+                    }
+                }
+            } else {
+                for (auto* entryData : transferList) {
+                    if (!entryData || !entryData->object) continue;
+                    
+                    Count itemCount = player->GetItemCount(entryData->object);
+                    if (itemCount > 0) {
+                        TransferItem(entryData->object, player, transferContainer, reason, itemCount, entryData);
+                        totalTransferred += itemCount;
+                    }
+                }
 
-            if (totalTransferred == 0) {
-                SKSE::log::info("[NPC Mode] NPC cannot carry any more junk");
-                RE::DebugMessageBox("This person cannot carry any more");
-            } else if (Settings::GetNotifyOnJunkTransfer()) {
-                if (totalTransferred >= totalPossibleTransferred) {
-                    std::string msg = fmt::format("JunkIt - Transferred All {} Junk Items!", totalTransferred);
-                    DebugNotification(msg.c_str());
-                } else {
+                if (Settings::GetNotifyOnJunkTransfer()) {
                     std::string msg = fmt::format("JunkIt - Transferred {} Junk Items!", totalTransferred);
                     DebugNotification(msg.c_str());
                 }
-            }
-        } else {
-            Count iTransferredCount = ProcessItemListTransfer(transferList, player, transferContainer, 0);
-
-            if (Settings::GetNotifyOnJunkTransfer()) {
-                std::string msg = fmt::format("JunkIt - Transferred {} Junk Items!", iTransferredCount);
-                DebugNotification(msg.c_str());
             }
         }
 
@@ -494,8 +436,8 @@ namespace JunkIt {
             return;
         }
 
-        BGSListForm* junkList = Settings::GetJunkList();
-        if (!junkList || junkList->forms.size() <= 0) {
+        auto& junkManager = JunkDataManager::GetSingleton();
+        if (junkManager.Size() == 0) {
             SKSE::log::info("No Junk to sell!");
             RE::DebugMessageBox("No Junk to sell!");
             operationInProgress.store(false);
@@ -505,13 +447,11 @@ namespace JunkIt {
         auto player = RE::PlayerCharacter::GetSingleton();
         float playerCarryWeight = player->GetActorValue(RE::ActorValue::kCarryWeight);
 
-        BGSListForm* sellList = BuildSellFormList();
-        Count playerItemListCount = GetContainerItemListCount(player, sellList);
+        auto sellList = BuildSellList();
 
-        SKSE::log::info("SellList generated. Form Count {}", sellList->forms.size());
-        SKSE::log::info("Player has {} junk items in the SellList to sell!", playerItemListCount);
+        SKSE::log::info("SellList generated. Entry Count {}", sellList.size());
 
-        if (playerItemListCount <= 0) {
+        if (sellList.empty()) {
             SKSE::log::info("No Junk to sell!");
             RE::DebugMessageBox("No Junk to sell!");
             operationInProgress.store(false);
@@ -549,28 +489,23 @@ namespace JunkIt {
         SKSE::log::info("Vendor Gold: {}", vendorGoldDisplay);
         SKSE::log::info("Vendor Sell Mult: {}", sellMult);
 
-        BSTArray<TESForm*> sellForms = sellList->forms;
-        Count iTotal = sellForms.size();
         Count totalToSell = 0;
         Count totalPossibleToSell = 0;
         float calculatedVendorGold = vendorGoldDisplay;
         float totalSellValue = 0;
 
-        BGSListForm* sellAllList = sellList;
-        std::vector<std::pair<TESForm*, Count>> partialSellItems;
+        std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
-        for (Count iCurrent = 0; iCurrent < iTotal; iCurrent++) {
-            TESForm* item = sellForms[iCurrent];
-            if (!item) continue;
+        for (auto* entryData : sellList) {
+            if (!entryData || !entryData->object) continue;
 
-            Count iCount = GetContainerSingleItemCount(player, item);
-            Count iTotalCount = iCount;
+            Count iCount = player->GetItemCount(entryData->object);
             totalPossibleToSell += iCount;
 
-            SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", item->GetName(), iCount);
+            SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", entryData->object->GetName(), iCount);
 
             if (iCount > 0) {
-                float itemGoldValue = static_cast<float>(GetMenuItemValue(item));
+                float itemGoldValue = static_cast<float>(entryData->GetValue());
                 float sellValue = itemGoldValue * sellMult;
                 float goldDifferential = calculatedVendorGold - (sellValue * iCount);
 
@@ -579,22 +514,12 @@ namespace JunkIt {
                     goldDifferential = calculatedVendorGold - (sellValue * iCount);
                 }
 
-                if (iCount > 0 && iCount < iTotalCount) {
-                    sellAllList->RemoveAddedForm(item);
-                    partialSellItems.push_back({item, iCount});
-
+                if (iCount > 0) {
                     calculatedVendorGold -= sellValue * iCount;
                     totalSellValue += sellValue * iCount;
                     totalToSell += iCount;
-                    SKSE::log::info("Creating partial listing for {} {} for {} gold", iCount, item->GetName(), sellValue * iCount);
-                } else if (iCount <= 0) {
-                    SKSE::log::info("Cannot sell any of this item, removing from bulk sale list");
-                    sellAllList->RemoveAddedForm(item);
-                } else {
-                    calculatedVendorGold -= sellValue * iCount;
-                    totalSellValue += sellValue * iCount;
-                    totalToSell += iCount;
-                    SKSE::log::info("Full Quantity Sell {} {} for {} gold", iCount, item->GetName(), sellValue * iCount);
+                    itemsToSell.push_back({entryData, iCount});
+                    SKSE::log::info("Sell {} {} for {} gold", iCount, entryData->object->GetName(), sellValue * iCount);
                 }
             }
         }
@@ -609,19 +534,19 @@ namespace JunkIt {
         if (Settings::ConfirmSell()) {
             std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, RoundNumber(totalSellValue));
             ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
-                [sellAllList, partialSellItems, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight](unsigned int choice) {
+                [itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight](unsigned int choice) {
                     if (choice == 0) {
-                        ExecuteSell(sellAllList, partialSellItems, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
+                        ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
                     }
                     operationInProgress.store(false);
                 });
         } else {
-            ExecuteSell(sellAllList, partialSellItems, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
+            ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
             operationInProgress.store(false);
         }
     }
 
-    void JunkHandler::ExecuteSell(BGSListForm* sellAllList, std::vector<std::pair<TESForm*, Count>> partialSellItems, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, float totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
+    void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, float totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
         auto player = RE::PlayerCharacter::GetSingleton();
 
         WarnLargeInventory(player, vendorContainer);
@@ -673,17 +598,13 @@ namespace JunkIt {
             menu->uiMovie->SetVariable("_root.Menu_mc._vendorGold", goldVal);
         }
 
-        SKSE::log::info("SellPartialList Size: {}", partialSellItems.size());
-        for (const auto& [item, count] : partialSellItems) {
-            if (count > 0) {
-                player->RemoveItem(item->As<TESBoundObject>(), count, ITEM_REMOVE_REASON::kSelling, nullptr, vendorContainer);
-                SKSE::log::info("Transaction for partial quantity listing {} {} complete", count, item->GetName());
+        SKSE::log::info("SellList Size: {}", itemsToSell.size());
+        for (const auto& [entryData, count] : itemsToSell) {
+            if (count > 0 && entryData && entryData->object) {
+                TransferItem(entryData->object, player, vendorContainer, ITEM_REMOVE_REASON::kSelling, count, entryData);
+                SKSE::log::info("Transaction for {} {} complete", count, entryData->object->GetName());
             }
         }
-
-        SKSE::log::info("ProcessItemListTransfer(SellAllList) - SellAllList.Size: {}", sellAllList->forms.size());
-        Count iTotalFullQuantityItems = ProcessItemListTransfer(sellAllList, player, vendorContainer, 1);
-        SKSE::log::info("Transaction {} full quantity item sales complete", iTotalFullQuantityItems);
 
         player->AddSkillExperience(RE::ActorValue::kSpeech, totalSellValue);
 
@@ -709,7 +630,7 @@ namespace JunkIt {
         }
     }
 
-    TESForm* JunkHandler::ToggleSelectedItemKeyword() {
+    TESForm* JunkHandler::ToggleSelectedItemJunk() {
         ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
         if (!itemListMenu) {
             SKSE::log::error("No ItemListMenu found");
@@ -753,30 +674,16 @@ namespace JunkIt {
 
         std::string itemName = itemForm->GetName();
         std::string hexFormId = FormUtil::Form::GetFormConfigString(itemForm);
-        BGSKeyword* isJunkKYWD = Settings::GetIsJunkKYWD();
-        BGSKeywordForm* keywordForm = nullptr;
 
         if (itemForm->GetFormType() == FormType::Light) {
             DebugNotification("JunkIt - Lights cannot be marked as Junk");
             return nullptr;
         }
 
-        if (itemForm->GetFormType() == FormType::Ammo) {
-            TESAmmo* ammo = itemForm->As<TESAmmo>();
-            keywordForm = ammo->AsKeywordForm();
-        } else {
-            keywordForm = itemForm->As<BGSKeywordForm>();
-        }
-
-        if (!keywordForm) {
-            SKSE::log::error("Error attempting to add IsJunk keyword to {} [{}]. Failed to typecast to BGSKeywordForm", itemName, hexFormId);
-            DebugNotification("JunkIt - Failed to mark item as junk!");
-            return nullptr;
-        }
-
         if (inventoryEntry->IsQuestObject()) {
             SKSE::log::info("Cannot mark quest item {} [{}] as junk", itemName, hexFormId);
-            if (!keywordForm->HasKeyword(isJunkKYWD)) {
+            auto& junkManager = JunkDataManager::GetSingleton();
+            if (!junkManager.IsJunk(inventoryEntry)) {
                 DebugNotification("JunkIt - Quest Items cannot be marked as Junk");
                 return nullptr;
             }
@@ -784,7 +691,8 @@ namespace JunkIt {
 
         if (Settings::ProtectEquipped() && inventoryEntry->IsWorn()) {
             SKSE::log::info("Cannot mark equipped item {} [{}] as junk", itemName, hexFormId);
-            if (!keywordForm->HasKeyword(isJunkKYWD)) {
+            auto& junkManager = JunkDataManager::GetSingleton();
+            if (!junkManager.IsJunk(inventoryEntry)) {
                 DebugNotification("JunkIt - Equipped Items are protected and cannot be marked as Junk");
                 return nullptr;
             }
@@ -792,19 +700,22 @@ namespace JunkIt {
 
         if (Settings::ProtectFavorites() && inventoryEntry->IsFavorited()) {
             SKSE::log::info("Cannot mark favorited item {} [{}] as junk", itemName, hexFormId);
-            if (!keywordForm->HasKeyword(isJunkKYWD)) {
+            auto& junkManager = JunkDataManager::GetSingleton();
+            if (!junkManager.IsJunk(inventoryEntry)) {
                 DebugNotification("JunkIt - Favorited Items are protected and cannot be marked as Junk");
                 return nullptr;
             }
         }
 
-        bool isJunk = keywordForm->HasKeyword(isJunkKYWD);
+        auto& junkManager = JunkDataManager::GetSingleton();
+        bool isJunk = junkManager.IsJunk(inventoryEntry);
+        
         if (isJunk) {
-            SKSE::log::info("Removing IsJunk keyword from {} [{}]", itemName, hexFormId);
-            keywordForm->RemoveKeyword(isJunkKYWD);
+            SKSE::log::info("Removing junk status from {} [{}]", itemName, hexFormId);
+            junkManager.RemoveJunkItem(inventoryEntry);
         } else {
-            SKSE::log::info("Adding IsJunk keyword to {} [{}]", itemName, hexFormId);
-            keywordForm->AddKeyword(isJunkKYWD);
+            SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
+            junkManager.AddJunkItem(inventoryEntry);
         }
 
         itemListMenu->Update();
@@ -914,86 +825,6 @@ namespace JunkIt {
         }
 
         return goldValue;
-    }
-
-    std::int32_t JunkHandler::ProcessItemListTransfer(BGSListForm* a_itemList, TESObjectREFR* a_fromContainer, TESObjectREFR* a_toContainer, std::int32_t a_isBarter) {
-        SKSE::log::info(" ");
-        SKSE::log::info("---- Initiating Item Transfer using FormList ----");
-
-        ITEM_REMOVE_REASON reason = ITEM_REMOVE_REASON::kStoreInContainer;
-        if (a_isBarter == 1) {
-            reason = ITEM_REMOVE_REASON::kSelling;
-            SKSE::log::info("Item Removal Reason set to ITEM_REMOVE_REASON::kSelling");
-        } else if (a_toContainer->GetFormType() == FormType::ActorCharacter) {
-            reason = ITEM_REMOVE_REASON::kStoreInTeammate;
-            SKSE::log::info("Item Removal Reason set to ITEM_REMOVE_REASON::kStoreInTeammate");
-        } else {
-            SKSE::log::info("Item Removal Reason set to ITEM_REMOVE_REASON::kStoreInContainer");
-        }
-
-        InventoryItemMap filteredInventoryMap = a_fromContainer->GetInventory([&](TESBoundObject& obj) {
-            return a_itemList->HasForm(obj.GetFormID());
-        });
-
-        Count totalTransferred = 0;
-        for (auto const& [item, inventoryData] : filteredInventoryMap) {
-            Count itemCount = inventoryData.first;
-            if (itemCount == 0) continue;
-
-            InventoryEntryData* invData = inventoryData.second.get();
-            TransferItem(item, a_fromContainer, a_toContainer, reason, itemCount, invData);
-            totalTransferred += itemCount;
-        }
-
-        UIUtil::ItemList::Refresh();
-
-        SKSE::log::info("---- ItemList Transfer Completed ----");
-        SKSE::log::info(" ");
-
-        return totalTransferred;
-    }
-
-    std::int32_t JunkHandler::GetContainerItemListCount(TESObjectREFR* a_container, BGSListForm* a_itemList) {
-        Count totalCount = 0;
-
-        std::string containerName = a_container->GetName();
-        if (containerName.empty()) {
-            containerName = FormUtil::Form::GetFormConfigString(a_container);
-        }
-
-        InventoryCountMap filteredInventoryMap = a_container->GetInventoryCounts([&](TESBoundObject& obj) {
-            return a_itemList->HasForm(obj.GetFormID());
-        });
-
-        SetContainerInventoryCountMap(filteredInventoryMap, a_container);
-
-        for (auto const& [item, count] : filteredInventoryMap) {
-            totalCount += count;
-        }
-
-        SKSE::log::info("     {} Inventory FormList Count {}", containerName, totalCount);
-        return totalCount;
-    }
-
-    std::int32_t JunkHandler::GetContainerSingleItemCount(TESObjectREFR* a_container, TESForm* a_item) {
-        Count totalCount = 0;
-
-        if (!a_item) {
-            SKSE::log::error("     Item form is not valid. Item Count {}", totalCount);
-            return totalCount;
-        }
-
-        InventoryCountMap* invMap = GetContainerInventoryCountMap(a_container);
-
-        auto itemInvData = invMap->find(a_item->As<TESBoundObject>());
-        if (itemInvData != invMap->end()) {
-            totalCount = itemInvData->second;
-        }
-
-        if (totalCount) {
-            SKSE::log::info("     {} {} [{}]", totalCount, a_item->GetName(), FormUtil::Form::GetFormConfigString(a_item));
-        }
-        return totalCount;
     }
 
     void JunkHandler::TransferItem(

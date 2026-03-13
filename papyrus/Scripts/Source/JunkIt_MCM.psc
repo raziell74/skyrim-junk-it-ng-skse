@@ -3,11 +3,6 @@ Scriptname JunkIt_MCM extends MCM_ConfigBase
 ;--- JunkIt Properties --------------------------------------------------------------
 
 Actor Property PlayerRef Auto
-Keyword Property IsJunkKYWD Auto
-FormList Property JunkList Auto
-FormList Property UnjunkedList Auto
-FormList Property JunkHistory Auto
-
 GlobalVariable Property MarkJunkKey Auto
 GlobalVariable Property TransferJunkKey Auto
 GlobalVariable Property GamepadJunkKey Auto
@@ -27,10 +22,6 @@ GlobalVariable Property NotifyOnMarkUnmark Auto
 GlobalVariable Property NotifyOnJunkTransfer Auto
 GlobalVariable Property NotifyOnJunkSell Auto
 GlobalVariable Property NotifyLargeInventoryLag Auto
-
-GlobalVariable Property AutoLoadJunkListFromFile Auto
-GlobalVariable Property AutoSaveJunkListToFile Auto
-GlobalVariable Property ReplaceJunkListOnLoad Auto
 
 Message Property TransferConfirmationMsg Auto
 Message Property RetrievalConfirmationMsg Auto
@@ -61,30 +52,17 @@ Int iAggressiveUpdateTimer = 0
 ; --- JunkIt.dll Native Functions ---------------------------------------------------
 
 Function RefreshDllSettings() global native
-
 Form Function ToggleSelectedAsJunk() global native
-Int Function AddJunkKeyword(Form a_form) global native
-Int Function RemoveJunkKeyword(Form a_form) global native
 Function RefreshUIIcons() global native
 
 Int Function GetContainerMode() global native
-ObjectReference Function GetContainerMenuContainer() global native
-ObjectReference Function GetBarterMenuContainer() global native
-ObjectReference Function GetBarterMenuMerchantContainer() global native
 Int Function GetMenuItemValue(Form a_form) global native
 
-FormList Function GetTransferFormList() global native
-FormList Function GetSellFormList() global native
-
-Function SaveJunkListToFile() global native
-FormList Function LoadJunkListFromFile() global native
-Function UpdateItemKeywords() global native
-
-; [Experimental]
-
-Int Function ProcessItemListTransfer(FormList a_itemList, ObjectReference a_fromContainer, ObjectReference a_toContainer, Int a_isBarter) global native
-Int Function GetContainerItemListCount(ObjectReference a_container, FormList a_itemList) global native
-Int Function GetContainerSingleItemCount(ObjectReference a_container, Form a_item) global native
+Bool Function IsItemJunk(Form a_form) global native
+Int Function GetJunkListSize() global native
+String Function GetJunkItemNameAt(Int index) global native
+Bool Function RemoveJunkItemAtIndex(Int index) global native
+Function ClearAllJunk() global native
 
 ; --- MCM Helper Functions ----------------------------------------------------------
 
@@ -103,36 +81,6 @@ EndFunction
 ; @returns  None
 Event OnVersionUpdate(int aVersion)
 	parent.OnVersionUpdate(aVersion)
-    
-    ; JunkHistory was introduced in Version 1.2.0 ~ This code will run the update to fill out the new formlist
-    ; Check if there is no JunkHistory but there are items in the JunkList or UnjunkedList
-    If JunkHistory.GetSize() == 0 && (JunkList.GetSize() > 0 || UnjunkedList.GetSize() > 0)
-        Utility.Wait(10.0)
-        Debug.Notification("Updating to Version 1.2.0 - Please wait for the update to complete before opening the MCM.")
-        ; UpdateMessage.Show(1.20)
-
-        ; iterate through the UnjunkedList and add the items from the junk history list
-        Int i = 0
-        Int iTotal = UnjunkedList.GetSize()
-        While i < iTotal
-            Form item = UnjunkedList.GetAt(i)
-            JunkHistory.AddForm(item)
-            i += 1
-        EndWhile
-
-        ; iterate through the junk list and add the items to the junk history list
-        i = 0
-        iTotal = JunkList.GetSize()
-        While i < iTotal
-            Form item = JunkList.GetAt(i)
-            JunkHistory.AddForm(item)
-            i += 1
-        EndWhile
-
-        Int JunkHistoryCount = JunkHistory.GetSize()
-        Debug.Notification("JunkIt Version 1.2.0 - Junk History now tracking " + JunkHistoryCount + " items")
-    EndIf
-
     VerboseMessage("MCM Successfully Updated to the latest version", True)
     RefreshMenu()
 EndEvent
@@ -194,12 +142,6 @@ Event OnConfigInit()
     parent.OnConfigInit()
     migrated = True
     LoadSettings()
-
-    If (AutoLoadJunkListFromFile.GetValue() == 1)
-        Utility.Wait(GetModSettingInt("iLoadingDelay:Maintenance") + 10.0)
-        TriggerLoadJunkListFromFile()
-        Debug.Notification("JunkIt - Junk List Auto-Imported!")
-    EndIf
 EndEvent
 
 ; OnConfigOpen
@@ -224,12 +166,10 @@ Event OnPageSelect(String a_page)
     parent.OnPageSelect(a_page)
 
     SetModSettingString("sResetJunk:Utility", "$JunkIt_ResetJunk")
-    SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_LoadJunkListFromFile")
-    SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_SaveJunkListToFile")
     
     ; Prep the Junk List Page with the first page of items
     _page = 0
-    _totalPages = (JunkHistory.GetSize() / _itemsPerPage) + 1
+    _totalPages = (GetJunkListSize() / _itemsPerPage) + 1
     SetModSettingString("sNextPage:JunkList", "$JunkIt_NextPage")
     SetModSettingString("sPreviousPage:JunkList", "$JunkIt_PreviousPage")
     SetModSettingString("sNextPage2:JunkList", "$JunkIt_NextPage")
@@ -295,12 +235,10 @@ Event OnSettingChange(String a_ID)
         iAggressiveRefreshMaxInterval = GetModSettingInt(a_ID)
 
     ; Export / Import Settings
-    ElseIf a_ID == "bAutoLoadJunkListFromFile:Maintenance"
-        AutoLoadJunkListFromFile.SetValue(GetModSettingBool(a_ID) as Float)
-    ElseIf a_ID == "bAutoSaveJunkListToFile:Maintenance"
-        AutoSaveJunkListToFile.SetValue(GetModSettingBool(a_ID) as Float)
-    ElseIf a_ID == "bReplaceJunkListOnLoad:Utility"
-        ReplaceJunkListOnLoad.SetValue(GetModSettingBool(a_ID) as Float)
+    ElseIf a_ID == "bAggressiveRefresh:Utility"
+        bAggressiveRefresh = GetModSettingBool(a_ID)
+    ElseIf a_ID == "iAggressiveRefreshMaxInterval:Utility"
+        iAggressiveRefreshMaxInterval = GetModSettingInt(a_ID)
     
     EndIf
 
@@ -346,9 +284,6 @@ Function Default()
     SetModSettingInt("iLoadingDelay:Maintenance", 0)
     SetModSettingBool("bLoadSettingsonReload:Maintenance", False)
     SetModSettingBool("bVerbose:Maintenance", False)
-    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", False)
-    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", False)
-    SetModSettingBool("bReplaceJunkListOnLoad:Utility", False)
     
     VerboseMessage("Settings reset!", True)
     Load()
@@ -388,11 +323,6 @@ Function Load()
     WarnInventorySizeThreshold = GetModSettingInt("iWarnInventorySizeThreshold:MiscSettings")
     bAggressiveRefresh = GetModSettingBool("bAggressiveRefresh:Utility")
     iAggressiveRefreshMaxInterval = GetModSettingInt("iAggressiveRefreshMaxInterval:Utility")
-
-    ; Maintenance Settings
-    AutoLoadJunkListFromFile.SetValue(GetModSettingBool("bAutoLoadJunkListFromFile:Maintenance") as Float)
-    AutoSaveJunkListToFile.SetValue(GetModSettingBool("bAutoSaveJunkListToFile:Maintenance") as Float)
-    ReplaceJunkListOnLoad.SetValue(GetModSettingBool("bReplaceJunkListOnLoad:Utility") as Float)
 
     RefreshDllSettings()
     VerboseMessage("Settings applied!", True)
@@ -445,9 +375,9 @@ Function MigrateToMCMHelper()
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", iAggressiveRefreshMaxInterval)
 
     ; Maintenance Settings
-    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", AutoLoadJunkListFromFile.GetValue() as Bool)
-    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", AutoSaveJunkListToFile.GetValue() as Bool)
-    SetModSettingBool("bReplaceJunkListOnLoad:Utility", ReplaceJunkListOnLoad.GetValue() as Bool)
+    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", False)
+    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", False)
+    SetModSettingBool("bReplaceJunkListOnLoad:Utility", False)
 
 EndFunction
 
@@ -459,12 +389,8 @@ Function JunkListPageUpdate()
     Int i = _page * _itemsPerPage
     Int optionIndex = 0
     Int iTotal = i + _itemsPerPage
-    Int junkHistoryCount = JunkHistory.GetSize()
+    Int junkListCount = GetJunkListSize()
 
-    ;VerboseMessage("JunkHistory Form Count " + junkHistoryCount)
-    ;VerboseMessage("Starting Index " + i)
-    ;VerboseMessage("Total for this page " + iTotal)
-    
     ; Should only enable the next page button if the _page is less than the _totalPages
     If _page < _totalPages - 1
         SetModSettingInt("iNextPageToggle:Hidden", 1)
@@ -482,27 +408,22 @@ Function JunkListPageUpdate()
     SetModSettingString("sPageCount:JunkList", "<font color='#9498B3'>Page " + (_page + 1) + " of " + _totalPages + "</font>")
     SetModSettingString("sPageCount2:JunkList", "<font color='#9498B3'>Page " + (_page + 1) + " of " + _totalPages + "</font>")
 
-    ; Go through our history and update the pages itemSlots with the current items
-    While i < iTotal && i < junkHistoryCount && optionIndex < _itemsPerPage
-        Form item = JunkHistory.GetAt(i)
-
-        String name = item.GetName() as String
+    ; Go through our junk list and update the pages itemSlots with the current items
+    While i < iTotal && i < junkListCount && optionIndex < _itemsPerPage
+        String name = GetJunkItemNameAt(i)
         String o_ID = "sItem" + (optionIndex + 1) + ":JunkList"
         
-        if(item.HasKeyword(IsJunkKYWD))
-            name = FormatJunkItemName(name, "junk")
-        Else
-            name = FormatJunkItemName(name, "not junk")
-        EndIf
+        ; All items in the list are junk
+        name = FormatJunkItemName(name, "junk")
 
-        ; Update the item slot with the formated item name
+        ; Update the item slot with the formatted item name
         SetModSettingString(o_ID, name as String)
 
         i += 1
         optionIndex += 1
     EndWhile
 
-    ; Clear any unused item slots @TODO - This should be handled by MCM Helpers Group Control but every slot would need its own hidden toggle
+    ; Clear any unused item slots
     If optionIndex < _itemsPerPage
         While optionIndex < _itemsPerPage
             String o_ID = "sItem" + (optionIndex + 1) + ":JunkList"
@@ -552,27 +473,19 @@ Function MCMToggleJunkItem(Int index)
         return
     EndIf
     
-    Form item = JunkHistory.GetAt(index + (_page * _itemsPerPage))
-    Bool status = JunkList.HasForm(item)
-    String name = item.GetName()
+    ; Get the actual item index in the full list
+    Int actualIndex = index + (_page * _itemsPerPage)
+    String name = GetJunkItemNameAt(actualIndex)
 
     String UpdatingText = FormatJunkItemName(name, "updating")
     SetModSettingString(o_ID, UpdatingText)
     RefreshMenu()
 
-    If status
-        RemoveJunkKeyword(item)
-        JunkList.RemoveAddedForm(item)
+    ; Remove the item from junk (since all items in the list are junk)
+    RemoveJunkItemAtIndex(actualIndex)
 
-        name = FormatJunkItemName(name, "not junk")
-    Else
-        AddJunkKeyword(item)
-        JunkList.AddForm(item)
-
-        name = FormatJunkItemName(name, "junk")
-    EndIf
-
-    SetModSettingString(o_ID, name)
+    ; Update the page to reflect the removal
+    JunkListPageUpdate()
 
     ; Prevent text flicker by waiting a second before updating the UI again
     Utility.WaitMenuMode(0.5)
@@ -606,118 +519,12 @@ Function ResetJunk()
     SetModSettingString("sResetJunk:Utility", "$JunkIt_ResetingJunk")
     RefreshMenu()
 
-    Int i = 0
-    Int iTotal = JunkList.GetSize()
-    While i < iTotal
-        Form item = JunkList.GetAt(i)
+    ClearAllJunk()
 
-        If item.HasKeyword(IsJunkKYWD)
-            RemoveJunkKeyword(item)
-
-            ; We still need to track historical junk marking since Skyrim refuses to not save keywords on items even if they are removed
-            If !UnjunkedList.HasForm(item)
-                UnjunkedList.AddForm(item)
-            EndIf
-        EndIf
-
-        i += 1
-    EndWhile
-
-    JunkList.Revert()
     VerboseMessage("Junk List reset!", True)
-    VerboseMessage("Junk List size after reset: " + JunkList.GetSize())
+    VerboseMessage("Junk List size after reset: 0")
 
     SetModSettingString("sResetJunk:Utility", "$JunkIt_JunkReset")
-    RefreshMenu()
-EndFunction
-
-; TriggerSaveJunkListToFile
-; Triggers the save junk list to file function
-;
-; @returns  None
-Function TriggerSaveJunkListToFile()
-    VerboseMessage("Saving Junk List To File...")
-    SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_SavingJunkList")
-    RefreshMenu()
-
-    SaveJunkListToFile()
-
-    VerboseMessage("Junk List saved!", True)
-
-    SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_JunkSaved")
-
-    ; Prevent text flicker by waiting a second before updating the UI again
-    Utility.WaitMenuMode(0.5)
-    RefreshMenu()
-EndFunction
-
-; TriggerLoadJunkListFromFile
-; Triggers the load junk list from file function
-;
-; @returns  None
-Function TriggerLoadJunkListFromFile()
-    VerboseMessage("Loading Junk List From File...")
-    SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_LoadingJunkList")
-    RefreshMenu()
-
-    Int i = 0
-    Int iTotal = 0
-    FormList NewJunkList = LoadJunkListFromFile()
-
-    If ReplaceJunkListOnLoad.GetValue() > 0
-        ; Reset the current junk list and add any forms that were removed that aren't in the imported list to the unjunked list
-        i = 0
-        iTotal = JunkList.GetSize()
-        While i < iTotal
-            Form item = JunkList.GetAt(i)
-
-            If !NewJunkList.HasForm(item) && !UnjunkedList.HasForm(item)
-                ; Track Unjunked item if it is not in the new list
-                UnjunkedList.AddForm(item)
-            ElseIf UnjunkedList.HasForm(item)
-                ; If it is in the new list, and is currently unjunked, remove it from the unjunked list
-                UnjunkedList.RemoveAddedForm(item)
-            EndIf
-
-            i += 1
-        EndWhile
-
-        JunkList.Revert()
-    EndIf
-
-    ; Now iterate through the new List and adjust the JunkList and UnjunkedList accordingly
-    i = 0
-    iTotal = NewJunkList.GetSize()
-    While i < iTotal
-        Form item = NewJunkList.GetAt(i)
-
-        ; Add form to junk list if it isn't already there
-        If !JunkList.HasForm(item)
-            JunkList.AddForm(item)
-            JunkHistory.AddForm(item)
-        EndIf
-        
-        ; Ensure that any forms in the new list are removed from the unjunked list if they were previously unjunked
-        If UnjunkedList.HasForm(item)
-            UnjunkedList.RemoveAddedForm(item)
-        EndIf
-
-        i += 1
-    EndWhile
-
-    ; Once our junk lists are updated, we can process the keywords on the items
-    UpdateItemKeywords()
-
-    If (ReplaceJunkListOnLoad.GetValue() == 0)
-        VerboseMessage("Junk List loaded!", True)
-        SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_JunkLoaded")
-    Else
-        VerboseMessage("Junk List replaced!", True)
-        SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_JunkReplaced")
-    EndIf
-
-    ; Prevent text flicker by waiting a second before updating the UI again
-    Utility.WaitMenuMode(0.5)
     RefreshMenu()
 EndFunction
 
@@ -737,33 +544,4 @@ Function VerboseMessage(String m, Bool displayNotification = False)
     If GetModSettingBool("bVerbose:Maintenance") && displayNotification
         Debug.Notification("JunkIt - " + m)
     EndIf
-EndFunction
-
-; --- JunkIt Utilities --------------------------------------------------------------
-
-; CorrectJunkListKeywords 
-; Iterates through a formlist to add or remove the junk keyword
-;
-; @param List   FormList  the formlist to iterate through
-; @param IsJunk Bool  whether to add or remove the junk keyword
-; @returns  FormList  the modified formlist
-FormList Function CorrectJunkListKeywords(FormList List, Bool IsJunk = True)
-    Int i = 0
-    Int iTotal = List.GetSize()
-    
-    While i < iTotal
-        Form item = List.GetAt(i)
-
-        If IsJunk && !item.HasKeyword(IsJunkKYWD)
-            VerboseMessage("Item Correction: Marking " + item.GetName() + " as junk")
-            AddJunkKeyword(item)
-        ElseIf !IsJunk && item.HasKeyword(IsJunkKYWD)
-            VerboseMessage("Item Correction: Removing junk keyword from " + item.GetName())
-            RemoveJunkKeyword(item)
-        EndIf
-
-        i += 1
-    EndWhile
-
-    Return List
 EndFunction

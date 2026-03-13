@@ -1,6 +1,7 @@
 #include "log.h"
 #include "settings.h"
 #include "junk.h"
+#include "JunkData.h"
 #include "event.h"
 
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
@@ -14,14 +15,19 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			JunkIt::Settings::Load();
-			JunkIt::JunkHandler::UpdateItemKeywords();
+			
+			// Migration: if co-save is empty but old FormList has data, migrate
+			if (JunkIt::JunkDataManager::GetSingleton().Size() == 0) {
+				auto* oldJunkList = JunkIt::Settings::GetJunkList();
+				if (oldJunkList && oldJunkList->forms.size() > 0) {
+					SKSE::log::info("Migrating from old FormList to JunkDataManager...");
+					JunkIt::JunkDataManager::GetSingleton().MigrateFromFormList(oldJunkList);
+				}
+			}
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
-			if (JunkIt::Settings::GetAutoSaveJunkListToFile()) {
-				JunkIt::Settings::SaveJunkListToFile();
-			}
 			break;
 	}
 }
@@ -37,138 +43,59 @@ void RefreshUIIcons(RE::StaticFunctionTag*) {
 }
 
 RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::ToggleSelectedItemKeyword();
+	return JunkIt::JunkHandler::ToggleSelectedItemJunk();
 }
 
-std::int32_t AddJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
+bool IsItemJunk(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	if (!a_form) {
-		SKSE::log::error("Error attempting to add IsJunk keyword to nullptr");
 		return false;
 	}
+	return JunkIt::JunkDataManager::GetSingleton().IsJunk(a_form);
+}
 
-	SKSE::log::info("Adding IsJunk keyword to {}", a_form->GetName());
-	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
+std::int32_t GetJunkListSize(RE::StaticFunctionTag*) {
+	return static_cast<std::int32_t>(JunkIt::JunkDataManager::GetSingleton().Size());
+}
 
-	if (a_form->GetFormType() == RE::FormType::Ammo) {
-		RE::TESAmmo* ammo = a_form->As<RE::TESAmmo>();
-		ammo->AsKeywordForm()->AddKeyword(isJunkKYWD);
-		return true;
+RE::BSFixedString GetJunkItemNameAt(RE::StaticFunctionTag*, std::int32_t index) {
+	auto item = JunkIt::JunkDataManager::GetSingleton().GetJunkItemAt(index);
+	return RE::BSFixedString(item.displayName.c_str());
+}
+
+bool RemoveJunkItemAtIndex(RE::StaticFunctionTag*, std::int32_t index) {
+	bool result = JunkIt::JunkDataManager::GetSingleton().RemoveJunkItemAtIndex(index);
+	if (result) {
+		UIUtil::ItemList::Refresh();
 	}
+	return result;
+}
 
-	RE::BGSKeywordForm* keywordForm = a_form->As<RE::BGSKeywordForm>();
-	if (!keywordForm) {
-		SKSE::log::error("Error attempting to add IsJunk keyword to {}. Failed to typecast to BGSKeywordForm", a_form->GetName());
-		return false;
-	}
-
-	keywordForm->AddKeyword(isJunkKYWD);
+void ClearAllJunk(RE::StaticFunctionTag*) {
+	JunkIt::JunkDataManager::GetSingleton().Clear();
 	UIUtil::ItemList::Refresh();
-	return true;
-}
-
-std::int32_t RemoveJunkKeyword(RE::StaticFunctionTag*, RE::TESForm* a_form) {
-	if (!a_form) {
-		SKSE::log::error("Error attempting to remove IsJunk keyword from nullptr");
-		return false;
-	}
-
-	SKSE::log::info("Remove IsJunk keyword from {}", a_form->GetName());
-	RE::BGSKeyword* isJunkKYWD = JunkIt::Settings::GetIsJunkKYWD();
-
-	if (a_form->GetFormType() == RE::FormType::Ammo) {
-		RE::TESAmmo* ammo = a_form->As<RE::TESAmmo>();
-		ammo->AsKeywordForm()->RemoveKeyword(isJunkKYWD);
-		return true;
-	}
-
-	RE::BGSKeywordForm* keywordForm = a_form->As<RE::BGSKeywordForm>();
-	if (!keywordForm) {
-		SKSE::log::error("Error attempting to remove IsJunk keyword from {}. Failed to typecast to BGSKeywordForm", a_form->GetName());
-		return false;
-	}
-
-	keywordForm->RemoveKeyword(isJunkKYWD);
-	UIUtil::ItemList::Refresh();
-	return true;
-}
-
-RE::TESObjectREFR* GetContainerMenuContainer(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::GetContainerMenuContainer();
-}
-
-RE::TESObjectREFR* GetBarterMenuContainer(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::GetBarterMenuContainer();
-}
-
-RE::TESObjectREFR* GetBarterMenuMerchantContainer(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::GetBarterMenuMerchantContainer();
 }
 
 RE::ContainerMenu::ContainerMode GetContainerMode(RE::StaticFunctionTag*) {
 	return JunkIt::JunkHandler::GetContainerMode();
 }
 
-RE::BGSListForm* GetTransferFormList(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::BuildTransferFormList();
-}
-
-RE::BGSListForm* GetSellFormList(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::BuildSellFormList();
-}
-
 std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	return JunkIt::JunkHandler::GetMenuItemValue(a_form);
 }
 
-void SaveJunkListToFile(RE::StaticFunctionTag*) {
-	JunkIt::Settings::SaveJunkListToFile();
-}
-
-RE::BGSListForm* LoadJunkListFromFile(RE::StaticFunctionTag*) {
-	return JunkIt::Settings::LoadJunkListFromFile();
-}
-
-void UpdateItemKeywords(RE::StaticFunctionTag*) {
-	JunkIt::JunkHandler::UpdateItemKeywords();
-}
-
-std::int32_t ProcessItemListTransfer(RE::StaticFunctionTag*, RE::BGSListForm* a_itemList, RE::TESObjectREFR* a_fromContainer, RE::TESObjectREFR* a_toContainer, std::int32_t a_isBarter = 0) {
-	return JunkIt::JunkHandler::ProcessItemListTransfer(a_itemList, a_fromContainer, a_toContainer, a_isBarter);
-}
-
-std::int32_t GetContainerItemListCount(RE::StaticFunctionTag*, RE::TESObjectREFR* a_container, RE::BGSListForm* a_itemList) {
-	return JunkIt::JunkHandler::GetContainerItemListCount(a_container, a_itemList);
-}
-
-std::int32_t GetContainerSingleItemCount(RE::StaticFunctionTag*, RE::TESObjectREFR* a_container, RE::TESForm* a_item) {
-	return JunkIt::JunkHandler::GetContainerSingleItemCount(a_container, a_item);
-}
-
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
-
 	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
-	vm->RegisterFunction("UpdateItemKeywords", "JunkIt_MCM", UpdateItemKeywords);
-
-	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
-	vm->RegisterFunction("GetContainerMenuContainer", "JunkIt_MCM", GetContainerMenuContainer);
-	vm->RegisterFunction("GetBarterMenuContainer", "JunkIt_MCM", GetBarterMenuContainer);
-	vm->RegisterFunction("GetBarterMenuMerchantContainer", "JunkIt_MCM", GetBarterMenuMerchantContainer);
-	vm->RegisterFunction("GetTransferFormList", "JunkIt_MCM", GetTransferFormList);
-	vm->RegisterFunction("GetSellFormList", "JunkIt_MCM", GetSellFormList);
-	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
 	
+	vm->RegisterFunction("IsItemJunk", "JunkIt_MCM", IsItemJunk);
+	vm->RegisterFunction("GetJunkListSize", "JunkIt_MCM", GetJunkListSize);
+	vm->RegisterFunction("GetJunkItemNameAt", "JunkIt_MCM", GetJunkItemNameAt);
+	vm->RegisterFunction("RemoveJunkItemAtIndex", "JunkIt_MCM", RemoveJunkItemAtIndex);
+	vm->RegisterFunction("ClearAllJunk", "JunkIt_MCM", ClearAllJunk);
+	
+	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
+	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
-
-	vm->RegisterFunction("AddJunkKeyword", "JunkIt_MCM", AddJunkKeyword);
-	vm->RegisterFunction("RemoveJunkKeyword", "JunkIt_MCM", RemoveJunkKeyword);
-
-	vm->RegisterFunction("SaveJunkListToFile", "JunkIt_MCM", SaveJunkListToFile);
-	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
-
-	vm->RegisterFunction("ProcessItemListTransfer", "JunkIt_MCM", ProcessItemListTransfer);
-	vm->RegisterFunction("GetContainerItemListCount", "JunkIt_MCM", GetContainerItemListCount);
-	vm->RegisterFunction("GetContainerSingleItemCount", "JunkIt_MCM", GetContainerSingleItemCount);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;
@@ -180,6 +107,18 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 
     auto messaging = SKSE::GetMessagingInterface();
 	if (!messaging->RegisterListener("SKSE", MessageHandler)) {
+		return false;
+	}
+
+	auto serialization = SKSE::GetSerializationInterface();
+	if (serialization) {
+		serialization->SetUniqueID('JNKT');
+		serialization->SetSaveCallback(JunkIt::JunkDataManager::OnSave);
+		serialization->SetLoadCallback(JunkIt::JunkDataManager::OnLoad);
+		serialization->SetRevertCallback(JunkIt::JunkDataManager::OnRevert);
+		SKSE::log::info("Registered SKSE serialization callbacks");
+	} else {
+		SKSE::log::error("Failed to get SerializationInterface");
 		return false;
 	}
 

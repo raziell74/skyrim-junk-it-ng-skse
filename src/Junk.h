@@ -28,23 +28,17 @@ namespace JunkIt {
         using InventoryItemMap = std::map<TESBoundObject*, std::pair<Count, std::unique_ptr<InventoryEntryData>>>;
 
     public: 
-        static void UpdateItemKeywords();
-
-        static TESForm* ToggleSelectedItemKeyword();
+        static TESForm* ToggleSelectedItemJunk();
         static void ToggleIsJunk();
 
-        static BGSListForm* BuildTransferFormList();
-        static BGSListForm* BuildSellFormList();
+        static std::vector<InventoryEntryData*> BuildTransferList();
+        static std::vector<InventoryEntryData*> BuildSellList();
         static std::int32_t GetMenuItemValue(TESForm* a_form);
 
         static TESObjectREFR* GetContainerMenuContainer();
         static TESObjectREFR* GetBarterMenuContainer();
         static TESObjectREFR* GetBarterMenuMerchantContainer();
         static ContainerMenu::ContainerMode GetContainerMode();
-
-        static std::int32_t ProcessItemListTransfer(BGSListForm* a_itemList, TESObjectREFR* a_fromContainer, TESObjectREFR* a_toContainer, std::int32_t a_isBarter = 0);
-        static std::int32_t GetContainerItemListCount(TESObjectREFR* a_container, BGSListForm* a_itemList);
-        static std::int32_t GetContainerSingleItemCount(TESObjectREFR* a_container, TESForm* a_item);
 
         static void TransferJunk();
         static void SellJunk();
@@ -84,8 +78,8 @@ namespace JunkIt {
 
         static bool WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2);
 
-        static void ExecuteTransfer(BGSListForm* transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
-        static void ExecuteSell(BGSListForm* sellAllList, std::vector<std::pair<TESForm*, std::int32_t>> partialSellItems, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, float totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
+        static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
+        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, float totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
     };

@@ -26,13 +26,11 @@ namespace JunkIt {
             struct JunkTransfer {
                 bool ConfirmTransfer = true;
                 SortPriority TransferPriority = SortPriority::kChaos;
-                BGSListForm* TransferList;
             };
 
             struct JunkSell {
                 bool ConfirmSell = true;
                 SortPriority SellPriority = SortPriority::kChaos;
-                BGSListForm* SellList;
             };
 
             struct JunkProtection {
@@ -75,10 +73,8 @@ namespace JunkIt {
 
                 std::string priorityString = "";
 
+                // Keep old FormList references for migration only
                 if (auto* form = getForm("JunkList", 0x804)) JunkList = form->As<BGSListForm>();
-                if (auto* form = getForm("UnjunkedList", 0x80E)) UnjunkedList = form->As<BGSListForm>();
-                if (auto* form = getForm("JunkHistory", 0x80F)) JunkHistory = form->As<BGSListForm>();
-                if (auto* form = getForm("IsJunkKYWD", 0x802)) IsJunkKYWD = form->As<BGSKeyword>();
 
                 MarkJunkKey = getGlobalValue("MarkJunkKey", 0x817, MarkJunkKey);
                 TransferJunkKey = getGlobalValue("TransferJunkKey", 0x818, TransferJunkKey);
@@ -87,9 +83,7 @@ namespace JunkIt {
 
                 JunkTransfer.ConfirmTransfer = getGlobalBool("ConfirmTransfer", 0x808, JunkTransfer.ConfirmTransfer);
                 JunkTransfer.TransferPriority = static_cast<SortPriority>(getGlobalValue("TransferPriority", 0x80A, static_cast<float>(JunkTransfer.TransferPriority)));
-                if (auto* form = getForm("TransferList", 0x80C)) JunkTransfer.TransferList = form->As<BGSListForm>();
 
-                // Translate the SortPriority to a string for log
                 switch (JunkTransfer.TransferPriority) {
                     case SortPriority::kWeightHighLow:
                         priorityString = "Weight [High > Low]";
@@ -122,9 +116,7 @@ namespace JunkIt {
 
                 JunkSell.ConfirmSell = getGlobalBool("ConfirmSell", 0x809, JunkSell.ConfirmSell);
                 JunkSell.SellPriority = static_cast<SortPriority>(getGlobalValue("SellPriority", 0x80B, static_cast<float>(JunkSell.SellPriority)));
-                if (auto* form = getForm("SellList", 0x80D)) JunkSell.SellList = form->As<BGSListForm>();
 
-                // Translate the SortPriority to a string for log
                 switch (JunkSell.SellPriority) {
                     case SortPriority::kWeightHighLow:
                         priorityString = "Weight [High > Low]";
@@ -201,140 +193,16 @@ namespace JunkIt {
                     GamepadTransferHoldTime
                 );
 
-                AutoLoadJunkListFromFile = getGlobalBool("AutoLoadJunkListFromFile", 0x81A, AutoLoadJunkListFromFile);
-                AutoSaveJunkListToFile = getGlobalBool("AutoSaveJunkListToFile", 0x81B, AutoSaveJunkListToFile);
-                ReplaceJunkListOnLoad = getGlobalBool("ReplaceJunkListOnLoad", 0x81E, ReplaceJunkListOnLoad);
-
-                SKSE::log::info(
-                    "Auto Load/Save Settings | AutoLoadJunkListFromFile: {} | AutoSaveJunkListToFile: {} | ReplaceJunkListOnLoad: {}",
-                    AutoLoadJunkListFromFile,
-                    AutoSaveJunkListToFile,
-                    ReplaceJunkListOnLoad
-                );
-
                 SKSE::log::info(" ");
-            }
-
-            struct JsonJunkListItem {
-                std::string name;
-                std::string editorId;
-                std::string type;
-                std::string source;
-            };
-
-            static void SaveJunkListToFile() {
-                SKSE::log::info(" ");
-                SKSE::log::info("Saving JunkList to file...");
-
-                // create an empty structure (null)
-                json junkListJson;
-                std::vector<JsonJunkListItem> jsonJunkListItems = {};
-
-                // Convert the JunkList to a string array of Editor Ids
-                BSTArray<TESForm*> forms = JunkList->forms;
-                std::int32_t count = forms.size();
-
-                // Don't save if no item has ever been marked as junk - Typically happens on a new game
-                if (count <= 0 && UnjunkedList->forms.size() <= 0) {
-                    SKSE::log::error("JunkList is empty. Nothing to save.");
-                    RE::DebugNotification("JunkList is empty. Nothing to save.");
-                    return;
-                }
-
-                for (std::int32_t i = 0; i < count; i++) {
-                    TESForm* itemForm = forms[i];
-
-                    if (!itemForm) {
-                        SKSE::log::error("Form is null for index: {}", i);
-                        continue;
-                    }
-                    
-                    std::string formConfigString = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());
-                    // SKSE::log::info("Adding {} - {} to save list", itemForm->GetName(), formConfigString);
-                    JsonJunkListItem junkListItem = {};
-                    junkListItem.name = itemForm->GetName();
-                    junkListItem.editorId = itemForm->GetFormEditorID(); // This does not work, @todo find a workaround to get the editor id
-                    junkListItem.type = std::to_string(itemForm->GetFormType());
-                    junkListItem.source = formConfigString;
-
-                    jsonJunkListItems.push_back(junkListItem);
-                }
-
-                // Convert the vector to a JSON array
-                json jsonJunkList = json::array();
-                for (const auto& item : jsonJunkListItems) {
-                    json jsonItem = {
-                        {"name", item.name},
-                        {"type", item.type},
-                        {"source", item.source}
-                    };
-                    jsonJunkList.push_back(jsonItem);
-                }
-
-                // Assign the JSON array to junkListJson["Junk"]
-                junkListJson["Count"] = count;
-                junkListJson["Junk"] = jsonJunkList;
-
-                // Write the JSON to a file
-                std::ofstream file(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
-                file << junkListJson.dump(4) << "\n\n"; 
-                file.close();
-
-                SKSE::log::info("JunkList saved to file 'Data/SKSE/Plugins/JunkIt/JunkList.json'.");
-                // SKSE::log::info("{}", junkListJson.dump());
-            }
-
-            static RE::BGSListForm* LoadJunkListFromFile() {
-                SKSE::log::info(" ");
-                SKSE::log::info("Loading JunkList From file 'Data/SKSE/Plugins/JunkIt/JunkList.json'...");
-
-                // We don't want to create a new local variable for the new list so we'll repurpose the existing transfer list to save memory
-                BGSListForm* NewJunkList = JunkTransfer.TransferList;
-                NewJunkList->ClearData();
-
-                std::ifstream f(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
-                // exit if file not found
-                if (!f.good()) {
-                    SKSE::log::error("JunkList file not found.");
-                    return NewJunkList;
-                }
-
-                // Parse the JSON file and get the JunkList array
-                json junkListJson = json::parse(f);
-                json jsonJunkListItems = junkListJson["Junk"];
-
-                // Loop through the string array of Editor Ids and then add each form to the JunkList
-                for (std::int32_t i = 0; i < jsonJunkListItems.size(); i++) {
-                    json junkItem = jsonJunkListItems[i];
-                    auto junkItemConfigString = junkItem["source"];
-                    // SKSE::log::info("Looking Up Form Config String: {}", junkItemConfigString);
-
-                    TESForm* form = FormUtil::Form::GetFormFromConfigString(junkItemConfigString);
-                    if (!form) {
-                        SKSE::log::error("Form not found for Config String: {}", junkItemConfigString);
-                        continue;
-                    }
-                    
-                    NewJunkList->AddForm(form);
-                    SKSE::log::info("Adding form to JunkList: {} [{}]", form->GetName(), junkItemConfigString);
-                }
-
-                SKSE::log::info("JunkList loaded from file.");
-                return NewJunkList;
             }
 
             [[nodiscard]] static BGSListForm* GetJunkList() { return JunkList; }
-            [[nodiscard]] static BGSListForm* GetUnjunkedList() { return UnjunkedList; }
-            [[nodiscard]] static BGSListForm* GetJunkHistory() { return JunkHistory; }
-            [[nodiscard]] static BGSKeyword* GetIsJunkKYWD() { return IsJunkKYWD; }
 
             [[nodiscard]] static bool ConfirmTransfer() { return JunkTransfer.ConfirmTransfer; }
             [[nodiscard]] static SortPriority GetTransferPriority() { return JunkTransfer.TransferPriority; }
-            [[nodiscard]] static BGSListForm* GetTransferList() { return JunkTransfer.TransferList; }
 
             [[nodiscard]] static bool ConfirmSell() { return JunkSell.ConfirmSell; }
             [[nodiscard]] static SortPriority GetSellPriority() { return JunkSell.SellPriority; }
-            [[nodiscard]] static BGSListForm* GetSellList() { return JunkSell.SellList; }
 
             [[nodiscard]] static bool ProtectEquipped() { return JunkProtection.ProtectEquipped; }
             [[nodiscard]] static bool ProtectFavorites() { return JunkProtection.ProtectFavorites; }
@@ -358,19 +226,12 @@ namespace JunkIt {
 
             [[nodiscard]] static TESObjectMISC* GetGold001() { return Gold001; }
 
-            [[nodiscard]] static bool GetAutoSaveJunkListToFile() { return AutoSaveJunkListToFile; }
-            [[nodiscard]] static bool GetAutoLoadJunkListFromFile() { return AutoLoadJunkListFromFile; }
-
         private: 
 
             static inline float MarkJunkKey = 0x32;
             static inline float TransferJunkKey = 0x49;
             static inline float GamepadJunkKey = 270.0f;
             static inline float GamepadTransferHoldTime = 2.0f;
-            
-            static inline bool AutoSaveJunkListToFile = false;
-            static inline bool AutoLoadJunkListFromFile = false;
-            static inline bool ReplaceJunkListOnLoad = false;
 
             static inline bool NotifyOnMarkUnmark = true;
             static inline bool NotifyOnJunkTransfer = true;
@@ -379,10 +240,7 @@ namespace JunkIt {
             static inline std::int32_t WarnInventorySizeThreshold = 500;
             static inline bool AggressiveRefresh = false;
 
-            static inline BGSKeyword* IsJunkKYWD;
-            static inline BGSListForm* JunkList;
-            static inline BGSListForm* UnjunkedList;
-            static inline BGSListForm* JunkHistory;
+            static inline BGSListForm* JunkList;  // Only for migration
             static inline JunkTransfer JunkTransfer;
             static inline JunkSell JunkSell;
             static inline JunkProtection JunkProtection;

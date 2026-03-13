@@ -6,5 +6,7 @@ set(headers ${headers}
     src/settings.h
     src/event.h
     src/junk.h
+    src/JunkData.h
     src/SendUIMessage.h
+    src/DIII_API.h
 )
