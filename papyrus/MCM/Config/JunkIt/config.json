@@ -1,0 +1,1206 @@
+{
+    "modName": "JunkIt",
+    "displayName": "$JunkItMCM",
+    "minMcmVersion": 9,
+    "pluginRequirements": [
+        "JunkIt.esp"
+    ],
+    "cursorFillMode": "topToBottom",
+    "content": [],
+    "customContent": {
+        "source": "JunkIt/JunkIt_splash_512x512.dds",
+        "x": 120,
+        "y": -53
+    },
+    "pages": [
+        {
+            "pageDisplayName": "$JunkIt_Page_Settings",
+            "cursorFillMode": "topToBottom",
+            "content": [
+                {
+                    "type": "header",
+                    "text": "$JunkIt_ConfirmationsHeader"
+                },
+                {
+                    "id": "bConfirmSell:Confirmation",
+                    "type": "toggle",
+                    "text": "$JunkIt_ConfirmSellToggle",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool"
+                    }
+                },
+                {
+                    "id": "bConfirmTransfer:Confirmation",
+                    "type": "toggle",
+                    "text": "$JunkIt_ConfirmTransferToggle",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool"
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_PriorityHeader"
+                },
+                {
+                    "id": "iTransferPriority:Priority",
+                    "type": "enum",
+                    "text": "$JunkIt_TransferPriority",
+                    "help": "$JunkIt_TransferPriority_Help",
+                    "valueOptions": {
+                        "options": [
+                            "$JunkIt_WeightHighToLow_ENUM",
+                            "$JunkIt_WeightLowToHigh_ENUM",
+                            "$JunkIt_ValueHighToLow_ENUM",
+                            "$JunkIt_ValueLowToHigh_ENUM",
+                            "$JunkIt_ValueWeightHighToLow_ENUM",
+                            "$JunkIt_ValueWeightLowToHigh_ENUM",
+                            "$JunkIt_Chaos_ENUM"
+                        ],
+                        "sourceType": "ModSettingInt",
+                        "defaultValue": 0
+                    }
+                },
+                {
+                    "id": "iSellPriority:Priority",
+                    "type": "enum",
+                    "text": "$JunkIt_SellPriority",
+                    "help": "$JunkIt_SellPriority_Help",
+                    "valueOptions": {
+                        "options": [
+                            "$JunkIt_WeightHighToLow_ENUM",
+                            "$JunkIt_WeightLowToHigh_ENUM",
+                            "$JunkIt_ValueHighToLow_ENUM",
+                            "$JunkIt_ValueLowToHigh_ENUM",
+                            "$JunkIt_ValueWeightHighToLow_ENUM",
+                            "$JunkIt_ValueWeightLowToHigh_ENUM",
+                            "$JunkIt_Chaos_ENUM"
+                        ],
+                        "sourceType": "ModSettingInt",
+                        "defaultValue": 4
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_ProtectionsHeader"
+                },
+                {
+                    "id": "bProtectEquipped:Protection",
+                    "type": "toggle",
+                    "text": "$JunkIt_ProtectEquippedToggle",
+                    "help": "$JunkIt_ProtectEquippedToggle_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool"
+                    }
+                },
+                {
+                    "id": "bProtectFavorites:Protection",
+                    "type": "toggle",
+                    "text": "$JunkIt_ProtectFavoritesToggle",
+                    "help": "$JunkIt_ProtectFavoritesToggle_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool"
+                    }
+                },
+                {
+                    "id": "bProtectEnchanted:Protection",
+                    "type": "toggle",
+                    "text": "$JunkIt_ProtectEnchantedToggle",
+                    "help": "$JunkIt_ProtectEnchantedToggle_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool"
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_HotkeyHeader",
+                    "position": 1
+                },
+                {
+                    "id": "iJunkKey:Hotkey",
+                    "type": "keymap",
+                    "text": "$JunkIt_Text_Hotkey",
+                    "help": "$JunkIt_Help_Hotkey",
+                    "ignoreConflicts": true,
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt"
+                    }
+                },
+                {
+                    "id": "iTransferJunkKey:Hotkey",
+                    "type": "keymap",
+                    "text": "$JunkIt_Transfer_Hotkey",
+                    "help": "$JunkIt_Transfer_Hotkey_Help",
+                    "ignoreConflicts": true,
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt"
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_GamepadHotkeyHeader"
+                },
+                {
+                    "id": "iGamepadJunkKey:Hotkey",
+                    "type": "keymap",
+                    "text": "$JunkIt_GamepadJunkKey",
+                    "help": "$JunkIt_GamepadJunkKey_Help",
+                    "ignoreConflicts": true,
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt"
+                    }
+                },
+                {
+                    "id": "iGamepadTransferHoldTime:Hotkey",
+                    "type": "slider",
+                    "text": "$JunkIt_GamepadTransferHoldTime",
+                    "help": "$JunkIt_GamepadTransferHoldTime_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt",
+                        "min": 2,
+                        "max": 30,
+                        "step": 1,
+                        "defaultValue": 2,
+                        "formatString": "{0} seconds"
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_MiscSettingsHeader"
+                },
+                {
+                    "id": "bNotifyOnMarkUnmark:MiscSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_NotifyOnMarkUnmark",
+                    "help": "$JunkIt_NotifyOnMarkUnmark_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "bNotifyOnJunkTransfer:MiscSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_NotifyOnJunkTransfer",
+                    "help": "$JunkIt_NotifyOnJunkTransfer_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "bNotifyOnJunkSell:MiscSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_NotifyOnJunkSell",
+                    "help": "$JunkIt_NotifyOnJunkSell_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "bNotifyLargeInventoryLag:MiscSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_NotifyLargeInventoryLag",
+                    "help": "$JunkIt_NotifyLargeInventoryLag_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "iWarnInventorySizeThreshold:MiscSettings",
+                    "type": "slider",
+                    "text": "$JunkIt_WarnInventorySizeThreshold",
+                    "help": "$JunkIt_WarnInventorySizeThreshold_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt",
+                        "min": 100,
+                        "max": 1000,
+                        "step": 25,
+                        "defaultValue": 500,
+                        "formatString": "{0} Items"
+                    }
+                }
+            ]
+        },
+        {
+            "pageDisplayName": "$JunkIt_JunkList_Page",
+            "cursorFillMode": "leftToRight",
+            "content": [
+                {
+                    "type": "header",
+                    "text": "$JunkIt_JunkList_ListHeader"
+                },
+                {
+                    "id": "sPageCount:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Page 1 of 1",
+                        "value": "Page 1 of 1"
+                    }
+                },
+                {
+                    "id": "iPreviousPageToggle:Hidden",
+                    "type": "hiddenToggle",
+                    "text": "Invisible toggle control for previous page button",
+                    "groupControl": 1,
+                    "valueOptions": {
+                      "sourceType": "ModSettingInt",
+                      "defaultValue": 0
+                    }
+                },
+                {
+                    "id": "iNextPageToggle:Hidden",
+                    "type": "hiddenToggle",
+                    "text": "Invisible toggle control for next page button",
+                    "groupControl": 2,
+                    "valueOptions": {
+                      "sourceType": "ModSettingInt",
+                      "defaultValue": 1
+                    }
+                },
+                {
+                    "id": "sPreviousPage:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "groupCondition": 1,
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_PreviousPage",
+                        "value": "$JunkIt_PreviousPage"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMJunkListPreviousPage"
+                    }
+                },
+                {
+                    "id": "sNextPage:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "groupCondition": 2,
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_NextPage",
+                        "value": "$JunkIt_NextPage"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMJunkListNextPage"
+                    }
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "id": "sItem1:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 1",
+                        "value": "Item 1"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}0"]
+                    }
+                },
+                {
+                    "id": "sItem2:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 2",
+                        "value": "Item 2"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}1"]
+                    }
+                },
+                {
+                    "id": "sItem3:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 3",
+                        "value": "Item 3"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}2"]
+                    }
+                },
+                {
+                    "id": "sItem4:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 4",
+                        "value": "Item 4"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}3"]
+                    }
+                },
+                {
+                    "id": "sItem5:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 5",
+                        "value": "Item 5"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}4"]
+                    }
+                },
+                {
+                    "id": "sItem6:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 6",
+                        "value": "Item 6"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}5"]
+                    }
+                },
+                {
+                    "id": "sItem7:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 7",
+                        "value": "Item 7"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}6"]
+                    }
+                },
+                {
+                    "id": "sItem8:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 8",
+                        "value": "Item 8"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}7"]
+                    }
+                },
+                {
+                    "id": "sItem9:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 9",
+                        "value": "Item 9"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}8"]
+                    }
+                },
+                {
+                    "id": "sItem10:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 10",
+                        "value": "Item 10"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}9"]
+                    }
+                },
+                {
+                    "id": "sItem11:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 11",
+                        "value": "Item 11"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}10"]
+                    }
+                },
+                {
+                    "id": "sItem12:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 12",
+                        "value": "Item 12"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}11"]
+                    }
+                },
+                {
+                    "id": "sItem13:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 13",
+                        "value": "Item 13"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}12"]
+                    }
+                },
+                {
+                    "id": "sItem14:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 14",
+                        "value": "Item 14"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}13"]
+                    }
+                },
+                {
+                    "id": "sItem15:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 15",
+                        "value": "Item 15"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}14"]
+                    }
+                },
+                {
+                    "id": "sItem16:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 16",
+                        "value": "Item 16"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}15"]
+                    }
+                },
+                {
+                    "id": "sItem17:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 17",
+                        "value": "Item 17"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}16"]
+                    }
+                },
+                {
+                    "id": "sItem18:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 18",
+                        "value": "Item 18"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}17"]
+                    }
+                },
+                {
+                    "id": "sItem19:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 19",
+                        "value": "Item 19"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}18"]
+                    }
+                },
+                {
+                    "id": "sItem20:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 20",
+                        "value": "Item 20"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}19"]
+                    }
+                },
+                {
+                    "id": "sItem21:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 21",
+                        "value": "Item 21"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}20"]
+                    }
+                },
+                {
+                    "id": "sItem22:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 22",
+                        "value": "Item 22"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}21"]
+                    }
+                },
+                {
+                    "id": "sItem23:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 23",
+                        "value": "Item 23"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}22"]
+                    }
+                },
+                {
+                    "id": "sItem24:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 24",
+                        "value": "Item 24"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}23"]
+                    }
+                },
+                {
+                    "id": "sItem25:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 25",
+                        "value": "Item 25"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}24"]
+                    }
+                },
+                {
+                    "id": "sItem26:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 26",
+                        "value": "Item 26"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}25"]
+                    }
+                },
+                {
+                    "id": "sItem27:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 27",
+                        "value": "Item 27"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}26"]
+                    }
+                },
+                {
+                    "id": "sItem28:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 28",
+                        "value": "Item 28"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}27"]
+                    }
+                },
+                {
+                    "id": "sItem29:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 29",
+                        "value": "Item 29"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}28"]
+                    }
+                },
+                {
+                    "id": "sItem30:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 30",
+                        "value": "Item 30"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}29"]
+                    }
+                },
+                {
+                    "id": "sItem31:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 31",
+                        "value": "Item 31"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}30"]
+                    }
+                },
+                {
+                    "id": "sItem32:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 32",
+                        "value": "Item 32"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}31"]
+                    }
+                },
+                {
+                    "id": "sItem33:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 33",
+                        "value": "Item 33"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}32"]
+                    }
+                },
+                {
+                    "id": "sItem34:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 34",
+                        "value": "Item 34"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}33"]
+                    }
+                },
+                {
+                    "id": "sItem35:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 35",
+                        "value": "Item 35"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}34"]
+                    }
+                },
+                {
+                    "id": "sItem36:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 36",
+                        "value": "Item 36"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}35"]
+                    }
+                },
+                {
+                    "id": "sItem37:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 37",
+                        "value": "Item 37"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}36"]
+                    }
+                },
+                {
+                    "id": "sItem38:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 38",
+                        "value": "Item 38"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}37"]
+                    }
+                },
+                {
+                    "id": "sItem39:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 39",
+                        "value": "Item 39"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}38"]
+                    }
+                },
+                {
+                    "id": "sItem40:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Item 40",
+                        "value": "Item 40"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMToggleJunkItem",
+                        "params": ["{i}39"]
+                    }
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "id": "sPreviousPage2:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "groupCondition": 1,
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_PreviousPage",
+                        "value": "$JunkIt_PreviousPage"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMJunkListPreviousPage"
+                    }
+                },
+                {
+                    "id": "sNextPage2:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "groupCondition": 2,
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_NextPage",
+                        "value": "$JunkIt_NextPage"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "MCMJunkListNextPage"
+                    }
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "id": "sPageCount2:JunkList",
+                    "type": "text",
+                    "text": "",
+                    "help": "",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "Page 1 of 1",
+                        "value": "Page 1 of 1"
+                    }
+                }
+            ]
+        },
+        {
+            "pageDisplayName": "$Maintenance_Page",
+            "cursorFillMode": "topToBottom",
+            "content": [
+                {
+                    "type": "header",
+                    "text": "$AutoloadSettings_Header"
+                },
+                {
+                    "id": "bEnabled:Maintenance",
+                    "type": "toggle",
+                    "text": "$Enabled",
+                    "help": "$EnabledMaintenance_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "iLoadingDelay:Maintenance",
+                    "type": "slider",
+                    "text": "$LoadingDelay",
+                    "help": "$LoadingDelayMaintenance_Help",
+                    "valueOptions": {
+                        "min": 0,
+                        "max": 600,
+                        "step": 1,
+                        "defaultValue": 0,
+                        "sourceType": "ModSettingInt",
+                        "formatString": "{0} seconds"
+                    }
+                },
+                {
+                    "id": "sLoadSettings:Maintenance",
+                    "type": "text",
+                    "text": "$LoadSettings",
+                    "help": "$LoadSettingsMaintenance_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": ""
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "Load"
+                    }
+                },
+                {
+                    "id": "sResetSettings:Maintenance",
+                    "type": "text",
+                    "text": "$ResetSettings",
+                    "help": "$ResetSettingsMaintenance_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": ""
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "Default"
+                    }
+                },
+                {
+                    "id": "bLoadSettingsonReload:Maintenance",
+                    "type": "toggle",
+                    "text": "$LoadSettingsonReload",
+                    "help": "$LoadSettingsonReloadMaintenance_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "id": "bVerbose:Maintenance",
+                    "type": "toggle",
+                    "text": "$Verbose",
+                    "help": "$VerboseMaintenance_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$AutoloadJunkList_Header",
+                    "position": 1
+                },
+                {
+                    "id": "bAutoLoadJunkListFromFile:Maintenance",
+                    "type": "toggle",
+                    "text": "$JunkIt_AutoLoadJunkListFromFile",
+                    "help": "$JunkIt_AutoLoadJunkListFromFile_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "id": "bAutoSaveJunkListToFile:Maintenance",
+                    "type": "toggle",
+                    "text": "$JunkIt_AutoSaveJunkListToFile",
+                    "help": "$JunkIt_AutoSaveJunkListToFile_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_UtilityHeader"
+                },
+                {
+                    "id": "bDebug:Maintenance",
+                    "type": "toggle",
+                    "text": "$JunkIt_DebugMode",
+                    "help": "$JunkIt_DebugMode_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "id": "bAggressiveRefresh:Utility",
+                    "type": "toggle",
+                    "text": "$JunkIt_AggressiveRefresh",
+                    "help": "$JunkIt_AggressiveRefresh_Help",
+                    "groupControl": 3,
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "id": "iAggressiveRefreshMaxInterval:Utility",
+                    "type": "slider",
+                    "text": "$JunkIt_AggressiveRefreshMaxInterval",
+                    "help": "$JunkIt_AggressiveRefreshMaxInterval_Help",
+                    "groupCondition": 3,
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt",
+                        "min": 1,
+                        "max": 60,
+                        "step": 1,
+                        "defaultValue": 10,
+                        "formatString": "{0} seconds"
+                    }
+                },
+                {
+                    "id": "bReplaceJunkListOnLoad:Utility",
+                    "type": "toggle",
+                    "text": "$JunkIt_ReplaceJunkListOnLoad",
+                    "help": "$JunkIt_ReplaceJunkListOnLoad_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": false
+                    }
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "id": "sSaveJunkListToFile:Utility",
+                    "type": "text",
+                    "text": "",
+                    "help": "$JunkIt_SaveJunkListToFile_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_SaveJunkListToFile",
+                        "value": "$JunkIt_SaveJunkListToFile"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "TriggerSaveJunkListToFile"
+                    }
+                },
+                {
+                    "id": "sLoadJunkListFromFile:Utility",
+                    "type": "text",
+                    "text": "",
+                    "help": "$JunkIt_LoadJunkListFromFile_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_LoadJunkListFromFile",
+                        "value": "$JunkIt_LoadJunkListFromFile"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "TriggerLoadJunkListFromFile"
+                    }
+                },
+                {
+                    "type": "empty"
+                },
+                {
+                    "id": "sResetJunk:Utility",
+                    "type": "text",
+                    "text": "",
+                    "help": "$JunkIt_ResetJunk_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingString",
+                        "defaultValue": "$JunkIt_ResetJunk",
+                        "value": "$JunkIt_ResetJunk"
+                    },
+                    "action": {
+                        "type": "CallFunction",
+                        "function": "ResetJunk"
+                    }
+                }
+            ]
+        }
+    ]
+}
