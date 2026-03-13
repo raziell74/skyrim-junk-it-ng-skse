@@ -4,10 +4,8 @@
 #include <list>
 #include <string>
 #include <fstream>
-#include <nlohmann/json.hpp>
 
 using namespace RE;
-using nlohmann::json;
 
 namespace JunkIt {
     class Settings {
@@ -78,8 +76,8 @@ namespace JunkIt {
 
                 MarkJunkKey = getGlobalValue("MarkJunkKey", 0x817, MarkJunkKey);
                 TransferJunkKey = getGlobalValue("TransferJunkKey", 0x818, TransferJunkKey);
-                GamepadJunkKey = getGlobalValue("GamepadJunkKey", 0x819, GamepadJunkKey);
-                GamepadTransferHoldTime = getGlobalValue("GamepadTransferHoldTime", 0x81C, GamepadTransferHoldTime);
+                GamepadJunkKey = getGlobalValue("GamepadJunkKey", 0x81C, GamepadJunkKey);
+                GamepadTransferHoldTime = getGlobalValue("GamepadTransferHoldTime", 0x81D, GamepadTransferHoldTime);
 
                 JunkTransfer.ConfirmTransfer = getGlobalBool("ConfirmTransfer", 0x808, JunkTransfer.ConfirmTransfer);
                 JunkTransfer.TransferPriority = static_cast<SortPriority>(getGlobalValue("TransferPriority", 0x80A, static_cast<float>(JunkTransfer.TransferPriority)));
@@ -161,14 +159,14 @@ namespace JunkIt {
                 NotifyOnMarkUnmark = getGlobalBool("NotifyOnMarkUnmark", 0x814, NotifyOnMarkUnmark);
                 NotifyOnJunkTransfer = getGlobalBool("NotifyOnJunkTransfer", 0x815, NotifyOnJunkTransfer);
                 NotifyOnJunkSell = getGlobalBool("NotifyOnJunkSell", 0x816, NotifyOnJunkSell);
-                NotifyLargeInventoryLag = getGlobalBool("NotifyLargeInventoryLag", 0x81D, NotifyLargeInventoryLag);
+                NotifyLargeInventoryLag = getGlobalBool("NotifyLargeInventoryLag", 0x819, NotifyLargeInventoryLag);
 
-                WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x81F, static_cast<float>(WarnInventorySizeThreshold)));
-                AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x820, AggressiveRefresh);
+                WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x821, static_cast<float>(WarnInventorySizeThreshold)));
+                AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
 
-                if (auto* form = getForm("TransferConfirmationMsg", 0x806)) TransferConfirmationMsg = form->As<BGSMessage>();
-                if (auto* form = getForm("RetrievalConfirmationMsg", 0x807)) RetrievalConfirmationMsg = form->As<BGSMessage>();
-                if (auto* form = getForm("SellConfirmationMsg", 0x805)) SellConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("TransferConfirmationMsg", 0x805)) TransferConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("RetrievalConfirmationMsg", 0x806)) RetrievalConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("SellConfirmationMsg", 0x807)) SellConfirmationMsg = form->As<BGSMessage>();
 
                 auto* goldForm = RE::TESForm::LookupByID(0xF);
                 if (goldForm) {

@@ -9,4 +9,5 @@ set(headers ${headers}
     src/JunkData.h
     src/SendUIMessage.h
     src/DIII_API.h
+    src/DIIIIntegration.h
 )

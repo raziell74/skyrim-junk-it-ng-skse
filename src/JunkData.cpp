@@ -36,8 +36,8 @@ namespace JunkIt {
         }
 
         if (auto* textDisplay = extraList->GetByType<RE::ExtraTextDisplayData>()) {
-            if (textDisplay->displayName && textDisplay->displayNameLen > 0) {
-                std::string name(textDisplay->displayName, textDisplay->displayNameLen);
+            if (textDisplay->customNameLength > 0) {
+                std::string name(textDisplay->displayName.c_str());
                 hash ^= std::hash<std::string>{}(name);
             }
         }
@@ -317,7 +317,7 @@ namespace JunkIt {
         uint32_t version;
         uint32_t length;
 
-        while (intfc->GetNextRecord(type, version, length)) {
+        while (intfc->GetNextRecordInfo(type, version, length)) {
             if (type == 'JNKT') {
                 if (version != 1) {
                     SKSE::log::error("Unknown JNKT record version: {}", version);

@@ -54,7 +54,8 @@ namespace JunkIt {
         ActiveMenuType activeMenu = GetActiveMenu();
         if (activeMenu == ActiveMenuType::kNone) return Result::kContinue;
 
-        if (ui->IsTextInputEnabled()) return Result::kContinue;
+        auto controlMap = RE::ControlMap::GetSingleton();
+        if (controlMap && controlMap->GetRuntimeData().textEntryCount > 0) return Result::kContinue;
 
         uint32_t markKey = static_cast<uint32_t>(Settings::GetMarkJunkKey());
         uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());

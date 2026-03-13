@@ -1,0 +1,14 @@
+{
+    "$schema": "https://raw.githubusercontent.com/JerryYOJ/Dynamic-Inventory-Icon-Injector-SKSE/refs/heads/master/schema.json",
+    "rules": [
+        {
+            "icon": {
+                "source": "JunkIt/icons.swf",
+                "label": "trash"
+            },
+            "match": {
+                "isJunk": true
+            }
+        }
+    ]
+}

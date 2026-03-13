@@ -1,13 +1,15 @@
 #include "junk.h"
 #include "JunkData.h"
 
+RE::MessageBoxData::~MessageBoxData() = default;
+
 namespace JunkIt {
 
     std::atomic<bool> JunkHandler::operationInProgress{ false };
 
     bool JunkHandler::WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2) {
-        std::int32_t count1 = static_cast<std::int32_t>(a_container1->GetContainerForms().size());
-        std::int32_t count2 = static_cast<std::int32_t>(a_container2->GetContainerForms().size());
+        std::int32_t count1 = a_container1->GetInventoryCount();
+        std::int32_t count2 = a_container2->GetInventoryCount();
         std::int32_t totalCount = count1 + count2;
 
         SKSE::log::info("Large Inventory Check: Total Menu Form Count: {}", totalCount);
@@ -30,8 +32,8 @@ namespace JunkIt {
             messageBoxData->buttonText.push_back(button.c_str());
         }
         messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback)));
-        messageBoxData->unk4C = 4;   // Controls message box behavior flags; 4 = standard interactive dialog
-        messageBoxData->unk38 = 10;  // Message box priority/queue ordering; 10 = foreground priority
+        messageBoxData->optionIndexOffset = 4;
+        messageBoxData->type = 10;
         messageBoxData->QueueMessage();
     }
 
@@ -62,11 +64,11 @@ namespace JunkIt {
             if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
 
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
-                SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+                SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
             if (Settings::ProtectFavorites() && entryItem->data.objDesc->IsFavorited()) {
-                SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+                SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
 
@@ -98,7 +100,7 @@ namespace JunkIt {
 
         SKSE::log::info("Finalized TransferList:");
         for (InventoryEntryData* entryData : sortFormData) {
-            const TESBoundObject* entryObject = entryData->GetObject();
+            const TESBoundObject* entryObject = entryData->object;
             if (!entryObject) continue;
             transferList.push_back(entryData);
             SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
@@ -136,15 +138,15 @@ namespace JunkIt {
             if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
 
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
-                SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+                SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
             if (Settings::ProtectFavorites() && entryItem->data.objDesc->IsFavorited()) {
-                SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+                SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
             if (Settings::ProtectEnchanted() && entryItem->data.objDesc->IsEnchanted()) {
-                SKSE::log::info("Junk Item Enchanted - Skipping {}", entryItem->data.objDesc->GetObject()->GetName());
+                SKSE::log::info("Junk Item Enchanted - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
 
@@ -176,7 +178,7 @@ namespace JunkIt {
 
         SKSE::log::info("Finalized SellList:");
         for (InventoryEntryData* entryData : sortFormData) {
-            const TESBoundObject* entryObject = entryData->GetObject();
+            const TESBoundObject* entryObject = entryData->object;
             if (!entryObject) continue;
             sellList.push_back(entryData);
             SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
@@ -235,7 +237,7 @@ namespace JunkIt {
         }
 
         auto player = RE::PlayerCharacter::GetSingleton();
-        float playerCarryWeight = player->GetActorValue(RE::ActorValue::kCarryWeight);
+        float playerCarryWeight = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
 
         TESObjectREFR* transferContainer = GetContainerMenuContainer();
         if (!transferContainer) {
@@ -279,16 +281,16 @@ namespace JunkIt {
                         if (choice == 0) {
                             ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
                             auto p = RE::PlayerCharacter::GetSingleton();
-                            if (p->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
-                                p->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
+                            if (p->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
+                                p->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
                             }
                         }
                         operationInProgress.store(false);
                     });
             } else {
                 ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
-                if (player->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
-                    player->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
+                if (player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
+                    player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
                 }
                 operationInProgress.store(false);
             }
@@ -306,16 +308,16 @@ namespace JunkIt {
                         if (choice == 0) {
                             ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
                             auto p = RE::PlayerCharacter::GetSingleton();
-                            if (p->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
-                                p->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
+                            if (p->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
+                                p->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
                             }
                         }
                         operationInProgress.store(false);
                     });
             } else {
                 ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
-                if (player->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
-                    player->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
+                if (player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
+                    player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
                 }
                 operationInProgress.store(false);
             }
@@ -343,7 +345,9 @@ namespace JunkIt {
             for (auto* entryData : transferList) {
                 if (!entryData || !entryData->object) continue;
                 
-                Count itemCount = transferContainer->GetItemCount(entryData->object);
+                auto invCounts = transferContainer->GetInventoryCounts();
+                auto it = invCounts.find(entryData->object);
+                Count itemCount = (it != invCounts.end()) ? it->second : 0;
                 if (itemCount > 0) {
                     TransferItem(entryData->object, transferContainer, player, reason, itemCount, entryData);
                     totalTransferred += itemCount;
@@ -363,8 +367,8 @@ namespace JunkIt {
 
             if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
                 Actor* transferActor = transferContainer->As<Actor>();
-                float maxWeight = transferActor->GetActorValue(RE::ActorValue::kCarryWeight);
-                float currentWeight = transferContainer->GetTotalItemWeight();
+                float maxWeight = transferActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
+                float currentWeight = transferContainer->GetWeightInContainer();
                 SKSE::log::info("[NPC Mode] CarryWeight {}/{}", currentWeight, maxWeight);
 
                 Count totalPossibleTransferred = 0;
@@ -372,7 +376,9 @@ namespace JunkIt {
                 for (auto* entryData : transferList) {
                     if (!entryData || !entryData->object) continue;
                     
-                    Count iCount = player->GetItemCount(entryData->object);
+                    auto playerInvCounts = player->GetInventoryCounts();
+                    auto pIt = playerInvCounts.find(entryData->object);
+                    Count iCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
                     Count iTotalCount = iCount;
                     totalPossibleTransferred += iCount;
 
@@ -407,10 +413,12 @@ namespace JunkIt {
                     }
                 }
             } else {
+                auto playerInvCounts = player->GetInventoryCounts();
                 for (auto* entryData : transferList) {
                     if (!entryData || !entryData->object) continue;
                     
-                    Count itemCount = player->GetItemCount(entryData->object);
+                    auto pIt = playerInvCounts.find(entryData->object);
+                    Count itemCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
                     if (itemCount > 0) {
                         TransferItem(entryData->object, player, transferContainer, reason, itemCount, entryData);
                         totalTransferred += itemCount;
@@ -445,7 +453,7 @@ namespace JunkIt {
         }
 
         auto player = RE::PlayerCharacter::GetSingleton();
-        float playerCarryWeight = player->GetActorValue(RE::ActorValue::kCarryWeight);
+        float playerCarryWeight = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
 
         auto sellList = BuildSellList();
 
@@ -496,10 +504,12 @@ namespace JunkIt {
 
         std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
+        auto playerInvCounts = player->GetInventoryCounts();
         for (auto* entryData : sellList) {
             if (!entryData || !entryData->object) continue;
 
-            Count iCount = player->GetItemCount(entryData->object);
+            auto pIt = playerInvCounts.find(entryData->object);
+            Count iCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
             totalPossibleToSell += iCount;
 
             SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", entryData->object->GetName(), iCount);
@@ -559,7 +569,9 @@ namespace JunkIt {
         Actor* vendorActor = vendorActorRef->As<Actor>();
 
         Count goldToGimme = RoundNumber(totalSellValue);
-        Count vendorActorGold = vendorActor->GetItemCount(gold001);
+        auto vendorInvCounts = vendorActorRef->GetInventoryCounts();
+        auto vIt = vendorInvCounts.find(gold001);
+        Count vendorActorGold = (vIt != vendorInvCounts.end()) ? vIt->second : 0;
         if (vendorActorGold > 0) {
             Count onHandGoldToGimme = goldToGimme;
             if (vendorActorGold < goldToGimme) {
@@ -571,7 +583,9 @@ namespace JunkIt {
         }
 
         if (goldToGimme > 0) {
-            Count containerGold = vendorContainer->GetItemCount(gold001);
+            auto containerInvCounts = vendorContainer->GetInventoryCounts();
+            auto cIt = containerInvCounts.find(gold001);
+            Count containerGold = (cIt != containerInvCounts.end()) ? cIt->second : 0;
             if (containerGold > 0) {
                 Count containerGoldToGimme = goldToGimme;
                 if (containerGold < goldToGimme) {
@@ -621,8 +635,8 @@ namespace JunkIt {
             }
         }
 
-        if (player->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
-            player->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
+        if (player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
+            player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
         }
 
         if (Settings::GetAggressiveRefresh()) {
@@ -658,7 +672,7 @@ namespace JunkIt {
             return nullptr;
         }
 
-        TESBoundObject* itemObject = inventoryEntry->GetObject();
+        TESBoundObject* itemObject = inventoryEntry->object;
         if (!itemObject) {
             SKSE::log::error("Error getting item as object for {}", inventoryEntry->GetDisplayName());
             DebugNotification("JunkIt - Failed to mark item as junk!");
@@ -814,7 +828,7 @@ namespace JunkIt {
             InventoryEntryData* entryData = entryItem->data.objDesc;
             if (!entryData) continue;
 
-            TESBoundObject* entryObject = entryData->GetObject();
+            TESBoundObject* entryObject = entryData->object;
             if (!entryObject) continue;
 
             if (entryObject->GetFormID() == a_form->GetFormID()) {

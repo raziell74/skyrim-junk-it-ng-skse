@@ -3,6 +3,18 @@
 #include "junk.h"
 #include "JunkData.h"
 #include "event.h"
+#include "DIIIIntegration.h"
+
+void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
+	if (msg->type == DIII::kMessage_GetAPI) {
+		auto* api = static_cast<DIII::IAPI*>(msg->data);
+		api->RegisterCondition("isJunk",
+			[](const Json::Value&, RE::FormType) -> std::unique_ptr<DIII::ICondition> {
+				return std::make_unique<JunkIt::IsJunkCondition>();
+			});
+		SKSE::log::info("Registered DIII condition: isJunk");
+	}
+}
 
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 	switch (a_msg->type) {
@@ -104,6 +116,8 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     SKSE::Init(skse);
 	SetupLog();
+
+	DIII::ListenForRegistration(&DIIIMessageHandler);
 
     auto messaging = SKSE::GetMessagingInterface();
 	if (!messaging->RegisterListener("SKSE", MessageHandler)) {
