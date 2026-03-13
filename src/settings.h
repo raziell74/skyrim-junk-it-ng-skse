@@ -45,21 +45,49 @@ namespace JunkIt {
                 SKSE::log::info(" ");
                 SKSE::log::info("Updating Settings...");
 
+                auto getForm = [](const char* formDesc, uint32_t formId) -> TESForm* {
+                    TESForm* form = FormUtil::Form::GetFormFromMod("JunkIt.esp", formId);
+                    if (!form) {
+                        SKSE::log::error("Failed to load {} (0x{:X}) from JunkIt.esp", formDesc, formId);
+                    }
+                    return form;
+                };
+
+                auto getGlobalValue = [&](const char* formDesc, uint32_t formId, float fallback) -> float {
+                    TESForm* form = getForm(formDesc, formId);
+                    TESGlobal* global = form ? form->As<TESGlobal>() : nullptr;
+                    if (!global) {
+                        SKSE::log::error("Failed to cast {} (0x{:X}) to TESGlobal, using default {}", formDesc, formId, fallback);
+                        return fallback;
+                    }
+                    return global->value;
+                };
+
+                auto getGlobalBool = [&](const char* formDesc, uint32_t formId, bool fallback) -> bool {
+                    TESForm* form = getForm(formDesc, formId);
+                    TESGlobal* global = form ? form->As<TESGlobal>() : nullptr;
+                    if (!global) {
+                        SKSE::log::error("Failed to cast {} (0x{:X}) to TESGlobal, using default {}", formDesc, formId, fallback);
+                        return fallback;
+                    }
+                    return global->value != 0;
+                };
+
                 std::string priorityString = "";
-                JunkList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x804)->As<BGSListForm>();
-                UnjunkedList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80E)->As<BGSListForm>();
-                IsJunkKYWD = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x802)->As<BGSKeyword>();
 
-                MarkJunkKey = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x817)->As<TESGlobal>()->value;
-                TransferJunkKey = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x818)->As<TESGlobal>()->value;
+                if (auto* form = getForm("JunkList", 0x804)) JunkList = form->As<BGSListForm>();
+                if (auto* form = getForm("UnjunkedList", 0x80E)) UnjunkedList = form->As<BGSListForm>();
+                if (auto* form = getForm("JunkHistory", 0x80F)) JunkHistory = form->As<BGSListForm>();
+                if (auto* form = getForm("IsJunkKYWD", 0x802)) IsJunkKYWD = form->As<BGSKeyword>();
 
-                TESGlobal* ConfirmTransfer = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x808)->As<TESGlobal>();
-                TESGlobal* TransferPriority = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80A)->As<TESGlobal>();
-                BGSListForm* TransferList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80C)->As<BGSListForm>();
+                MarkJunkKey = getGlobalValue("MarkJunkKey", 0x817, MarkJunkKey);
+                TransferJunkKey = getGlobalValue("TransferJunkKey", 0x818, TransferJunkKey);
+                GamepadJunkKey = getGlobalValue("GamepadJunkKey", 0x819, GamepadJunkKey);
+                GamepadTransferHoldTime = getGlobalValue("GamepadTransferHoldTime", 0x81C, GamepadTransferHoldTime);
 
-                JunkTransfer.ConfirmTransfer = ConfirmTransfer->value != 0;
-                JunkTransfer.TransferPriority = static_cast<SortPriority>(TransferPriority->value);
-                JunkTransfer.TransferList = TransferList;
+                JunkTransfer.ConfirmTransfer = getGlobalBool("ConfirmTransfer", 0x808, JunkTransfer.ConfirmTransfer);
+                JunkTransfer.TransferPriority = static_cast<SortPriority>(getGlobalValue("TransferPriority", 0x80A, static_cast<float>(JunkTransfer.TransferPriority)));
+                if (auto* form = getForm("TransferList", 0x80C)) JunkTransfer.TransferList = form->As<BGSListForm>();
 
                 // Translate the SortPriority to a string for log
                 switch (JunkTransfer.TransferPriority) {
@@ -92,13 +120,9 @@ namespace JunkIt {
                     priorityString
                 );
 
-                TESGlobal* ConfirmSell = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x809)->As<TESGlobal>();
-                TESGlobal* SellPriority = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80B)->As<TESGlobal>();
-                BGSListForm* SellList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80D)->As<BGSListForm>();
-
-                JunkSell.ConfirmSell = ConfirmSell->value != 0;
-                JunkSell.SellPriority = static_cast<SortPriority>(SellPriority->value);
-                JunkSell.SellList = SellList;
+                JunkSell.ConfirmSell = getGlobalBool("ConfirmSell", 0x809, JunkSell.ConfirmSell);
+                JunkSell.SellPriority = static_cast<SortPriority>(getGlobalValue("SellPriority", 0x80B, static_cast<float>(JunkSell.SellPriority)));
+                if (auto* form = getForm("SellList", 0x80D)) JunkSell.SellList = form->As<BGSListForm>();
 
                 // Translate the SortPriority to a string for log
                 switch (JunkSell.SellPriority) {
@@ -131,13 +155,9 @@ namespace JunkIt {
                     priorityString
                 );
 
-                TESGlobal* ProtectEquipped = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x810)->As<TESGlobal>();
-                TESGlobal* ProtectFavorites = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x811)->As<TESGlobal>();
-                TESGlobal* ProtectEnchanted = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x813)->As<TESGlobal>();
-
-                JunkProtection.ProtectEquipped = ProtectEquipped->value != 0;
-                JunkProtection.ProtectFavorites = ProtectFavorites->value != 0;
-                JunkProtection.ProtectEnchanted = ProtectEnchanted->value != 0;
+                JunkProtection.ProtectEquipped = getGlobalBool("ProtectEquipped", 0x810, JunkProtection.ProtectEquipped);
+                JunkProtection.ProtectFavorites = getGlobalBool("ProtectFavorites", 0x811, JunkProtection.ProtectFavorites);
+                JunkProtection.ProtectEnchanted = getGlobalBool("ProtectEnchanted", 0x813, JunkProtection.ProtectEnchanted);
 
                 SKSE::log::info(
                     "Protection Settings | ProtectEquipped: {} | ProtectFavorites: {} | ProtectEnchanted: {}",
@@ -146,14 +166,44 @@ namespace JunkIt {
                     JunkProtection.ProtectEnchanted
                 );
 
-                TESGlobal* AutoLoadJunkListFromFileGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81A)->As<TESGlobal>();
-                AutoLoadJunkListFromFile = AutoLoadJunkListFromFileGlobal->value != 0;
+                NotifyOnMarkUnmark = getGlobalBool("NotifyOnMarkUnmark", 0x814, NotifyOnMarkUnmark);
+                NotifyOnJunkTransfer = getGlobalBool("NotifyOnJunkTransfer", 0x815, NotifyOnJunkTransfer);
+                NotifyOnJunkSell = getGlobalBool("NotifyOnJunkSell", 0x816, NotifyOnJunkSell);
+                NotifyLargeInventoryLag = getGlobalBool("NotifyLargeInventoryLag", 0x81D, NotifyLargeInventoryLag);
 
-                TESGlobal* AutoSaveJunkListToFileGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81B)->As<TESGlobal>();
-                AutoSaveJunkListToFile = AutoSaveJunkListToFileGlobal->value != 0;
+                WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x81F, static_cast<float>(WarnInventorySizeThreshold)));
+                AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x820, AggressiveRefresh);
 
-                TESGlobal* ReplaceJunkListOnLoadGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81E)->As<TESGlobal>();
-                ReplaceJunkListOnLoad = ReplaceJunkListOnLoadGlobal->value != 0;
+                if (auto* form = getForm("TransferConfirmationMsg", 0x806)) TransferConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("RetrievalConfirmationMsg", 0x807)) RetrievalConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("SellConfirmationMsg", 0x805)) SellConfirmationMsg = form->As<BGSMessage>();
+
+                auto* goldForm = RE::TESForm::LookupByID(0xF);
+                if (goldForm) {
+                    Gold001 = goldForm->As<TESObjectMISC>();
+                } else {
+                    SKSE::log::error("Failed to lookup Gold001 (0xF)");
+                }
+
+                SKSE::log::info(
+                    "Notification Settings | NotifyOnMarkUnmark: {} | NotifyOnJunkTransfer: {} | NotifyOnJunkSell: {} | NotifyLargeInventoryLag: {}",
+                    NotifyOnMarkUnmark,
+                    NotifyOnJunkTransfer,
+                    NotifyOnJunkSell,
+                    NotifyLargeInventoryLag
+                );
+
+                SKSE::log::info(
+                    "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {}",
+                    MarkJunkKey,
+                    TransferJunkKey,
+                    GamepadJunkKey,
+                    GamepadTransferHoldTime
+                );
+
+                AutoLoadJunkListFromFile = getGlobalBool("AutoLoadJunkListFromFile", 0x81A, AutoLoadJunkListFromFile);
+                AutoSaveJunkListToFile = getGlobalBool("AutoSaveJunkListToFile", 0x81B, AutoSaveJunkListToFile);
+                ReplaceJunkListOnLoad = getGlobalBool("ReplaceJunkListOnLoad", 0x81E, ReplaceJunkListOnLoad);
 
                 SKSE::log::info(
                     "Auto Load/Save Settings | AutoLoadJunkListFromFile: {} | AutoSaveJunkListToFile: {} | ReplaceJunkListOnLoad: {}",
@@ -275,6 +325,7 @@ namespace JunkIt {
 
             [[nodiscard]] static BGSListForm* GetJunkList() { return JunkList; }
             [[nodiscard]] static BGSListForm* GetUnjunkedList() { return UnjunkedList; }
+            [[nodiscard]] static BGSListForm* GetJunkHistory() { return JunkHistory; }
             [[nodiscard]] static BGSKeyword* GetIsJunkKYWD() { return IsJunkKYWD; }
 
             [[nodiscard]] static bool ConfirmTransfer() { return JunkTransfer.ConfirmTransfer; }
@@ -291,6 +342,21 @@ namespace JunkIt {
 
             [[nodiscard]] static float GetMarkJunkKey() { return MarkJunkKey; }
             [[nodiscard]] static float GetTransferJunkKey() { return TransferJunkKey; }
+            [[nodiscard]] static float GetGamepadJunkKey() { return GamepadJunkKey; }
+            [[nodiscard]] static float GetGamepadTransferHoldTime() { return GamepadTransferHoldTime; }
+
+            [[nodiscard]] static bool GetNotifyOnMarkUnmark() { return NotifyOnMarkUnmark; }
+            [[nodiscard]] static bool GetNotifyOnJunkTransfer() { return NotifyOnJunkTransfer; }
+            [[nodiscard]] static bool GetNotifyOnJunkSell() { return NotifyOnJunkSell; }
+            [[nodiscard]] static bool GetNotifyLargeInventoryLag() { return NotifyLargeInventoryLag; }
+            [[nodiscard]] static std::int32_t GetWarnInventorySizeThreshold() { return WarnInventorySizeThreshold; }
+            [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
+
+            [[nodiscard]] static BGSMessage* GetTransferConfirmationMsg() { return TransferConfirmationMsg; }
+            [[nodiscard]] static BGSMessage* GetRetrievalConfirmationMsg() { return RetrievalConfirmationMsg; }
+            [[nodiscard]] static BGSMessage* GetSellConfirmationMsg() { return SellConfirmationMsg; }
+
+            [[nodiscard]] static TESObjectMISC* GetGold001() { return Gold001; }
 
             [[nodiscard]] static bool GetAutoSaveJunkListToFile() { return AutoSaveJunkListToFile; }
             [[nodiscard]] static bool GetAutoLoadJunkListFromFile() { return AutoLoadJunkListFromFile; }
@@ -299,16 +365,32 @@ namespace JunkIt {
 
             static inline float MarkJunkKey = 0x32;
             static inline float TransferJunkKey = 0x49;
+            static inline float GamepadJunkKey = 270.0f;
+            static inline float GamepadTransferHoldTime = 2.0f;
             
             static inline bool AutoSaveJunkListToFile = false;
             static inline bool AutoLoadJunkListFromFile = false;
             static inline bool ReplaceJunkListOnLoad = false;
 
+            static inline bool NotifyOnMarkUnmark = true;
+            static inline bool NotifyOnJunkTransfer = true;
+            static inline bool NotifyOnJunkSell = true;
+            static inline bool NotifyLargeInventoryLag = true;
+            static inline std::int32_t WarnInventorySizeThreshold = 500;
+            static inline bool AggressiveRefresh = false;
+
             static inline BGSKeyword* IsJunkKYWD;
             static inline BGSListForm* JunkList;
             static inline BGSListForm* UnjunkedList;
+            static inline BGSListForm* JunkHistory;
             static inline JunkTransfer JunkTransfer;
             static inline JunkSell JunkSell;
             static inline JunkProtection JunkProtection;
+
+            static inline BGSMessage* TransferConfirmationMsg = nullptr;
+            static inline BGSMessage* RetrievalConfirmationMsg = nullptr;
+            static inline BGSMessage* SellConfirmationMsg = nullptr;
+
+            static inline TESObjectMISC* Gold001 = nullptr;
     };   
 }
