@@ -19,11 +19,14 @@ namespace JunkIt {
         uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
 
         if (keyCode == markKey) {
+            SKSE::log::info("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", keyCode);
             JunkHandler::ToggleIsJunk();
         } else if (keyCode == transferKey) {
             if (activeMenu == ActiveMenuType::kContainer) {
+                SKSE::log::info("Transfer Junk key pressed (KeyCode: 0x{:X}) in Container menu", keyCode);
                 JunkHandler::TransferJunk();
             } else if (activeMenu == ActiveMenuType::kBarter) {
+                SKSE::log::info("Sell Junk key pressed (KeyCode: 0x{:X}) in Barter menu", keyCode);
                 JunkHandler::SellJunk();
             }
         }
@@ -33,11 +36,14 @@ namespace JunkIt {
         float holdThreshold = Settings::GetGamepadTransferHoldTime() - 1.0f;
 
         if (holdTime < holdThreshold) {
+            SKSE::log::info("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
             JunkHandler::ToggleIsJunk();
         } else {
             if (activeMenu == ActiveMenuType::kContainer) {
+                SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
                 JunkHandler::TransferJunk();
             } else if (activeMenu == ActiveMenuType::kBarter) {
+                SKSE::log::info("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
                 JunkHandler::SellJunk();
             }
         }

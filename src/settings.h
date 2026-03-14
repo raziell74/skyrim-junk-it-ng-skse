@@ -191,6 +191,12 @@ namespace JunkIt {
                     GamepadTransferHoldTime
                 );
 
+                SKSE::log::info(
+                    "Misc Settings | WarnInventorySizeThreshold: {} | AggressiveRefresh: {}",
+                    WarnInventorySizeThreshold,
+                    AggressiveRefresh
+                );
+
                 SKSE::log::info(" ");
             }
 
