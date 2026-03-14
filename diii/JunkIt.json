@@ -2,6 +2,10 @@
     "rules": [
         {
             "icon": { "source": "JunkIt/diiiIcon.swf", "label": "QuestItemIcon" },
+            "subTypeDisplay": "Junk",
+            "iconSource": "JunkIt/icons.swf",
+            "iconLabel": "trash",
+            "iconColor": "#717171",
             "match": {
                 "isJunk": true
             }

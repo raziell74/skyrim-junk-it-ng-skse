@@ -27,6 +27,29 @@ namespace JunkIt {
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
+        RE::GFxMovieView* underlyingMovie = nullptr;
+        const auto ui = RE::UI::GetSingleton();
+        if (ui) {
+            auto containerMenu = ui->GetMenu<ContainerMenu>();
+            if (containerMenu && containerMenu->uiMovie) {
+                underlyingMovie = containerMenu->uiMovie.get();
+            } else {
+                auto barterMenu = ui->GetMenu<BarterMenu>();
+                if (barterMenu && barterMenu->uiMovie)
+                    underlyingMovie = barterMenu->uiMovie.get();
+            }
+        }
+
+        if (underlyingMovie)
+            underlyingMovie->SetVisible(false);
+
+        auto wrappedCallback = [originalCallback = std::move(callback), underlyingMovie](unsigned int choice) {
+            if (originalCallback)
+                originalCallback(choice);
+            if (underlyingMovie)
+                underlyingMovie->SetVisible(true);
+        };
+
         auto messageBoxData = new RE::MessageBoxData();
         messageBoxData->bodyText = bodyText;
         for (const auto& button : buttons) {
@@ -34,7 +57,8 @@ namespace JunkIt {
         }
         messageBoxData->optionIndexOffset = 4;
         messageBoxData->type = 10;
-        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback), messageBoxData->optionIndexOffset));
+        messageBoxData->menuDepth = 10;
+        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(wrappedCallback), messageBoxData->optionIndexOffset));
         messageBoxData->QueueMessage();
     }
 
@@ -197,7 +221,7 @@ namespace JunkIt {
     void JunkHandler::TransferJunk() {
         SKSE::log::info(" ");
         SKSE::log::info("==== Starting Junk Transfer Operation ====");
-        
+
         bool expected = false;
         if (!operationInProgress.compare_exchange_strong(expected, true)) {
             SKSE::log::info("TransferJunk blocked: another operation is already in progress");
@@ -440,15 +464,75 @@ namespace JunkIt {
 
         RE::SendUIMessage::SendInventoryUpdateMessage(player, nullptr);
 
-        if (Settings::GetAggressiveRefresh()) {
-            UIUtil::ItemList::Refresh();
+        UIUtil::ItemList::Refresh();
+
+        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInSource;
+        TESObjectREFR* verifySourceRef = nullptr;
+        if (menuView == 0) {
+            verifySourceRef = transferContainer;
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) continue;
+                expectedInSource.push_back({ entryData->object, 0 });
+            }
+        } else if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
+            verifySourceRef = player;
+            auto playerInvCounts = player->GetInventoryCounts();
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) continue;
+                auto it = playerInvCounts.find(entryData->object);
+                Count remaining = (it != playerInvCounts.end()) ? it->second : 0;
+                expectedInSource.push_back({ entryData->object, remaining });
+            }
+        } else {
+            verifySourceRef = player;
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) continue;
+                expectedInSource.push_back({ entryData->object, 0 });
+            }
         }
+        if (verifySourceRef && !expectedInSource.empty())
+            ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource));
+    }
+
+    namespace {
+        void VerifyAndDelayedRefreshImpl(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, int attempt) {
+            constexpr int maxAttempts = 30;
+            bool verified = true;
+            if (sourceRef && !expectedCountsInSource.empty()) {
+                auto counts = sourceRef->GetInventoryCounts();
+                for (const auto& [obj, expected] : expectedCountsInSource) {
+                    auto it = counts.find(obj);
+                    std::int32_t actual = (it != counts.end()) ? it->second : 0;
+                    if (actual != expected) {
+                        verified = false;
+                        break;
+                    }
+                }
+            }
+            if (verified || attempt >= maxAttempts) {
+                UIUtil::ItemList::Refresh();
+                return;
+            }
+            auto* ti = SKSE::GetTaskInterface();
+            if (ti)
+                ti->AddUITask([sourceRef, expectedCountsInSource, attempt]() { VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, attempt + 1); });
+            else
+                UIUtil::ItemList::Refresh();
+        }
+    }
+
+    void JunkHandler::ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource) {
+        auto* ti = SKSE::GetTaskInterface();
+        if (ti)
+            ti->AddUITask([sourceRef, expectedCountsInSource]() { VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, 0); });
+        else
+            UIUtil::ItemList::Refresh();
     }
 
     void JunkHandler::SellJunk() {
         SKSE::log::info(" ");
         SKSE::log::info("==== Starting Junk Sell Operation ====");
-        
+
         bool expected = false;
         if (!operationInProgress.compare_exchange_strong(expected, true)) {
             SKSE::log::info("SellJunk blocked: another operation is already in progress");
@@ -672,10 +756,16 @@ namespace JunkIt {
 
         RE::SendUIMessage::SendInventoryUpdateMessage(player, nullptr);
 
-        if (Settings::GetAggressiveRefresh()) {
-            UIUtil::ItemList::Refresh();
+        UIUtil::ItemList::Refresh();
+
+        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInPlayer;
+        for (const auto& [entryData, count] : itemsToSell) {
+            if (entryData && entryData->object && count > 0)
+                expectedInPlayer.push_back({ entryData->object, 0 });
         }
-        
+        if (!expectedInPlayer.empty())
+            ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInPlayer));
+
         SKSE::log::info("---- Sale Execution Complete ----");
     }
 
