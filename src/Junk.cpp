@@ -592,16 +592,33 @@ namespace JunkIt {
         RE::GFxValue gfxVendorGold, gfxSellMult;
         menu->uiMovie->GetVariable(&gfxVendorGold, "_root.Menu_mc._vendorGold");
         menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc._sellMult");
+        
         float vendorGoldDisplay = static_cast<float>(gfxVendorGold.GetNumber());
         float sellMult = static_cast<float>(gfxSellMult.GetNumber());
+
+        if (sellMult <= 0.0f) {
+            SKSE::log::warn("Vendor sell multiplier from _sellMult is invalid ({}), trying fSellMult...", sellMult);
+            menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc.fSellMult");
+            sellMult = static_cast<float>(gfxSellMult.GetNumber());
+            if (sellMult > 0.0f) {
+                SKSE::log::info("Successfully read fSellMult: {}", sellMult);
+            } else {
+                SKSE::log::error("Both _sellMult and fSellMult failed, using fallback 0.5");
+                sellMult = 0.5f;
+            }
+        }
 
         SKSE::log::info("Vendor Gold: {}", vendorGoldDisplay);
         SKSE::log::info("Vendor Sell Mult: {}", sellMult);
 
+        if (sellMult <= 0.0f) {
+            SKSE::log::warn("Vendor sell multiplier is invalid ({}), barter prices may be incorrect!", sellMult);
+        }
+
         Count totalToSell = 0;
         Count totalPossibleToSell = 0;
         float calculatedVendorGold = vendorGoldDisplay;
-        float totalSellValue = 0;
+        Count totalSellValue = 0;
 
         std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
@@ -616,21 +633,22 @@ namespace JunkIt {
             SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", entryData->object->GetName(), iCount);
 
             if (iCount > 0) {
-                float itemGoldValue = static_cast<float>(entryData->GetValue());
-                float sellValue = itemGoldValue * sellMult;
-                float goldDifferential = calculatedVendorGold - (sellValue * iCount);
+                Count adjustedValue = static_cast<Count>(std::floor(
+                    static_cast<float>(entryData->GetValue()) * sellMult + 0.5f));
+                float goldDifferential = calculatedVendorGold - static_cast<float>(adjustedValue * iCount);
 
-                while (RoundNumber(goldDifferential) <= 0 && iCount > 0) {
+                while (goldDifferential < 0.0f && iCount > 0) {
                     iCount -= 1;
-                    goldDifferential = calculatedVendorGold - (sellValue * iCount);
+                    goldDifferential = calculatedVendorGold - static_cast<float>(adjustedValue * iCount);
                 }
 
                 if (iCount > 0) {
-                    calculatedVendorGold -= sellValue * iCount;
-                    totalSellValue += sellValue * iCount;
+                    Count itemTotal = adjustedValue * iCount;
+                    calculatedVendorGold -= static_cast<float>(itemTotal);
+                    totalSellValue += itemTotal;
                     totalToSell += iCount;
                     itemsToSell.push_back({entryData, iCount});
-                    SKSE::log::info("Sell {} {} for {} gold", iCount, entryData->object->GetName(), sellValue * iCount);
+                    SKSE::log::info("Sell {} {} for {} gold ({} gold per item)", iCount, entryData->object->GetName(), itemTotal, adjustedValue);
                 }
             }
         }
@@ -647,11 +665,11 @@ namespace JunkIt {
             return;
         }
 
-        SKSE::log::info("Sale Summary: Selling {} items for {} gold (Vendor will have {} gold remaining)", totalToSell, RoundNumber(totalSellValue), RoundNumber(calculatedVendorGold));
+        SKSE::log::info("Sale Summary: Selling {} items for {} gold (Vendor will have {} gold remaining)", totalToSell, totalSellValue, RoundNumber(calculatedVendorGold));
 
         if (Settings::ConfirmSell()) {
             SKSE::log::info("Showing confirmation dialog for sale");
-            std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, RoundNumber(totalSellValue));
+            std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, totalSellValue);
             ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
                 [itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight](unsigned int choice) {
                     if (choice == 0) {
@@ -671,7 +689,7 @@ namespace JunkIt {
         SKSE::log::info(" ");
     }
 
-    void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, float totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
+    void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
         SKSE::log::info("---- Executing Junk Sale ----");
         auto player = RE::PlayerCharacter::GetSingleton();
 
@@ -684,8 +702,8 @@ namespace JunkIt {
         TESObjectMISC* gold001 = Settings::GetGold001();
         Actor* vendorActor = vendorActorRef->As<Actor>();
 
-        SKSE::log::info("Transferring {} gold from vendor to player...", RoundNumber(totalSellValue));
-        Count goldToGimme = RoundNumber(totalSellValue);
+        SKSE::log::info("Transferring {} gold from vendor to player...", totalSellValue);
+        Count goldToGimme = totalSellValue;
         auto vendorInvCounts = vendorActorRef->GetInventoryCounts();
         auto vIt = vendorInvCounts.find(gold001);
         Count vendorActorGold = (vIt != vendorInvCounts.end()) ? vIt->second : 0;
@@ -719,7 +737,7 @@ namespace JunkIt {
             }
         }
 
-        Count totalVendorGoldLeft = RoundNumber(vendorGoldDisplay - totalSellValue);
+        Count totalVendorGoldLeft = static_cast<Count>(vendorGoldDisplay) - totalSellValue;
         if (totalVendorGoldLeft < 0) totalVendorGoldLeft = 0;
 
         const auto ui = RE::UI::GetSingleton();
@@ -740,15 +758,15 @@ namespace JunkIt {
         }
 
         SKSE::log::info("Adding {} Speech experience", totalSellValue);
-        player->AddSkillExperience(RE::ActorValue::kSpeech, totalSellValue);
+        player->AddSkillExperience(RE::ActorValue::kSpeech, static_cast<float>(totalSellValue));
 
         if (totalToSell >= totalPossibleToSell) {
-            SKSE::log::info("Sold ALL {} Junk Items for {} Gold", totalToSell, RoundNumber(totalSellValue));
+            SKSE::log::info("Sold ALL {} Junk Items for {} Gold", totalToSell, totalSellValue);
             if (Settings::GetNotifyOnJunkSell()) {
                 DebugNotification("JunkIt - Sold All Junk Items!");
             }
         } else {
-            SKSE::log::info("Sold {} of {} Junk Items for {} Gold (vendor gold limit reached)", totalToSell, totalPossibleToSell, RoundNumber(totalSellValue));
+            SKSE::log::info("Sold {} of {} Junk Items for {} Gold (vendor gold limit reached)", totalToSell, totalPossibleToSell, totalSellValue);
             if (Settings::GetNotifyOnJunkSell()) {
                 std::string msg = fmt::format("JunkIt - Sold {} Junk Items!", totalToSell);
                 DebugNotification(msg.c_str());
@@ -819,11 +837,6 @@ namespace JunkIt {
         std::string itemName = itemForm->GetName();
         std::string hexFormId = FormUtil::Form::GetFormConfigString(itemForm);
 
-        // if (itemForm->GetFormType() == FormType::Light) {
-        //     DebugNotification("JunkIt - Lights cannot be marked as Junk");
-        //     return nullptr;
-        // }
-
         if (inventoryEntry->IsQuestObject()) {
             SKSE::log::info("Cannot mark quest item {} [{}] as junk", itemName, hexFormId);
             auto& junkManager = JunkDataManager::GetSingleton();
@@ -833,26 +846,51 @@ namespace JunkIt {
             }
         }
 
-        if (Settings::ProtectEquipped() && inventoryEntry->IsWorn()) {
-            SKSE::log::info("Cannot mark equipped item {} [{}] as junk", itemName, hexFormId);
-            auto& junkManager = JunkDataManager::GetSingleton();
-            if (!junkManager.IsJunk(inventoryEntry)) {
-                DebugNotification("JunkIt - Equipped Items are protected and cannot be marked as Junk");
-                return nullptr;
-            }
-        }
-
-        if (Settings::ProtectFavorites() && inventoryEntry->IsFavorited()) {
-            SKSE::log::info("Cannot mark favorited item {} [{}] as junk", itemName, hexFormId);
-            auto& junkManager = JunkDataManager::GetSingleton();
-            if (!junkManager.IsJunk(inventoryEntry)) {
-                DebugNotification("JunkIt - Favorited Items are protected and cannot be marked as Junk");
-                return nullptr;
-            }
-        }
-
         auto& junkManager = JunkDataManager::GetSingleton();
         bool isJunk = junkManager.IsJunk(inventoryEntry);
+
+        if (!isJunk) {
+            bool needsConfirmation = false;
+            std::string protectionReason;
+
+            if (Settings::ProtectEquipped() && inventoryEntry->IsWorn()) {
+                SKSE::log::info("Item is equipped and protected: {} [{}]", itemName, hexFormId);
+                needsConfirmation = true;
+                protectionReason = "equipped";
+            } else if (Settings::ProtectFavorites() && inventoryEntry->IsFavorited()) {
+                SKSE::log::info("Item is favorited and protected: {} [{}]", itemName, hexFormId);
+                needsConfirmation = true;
+                protectionReason = "favorited";
+            }
+
+            if (needsConfirmation) {
+                SKSE::log::info("Showing confirmation dialog for protected item");
+                std::string confirmText = fmt::format("Mark this {} item as junk?", protectionReason);
+                ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
+                    [inventoryEntry, itemForm, itemName, hexFormId](unsigned int choice) {
+                        if (choice == 0) {
+                            SKSE::log::info("User confirmed marking protected item as junk");
+                            SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
+                            auto& junkManager = JunkDataManager::GetSingleton();
+                            junkManager.AddJunkItem(inventoryEntry);
+
+                            ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
+                            if (itemListMenu) {
+                                itemListMenu->Update();
+                            }
+
+                            SKSE::log::info("Form: {} has been marked as junk", itemForm->GetName());
+                            if (Settings::GetNotifyOnMarkUnmark()) {
+                                std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
+                                DebugNotification(msg.c_str());
+                            }
+                        } else {
+                            SKSE::log::info("User cancelled marking protected item as junk");
+                        }
+                    });
+                return itemForm;
+            }
+        }
         
         if (isJunk) {
             SKSE::log::info("Removing junk status from {} [{}]", itemName, hexFormId);

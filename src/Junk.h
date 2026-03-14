@@ -85,7 +85,7 @@ namespace JunkIt {
         static void ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource);
 
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
-        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, float totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
+        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
     };
