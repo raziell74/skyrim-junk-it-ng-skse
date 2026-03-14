@@ -115,7 +115,12 @@ namespace JunkIt {
         
         uint32_t extraHash = ComputeExtraDataHash(entry);
         uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraHash;
-        return junkSet.find(packedKey) != junkSet.end();
+        bool isJunk = junkSet.find(packedKey) != junkSet.end();
+        
+        // SKSE::log::info("IsJunk check: {} [FormID: 0x{:X}, Hash: 0x{:X}] -> {}", 
+        //     entry->GetDisplayName(), baseFormID, extraHash, isJunk ? "JUNK" : "NOT JUNK");
+        
+        return isJunk;
     }
 
     bool JunkDataManager::IsJunk(RE::FormID baseFormID, uint32_t extraDataHash) const {
@@ -207,7 +212,10 @@ namespace JunkIt {
             return;
         }
 
-        SKSE::log::info("Saving {} junk items to co-save", itemCount);
+        SKSE::log::info(" ");
+        SKSE::log::info("==== Saving Junk List to Co-Save ====");
+        SKSE::log::info("Total items to save: {}", itemCount);
+        SKSE::log::info(" ");
 
         for (const auto& item : junkItems) {
             if (!intfc->WriteRecordData(&item.baseFormID, sizeof(item.baseFormID))) {
@@ -232,9 +240,15 @@ namespace JunkIt {
                     return;
                 }
             }
+            
+            SKSE::log::info("  Saving: {} [FormID: 0x{:X}, Hash: 0x{:X}]", 
+                item.displayName, item.baseFormID, item.extraDataHash);
         }
 
-        SKSE::log::info("Successfully saved {} junk items", itemCount);
+        SKSE::log::info(" ");
+        SKSE::log::info("Successfully saved {} junk items to co-save", itemCount);
+        SKSE::log::info("==== Junk List Save Complete ====");
+        SKSE::log::info(" ");
     }
 
     void JunkDataManager::Load(SKSE::SerializationInterface* intfc) {
@@ -253,7 +267,10 @@ namespace JunkIt {
             return;
         }
 
-        SKSE::log::info("Loading {} junk items from co-save", itemCount);
+        SKSE::log::info(" ");
+        SKSE::log::info("==== Loading Junk List from Save ====");
+        SKSE::log::info("Total items to load: {}", itemCount);
+        SKSE::log::info(" ");
 
         for (uint32_t i = 0; i < itemCount; ++i) {
             RE::FormID baseFormID = 0;
@@ -285,16 +302,22 @@ namespace JunkIt {
             }
 
             if (!intfc->ResolveFormID(baseFormID, baseFormID)) {
-                SKSE::log::warn("Failed to resolve FormID 0x{:X} at index {}, skipping", baseFormID, i);
+                SKSE::log::warn("Failed to resolve FormID 0x{:X} for '{}', skipping", baseFormID, displayName);
                 continue;
             }
 
             uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraDataHash;
             junkSet.insert(packedKey);
             junkItems.emplace_back(baseFormID, extraDataHash, displayName);
+            
+            SKSE::log::info("  [{}] {} [FormID: 0x{:X}, Hash: 0x{:X}]", 
+                i + 1, displayName, baseFormID, extraDataHash);
         }
 
-        SKSE::log::info("Successfully loaded {} junk items", junkItems.size());
+        SKSE::log::info(" ");
+        SKSE::log::info("Successfully loaded {} junk items from save", junkItems.size());
+        SKSE::log::info("==== Junk List Load Complete ====");
+        SKSE::log::info(" ");
     }
 
     void JunkDataManager::Revert(SKSE::SerializationInterface* intfc) {

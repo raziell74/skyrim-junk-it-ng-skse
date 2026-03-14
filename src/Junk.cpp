@@ -1,5 +1,6 @@
 #include "junk.h"
 #include "JunkData.h"
+#include "SendUIMessage.h"
 
 RE::MessageBoxData::~MessageBoxData() = default;
 
@@ -31,9 +32,9 @@ namespace JunkIt {
         for (const auto& button : buttons) {
             messageBoxData->buttonText.push_back(button.c_str());
         }
-        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback)));
         messageBoxData->optionIndexOffset = 4;
         messageBoxData->type = 10;
+        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback), messageBoxData->optionIndexOffset));
         messageBoxData->QueueMessage();
     }
 
@@ -190,37 +191,7 @@ namespace JunkIt {
     }
 
     void JunkHandler::ToggleIsJunk() {
-        TESForm* itemForm = ToggleSelectedItemJunk();
-        if (!itemForm) return;
-
-        ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
-        if (!itemListMenu) {
-            SKSE::log::error("No ItemListMenu found");
-            return;
-        }
-
-        ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
-        if (!selectedItem || !selectedItem->data.objDesc) {
-            SKSE::log::error("No item selected");
-            return;
-        }
-
-        auto& junkManager = JunkDataManager::GetSingleton();
-        bool isNowJunk = junkManager.IsJunk(selectedItem->data.objDesc);
-
-        if (isNowJunk) {
-            SKSE::log::info("Form: {} has been marked as junk", itemForm->GetName());
-            if (Settings::GetNotifyOnMarkUnmark()) {
-                std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
-                DebugNotification(msg.c_str());
-            }
-        } else {
-            SKSE::log::info("Form: {} is no longer marked as junk", itemForm->GetName());
-            if (Settings::GetNotifyOnMarkUnmark()) {
-                std::string msg = fmt::format("JunkIt - {} is no longer marked as junk", itemForm->GetName());
-                DebugNotification(msg.c_str());
-            }
-        }
+        ToggleSelectedItemJunk();
     }
 
     void JunkHandler::TransferJunk() {
@@ -467,6 +438,8 @@ namespace JunkIt {
 
         SKSE::log::info("---- Transfer Execution Complete ----");
 
+        RE::SendUIMessage::SendInventoryUpdateMessage(player, nullptr);
+
         if (Settings::GetAggressiveRefresh()) {
             UIUtil::ItemList::Refresh();
         }
@@ -697,6 +670,8 @@ namespace JunkIt {
             player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
         }
 
+        RE::SendUIMessage::SendInventoryUpdateMessage(player, nullptr);
+
         if (Settings::GetAggressiveRefresh()) {
             UIUtil::ItemList::Refresh();
         }
@@ -792,7 +767,24 @@ namespace JunkIt {
             junkManager.AddJunkItem(inventoryEntry);
         }
 
+        bool isNowJunk = junkManager.IsJunk(inventoryEntry);
+
         itemListMenu->Update();
+
+        if (isNowJunk) {
+            SKSE::log::info("Form: {} has been marked as junk", itemForm->GetName());
+            if (Settings::GetNotifyOnMarkUnmark()) {
+                std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
+                DebugNotification(msg.c_str());
+            }
+        } else {
+            SKSE::log::info("Form: {} is no longer marked as junk", itemForm->GetName());
+            if (Settings::GetNotifyOnMarkUnmark()) {
+                std::string msg = fmt::format("JunkIt - {} is no longer marked as junk", itemForm->GetName());
+                DebugNotification(msg.c_str());
+            }
+        }
+
         return itemForm;
     }
 

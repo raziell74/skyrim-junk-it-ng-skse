@@ -10,16 +10,20 @@ namespace JunkIt {
     public:
         using CallbackFunc = std::function<void(unsigned int)>;
 
-        JunkItMessageBoxCallback(CallbackFunc a_callback) : callback(std::move(a_callback)) {}
+        JunkItMessageBoxCallback(CallbackFunc a_callback, unsigned int a_offset = 0)
+            : callback(std::move(a_callback)), offset(a_offset) {}
 
         void Run(RE::IMessageBoxCallback::Message a_msg) override {
+            unsigned int rawVal = static_cast<unsigned int>(a_msg);
+            unsigned int adjusted = (rawVal >= offset) ? rawVal - offset : rawVal;
             if (callback) {
-                callback(static_cast<unsigned int>(a_msg));
+                callback(adjusted);
             }
         }
 
     private:
         CallbackFunc callback;
+        unsigned int offset;
     };
 
     class JunkHandler {
