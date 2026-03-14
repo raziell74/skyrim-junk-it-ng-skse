@@ -153,6 +153,9 @@ namespace JunkIt {
         BSTArray<ItemList::Item*> listItems = itemListMenu->items;
         std::vector<InventoryEntryData*> sortFormData;
 
+        auto player = RE::PlayerCharacter::GetSingleton();
+        auto playerInvCounts = player->GetInventoryCounts();
+
         SKSE::log::info("Processing Entry List for sellable junk items");
         auto& junkManager = JunkDataManager::GetSingleton();
         
@@ -161,6 +164,9 @@ namespace JunkIt {
             if (!entryItem) continue;
 
             if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
+
+            auto pIt = playerInvCounts.find(entryItem->data.objDesc->object);
+            if (pIt == playerInvCounts.end() || pIt->second <= 0) continue;
 
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
                 SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
@@ -174,6 +180,8 @@ namespace JunkIt {
                 SKSE::log::info("Junk Item Enchanted - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
+
+            pIt->second -= entryItem->data.objDesc->countDelta;
 
             sortFormData.push_back(entryItem->data.objDesc);
         }
@@ -439,12 +447,10 @@ namespace JunkIt {
                 }
             } else {
                 SKSE::log::info("[Container Mode] Transferring all items to container...");
-                auto playerInvCounts = player->GetInventoryCounts();
                 for (auto* entryData : transferList) {
                     if (!entryData || !entryData->object) continue;
                     
-                    auto pIt = playerInvCounts.find(entryData->object);
-                    Count itemCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
+                    Count itemCount = entryData->countDelta;
                     if (itemCount > 0) {
                         SKSE::log::info("Transferring {} x{}", entryData->object->GetName(), itemCount);
                         TransferItem(entryData->object, player, transferContainer, reason, itemCount, entryData);
@@ -622,34 +628,32 @@ namespace JunkIt {
 
         std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
-        auto playerInvCounts = player->GetInventoryCounts();
         for (auto* entryData : sellList) {
             if (!entryData || !entryData->object) continue;
 
-            auto pIt = playerInvCounts.find(entryData->object);
-            Count iCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
+            Count iCount = entryData->countDelta;
+            if (iCount <= 0) continue;
+
             totalPossibleToSell += iCount;
 
             SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", entryData->object->GetName(), iCount);
 
+            Count adjustedValue = static_cast<Count>(std::floor(
+                static_cast<float>(entryData->GetValue()) * sellMult + 0.5f));
+            float goldDifferential = calculatedVendorGold - static_cast<float>(adjustedValue * iCount);
+
+            while (goldDifferential < 0.0f && iCount > 0) {
+                iCount -= 1;
+                goldDifferential = calculatedVendorGold - static_cast<float>(adjustedValue * iCount);
+            }
+
             if (iCount > 0) {
-                Count adjustedValue = static_cast<Count>(std::floor(
-                    static_cast<float>(entryData->GetValue()) * sellMult + 0.5f));
-                float goldDifferential = calculatedVendorGold - static_cast<float>(adjustedValue * iCount);
-
-                while (goldDifferential < 0.0f && iCount > 0) {
-                    iCount -= 1;
-                    goldDifferential = calculatedVendorGold - static_cast<float>(adjustedValue * iCount);
-                }
-
-                if (iCount > 0) {
-                    Count itemTotal = adjustedValue * iCount;
-                    calculatedVendorGold -= static_cast<float>(itemTotal);
-                    totalSellValue += itemTotal;
-                    totalToSell += iCount;
-                    itemsToSell.push_back({entryData, iCount});
-                    SKSE::log::info("Sell {} {} for {} gold ({} gold per item)", iCount, entryData->object->GetName(), itemTotal, adjustedValue);
-                }
+                Count itemTotal = adjustedValue * iCount;
+                calculatedVendorGold -= static_cast<float>(itemTotal);
+                totalSellValue += itemTotal;
+                totalToSell += iCount;
+                itemsToSell.push_back({entryData, iCount});
+                SKSE::log::info("Sell {} {} for {} gold ({} gold per item)", iCount, entryData->object->GetName(), itemTotal, adjustedValue);
             }
         }
 
