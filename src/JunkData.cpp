@@ -56,6 +56,10 @@ namespace JunkIt {
             return false;
         }
 
+        if (entry->IsQuestObject()) {
+            return false;
+        }
+
         RE::FormID baseFormID = entry->object->GetFormID();
         
         std::lock_guard<std::mutex> guard(lock);
@@ -106,6 +110,10 @@ namespace JunkIt {
 
     bool JunkDataManager::IsJunk(RE::InventoryEntryData* entry) const {
         if (!entry || !entry->object) {
+            return false;
+        }
+
+        if (entry->IsQuestObject()) {
             return false;
         }
 

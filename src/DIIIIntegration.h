@@ -10,16 +10,11 @@ namespace JunkIt {
                 return false;
             }
 
-            const char* displayName = entry->GetDisplayName();
-            RE::FormID formID = entry->object->GetFormID();
-            
-            // SKSE::log::info("DIII matching item: {} [FormID: 0x{:X}]", displayName, formID);
-            
-            bool result = JunkDataManager::GetSingleton().IsJunk(entry);
-            
-            // SKSE::log::info("DIII match result: {}", result ? "JUNK" : "NOT JUNK");
-            
-            return result;
+            if (entry->IsQuestObject()) {
+                return false;
+            }
+
+            return JunkDataManager::GetSingleton().IsJunk(entry);
         }
     };
 }
