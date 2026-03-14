@@ -636,8 +636,13 @@ namespace JunkIt {
         }
 
         if (totalToSell <= 0) {
-            SKSE::log::info("Vendor cannot afford to buy any junk! Vendor Gold: {}, Required: {}", vendorGoldDisplay, totalSellValue);
-            RE::DebugMessageBox("Vendor cannot afford to buy any junk!");
+            if (totalPossibleToSell == 0) {
+                SKSE::log::info("No junk items to sell!");
+                RE::DebugMessageBox("No Junk to sell!");
+            } else {
+                SKSE::log::info("Vendor cannot afford to buy any junk! Vendor Gold: {}, Required: {}", vendorGoldDisplay, totalSellValue);
+                RE::DebugMessageBox("Vendor cannot afford to buy any junk!");
+            }
             operationInProgress.store(false);
             return;
         }
@@ -814,10 +819,10 @@ namespace JunkIt {
         std::string itemName = itemForm->GetName();
         std::string hexFormId = FormUtil::Form::GetFormConfigString(itemForm);
 
-        if (itemForm->GetFormType() == FormType::Light) {
-            DebugNotification("JunkIt - Lights cannot be marked as Junk");
-            return nullptr;
-        }
+        // if (itemForm->GetFormType() == FormType::Light) {
+        //     DebugNotification("JunkIt - Lights cannot be marked as Junk");
+        //     return nullptr;
+        // }
 
         if (inventoryEntry->IsQuestObject()) {
             SKSE::log::info("Cannot mark quest item {} [{}] as junk", itemName, hexFormId);
