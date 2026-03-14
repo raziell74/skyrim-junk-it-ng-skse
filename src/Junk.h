@@ -36,7 +36,7 @@ namespace JunkIt {
         static void ToggleIsJunk();
 
         static std::vector<InventoryEntryData*> BuildTransferList();
-        static std::vector<InventoryEntryData*> BuildSellList();
+        static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
         static std::int32_t GetMenuItemValue(TESForm* a_form);
 
         static TESObjectREFR* GetContainerMenuContainer();

@@ -21,6 +21,17 @@ namespace JunkIt {
         }
     };
 
+    struct InventoryJunkEntry {
+        RE::FormID baseFormID;
+        uint32_t extraDataHash;
+        std::string displayName;
+        int32_t count;
+
+        InventoryJunkEntry() : baseFormID(0), extraDataHash(0), displayName(""), count(0) {}
+        InventoryJunkEntry(RE::FormID formID, uint32_t hash, std::string name, int32_t itemCount)
+            : baseFormID(formID), extraDataHash(hash), displayName(std::move(name)), count(itemCount) {}
+    };
+
     class JunkDataManager {
     public:
         static JunkDataManager& GetSingleton() {
@@ -39,6 +50,8 @@ namespace JunkIt {
         std::vector<JunkItem> GetAllJunkItems() const;
         JunkItem GetJunkItemAt(int32_t index) const;
         bool RemoveJunkItemAtIndex(int32_t index);
+
+        std::vector<InventoryJunkEntry> GetPlayerJunkInventory() const;
 
         static uint32_t ComputeExtraDataHash(RE::InventoryEntryData* entry);
         static uint32_t ComputeExtraDataHash(RE::ExtraDataList* extraList);

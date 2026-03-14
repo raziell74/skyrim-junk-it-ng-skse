@@ -183,6 +183,84 @@ namespace JunkIt {
         return true;
     }
 
+    std::vector<InventoryJunkEntry> JunkDataManager::GetPlayerJunkInventory() const {
+        std::vector<InventoryJunkEntry> result;
+
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) {
+            return result;
+        }
+
+        auto playerInventory = player->GetInventory();
+
+        std::lock_guard<std::mutex> guard(lock);
+
+        std::map<uint64_t, int32_t> packedKeyCounts;
+        std::map<uint64_t, std::string> packedKeyNames;
+
+        for (const auto& [obj, data] : playerInventory) {
+            if (!obj || data.first <= 0) {
+                continue;
+            }
+
+            RE::FormID baseFormID = obj->GetFormID();
+            auto* entryData = data.second.get();
+
+            if (entryData && entryData->extraLists && !entryData->extraLists->empty()) {
+                for (auto* extraList : *entryData->extraLists) {
+                    if (!extraList) {
+                        continue;
+                    }
+
+                    uint32_t extraHash = ComputeExtraDataHash(extraList);
+                    uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraHash;
+
+                    if (junkSet.find(packedKey) != junkSet.end()) {
+                        int32_t itemCount = extraList->GetCount();
+                        packedKeyCounts[packedKey] += itemCount;
+                        
+                        if (packedKeyNames.find(packedKey) == packedKeyNames.end()) {
+                            std::string displayName = entryData->GetDisplayName();
+                            packedKeyNames[packedKey] = displayName;
+                        }
+                    }
+                }
+            }
+
+            uint64_t basePackedKey = static_cast<uint64_t>(baseFormID) << 32;
+            if (junkSet.find(basePackedKey) != junkSet.end()) {
+                int32_t baseCount = data.first;
+                
+                if (entryData && entryData->extraLists && !entryData->extraLists->empty()) {
+                    for (auto* extraList : *entryData->extraLists) {
+                        if (extraList) {
+                            baseCount -= extraList->GetCount();
+                        }
+                    }
+                }
+                
+                if (baseCount > 0) {
+                    packedKeyCounts[basePackedKey] += baseCount;
+                    
+                    if (packedKeyNames.find(basePackedKey) == packedKeyNames.end()) {
+                        std::string displayName = obj->GetName();
+                        packedKeyNames[basePackedKey] = displayName;
+                    }
+                }
+            }
+        }
+
+        for (const auto& [packedKey, count] : packedKeyCounts) {
+            RE::FormID baseFormID = static_cast<RE::FormID>(packedKey >> 32);
+            uint32_t extraHash = static_cast<uint32_t>(packedKey & 0xFFFFFFFF);
+            std::string displayName = packedKeyNames[packedKey];
+            
+            result.emplace_back(baseFormID, extraHash, displayName, count);
+        }
+
+        return result;
+    }
+
     void JunkDataManager::RebuildJunkItemsVector() {
         junkItems.clear();
         

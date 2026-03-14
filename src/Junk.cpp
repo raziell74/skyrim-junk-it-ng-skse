@@ -136,11 +136,18 @@ namespace JunkIt {
         return transferList;
     }
 
-    std::vector<InventoryEntryData*> JunkHandler::BuildSellList() {
+    std::vector<std::pair<InventoryEntryData*, std::int32_t>> JunkHandler::BuildSellList() {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Sellable Junk ----");
 
-        std::vector<InventoryEntryData*> sellList;
+        std::vector<std::pair<InventoryEntryData*, std::int32_t>> sellList;
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+        auto junkInventory = junkManager.GetPlayerJunkInventory();
+        if (junkInventory.empty()) {
+            SKSE::log::info("No junk items in player inventory");
+            return sellList;
+        }
 
         const auto ui = RE::UI::GetSingleton();
         GPtr<BarterMenu> barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
@@ -150,71 +157,85 @@ namespace JunkIt {
             return sellList;
         }
 
-        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
-        std::vector<InventoryEntryData*> sortFormData;
+        std::unordered_map<uint64_t, InventoryEntryData*> barterIndex;
+        for (std::uint32_t i = 0, size = itemListMenu->items.size(); i < size; i++) {
+            auto* item = itemListMenu->items[i];
+            if (item && item->data.objDesc && item->data.objDesc->object) {
+                RE::FormID baseFormID = item->data.objDesc->object->GetFormID();
+                uint32_t extraHash = junkManager.ComputeExtraDataHash(item->data.objDesc);
+                uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraHash;
+                barterIndex[packedKey] = item->data.objDesc;
+            }
+        }
 
-        auto player = RE::PlayerCharacter::GetSingleton();
-        auto playerInvCounts = player->GetInventoryCounts();
+        std::vector<std::tuple<InventoryEntryData*, std::int32_t, float>> sortData;
 
-        SKSE::log::info("Processing Entry List for sellable junk items");
-        auto& junkManager = JunkDataManager::GetSingleton();
-        
-        for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
-            ItemList::Item* entryItem = listItems[i];
-            if (!entryItem) continue;
+        SKSE::log::info("Processing player junk inventory for sellable items");
+        for (const auto& junkEntry : junkInventory) {
+            uint64_t packedKey = (static_cast<uint64_t>(junkEntry.baseFormID) << 32) | junkEntry.extraDataHash;
+            auto bIt = barterIndex.find(packedKey);
+            if (bIt == barterIndex.end()) continue;
 
-            if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
+            InventoryEntryData* objDesc = bIt->second;
+            std::int32_t count = junkEntry.count;
 
-            auto pIt = playerInvCounts.find(entryItem->data.objDesc->object);
-            if (pIt == playerInvCounts.end() || pIt->second <= 0) continue;
-
-            if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
-                SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
+            if (Settings::ProtectEquipped() && objDesc->IsWorn()) {
+                SKSE::log::info("Junk Item Equipped - Skipping {}", objDesc->object->GetName());
                 continue;
             }
-            if (Settings::ProtectFavorites() && entryItem->data.objDesc->IsFavorited()) {
-                SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->object->GetName());
+            if (Settings::ProtectFavorites() && objDesc->IsFavorited()) {
+                SKSE::log::info("Junk Item Favorited - Skipping {}", objDesc->object->GetName());
                 continue;
             }
-            if (Settings::ProtectEnchanted() && entryItem->data.objDesc->IsEnchanted()) {
-                SKSE::log::info("Junk Item Enchanted - Skipping {}", entryItem->data.objDesc->object->GetName());
+            if (Settings::ProtectEnchanted() && objDesc->IsEnchanted()) {
+                SKSE::log::info("Junk Item Enchanted - Skipping {}", objDesc->object->GetName());
                 continue;
             }
 
-            pIt->second -= entryItem->data.objDesc->countDelta;
-
-            sortFormData.push_back(entryItem->data.objDesc);
+            sortData.emplace_back(objDesc, count, 0.0f);
         }
 
         auto priority = Settings::GetSellPriority();
         if (priority == Settings::SortPriority::kWeightHighLow) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetWeight() > b->GetWeight(); });
+            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) { 
+                return std::get<0>(a)->GetWeight() > std::get<0>(b)->GetWeight(); 
+            });
         } else if (priority == Settings::SortPriority::kWeightLowHigh) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetWeight() < b->GetWeight(); });
+            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) { 
+                return std::get<0>(a)->GetWeight() < std::get<0>(b)->GetWeight(); 
+            });
         } else if (priority == Settings::SortPriority::kValueHighLow) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetValue() > b->GetValue(); });
+            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) { 
+                return std::get<0>(a)->GetValue() > std::get<0>(b)->GetValue(); 
+            });
         } else if (priority == Settings::SortPriority::kValueLowHigh) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetValue() < b->GetValue(); });
+            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) { 
+                return std::get<0>(a)->GetValue() < std::get<0>(b)->GetValue(); 
+            });
         } else if (priority == Settings::SortPriority::kValueWeightHighLow) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) {
-                float aVW = a->GetWeight() != 0 ? a->GetValue() / a->GetWeight() : 0;
-                float bVW = b->GetWeight() != 0 ? b->GetValue() / b->GetWeight() : 0;
+            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
+                auto* entryA = std::get<0>(a);
+                auto* entryB = std::get<0>(b);
+                float aVW = entryA->GetWeight() != 0 ? entryA->GetValue() / entryA->GetWeight() : 0;
+                float bVW = entryB->GetWeight() != 0 ? entryB->GetValue() / entryB->GetWeight() : 0;
                 return aVW > bVW;
             });
         } else if (priority == Settings::SortPriority::kValueWeightLowHigh) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) {
-                float aVW = a->GetWeight() != 0 ? a->GetValue() / a->GetWeight() : 0;
-                float bVW = b->GetWeight() != 0 ? b->GetValue() / b->GetWeight() : 0;
+            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
+                auto* entryA = std::get<0>(a);
+                auto* entryB = std::get<0>(b);
+                float aVW = entryA->GetWeight() != 0 ? entryA->GetValue() / entryA->GetWeight() : 0;
+                float bVW = entryB->GetWeight() != 0 ? entryB->GetValue() / entryB->GetWeight() : 0;
                 return aVW < bVW;
             });
         }
 
         SKSE::log::info("Finalized SellList:");
-        for (InventoryEntryData* entryData : sortFormData) {
-            const TESBoundObject* entryObject = entryData->object;
-            if (!entryObject) continue;
-            sellList.push_back(entryData);
-            SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
+        for (auto& [objDesc, count, _] : sortData) {
+            if (!objDesc->object) continue;
+            sellList.push_back({objDesc, count});
+            SKSE::log::info("     {} x{} [{}]", objDesc->object->GetName(), count,
+                FormUtil::Form::GetFormConfigString(objDesc->object->As<TESForm>()));
         }
 
         SKSE::log::info("---- Generated Junk Sell FormList ----");
@@ -628,13 +649,11 @@ namespace JunkIt {
 
         std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
-        for (auto* entryData : sellList) {
-            if (!entryData || !entryData->object) continue;
+        for (auto& [entryData, itemCount] : sellList) {
+            if (!entryData || !entryData->object || itemCount <= 0) continue;
 
-            Count iCount = entryData->countDelta;
-            if (iCount <= 0) continue;
-
-            totalPossibleToSell += iCount;
+            totalPossibleToSell += itemCount;
+            Count iCount = itemCount;
 
             SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", entryData->object->GetName(), iCount);
 
