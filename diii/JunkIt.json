@@ -1,7 +1,7 @@
 {
     "rules": [
         {
-            "icon": { "source": "JunkIt/diiiIcon.swf", "label": "QuestItemIcon", "color": "#717171" },
+            "icon": { "source": "JunkIt/icons.swf", "label": "TrashItemIcon", "color": "#717171" },
             "match": {
                 "isJunk": true,
                 "isEquipped": false
