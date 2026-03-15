@@ -5,6 +5,7 @@
 #include "event.h"
 #include "DIIIIntegration.h"
 #include "I4MovieHook.h"
+#include "I4Integration.h"
 
 void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 	if (msg->type == DIII::kMessage_GetAPI) {
@@ -24,6 +25,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			JunkIt::InputEventHandler::Install();
+			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
 			break;

@@ -2,7 +2,62 @@
 #include "JunkData.h"
 #include "util.h"
 
+#include <json/json.h>
+
 namespace JunkIt {
+
+    void I4JunkConfig::Load() {
+        RE::BSResourceNiBinaryStream fileStream{ "SKSE/Plugins/InventoryInjector/JunkIt.json" };
+        if (!fileStream.good()) {
+            SKSE::log::warn("Could not open i4 config: SKSE/Plugins/InventoryInjector/JunkIt.json");
+            return;
+        }
+
+        auto size = fileStream.stream->totalSize;
+        auto buffer = std::make_unique<char[]>(size);
+        fileStream.read(buffer.get(), size);
+
+        Json::CharReaderBuilder builder;
+        std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
+
+        Json::Value root;
+        std::string errs;
+        if (!reader->parse(buffer.get(), buffer.get() + size, &root, &errs)) {
+            SKSE::log::error("Failed to parse i4 JunkIt config: {}", errs);
+            return;
+        }
+
+        const auto& rules = root["rules"];
+        if (!rules.isArray() || rules.empty()) {
+            SKSE::log::warn("No rules found in i4 JunkIt config");
+            return;
+        }
+
+        const auto& assign = rules[0]["assign"];
+        if (!assign.isObject()) {
+            SKSE::log::warn("No assign block in first i4 JunkIt rule");
+            return;
+        }
+
+        if (assign.isMember("iconSource")) {
+            iconSource = assign["iconSource"].asString();
+        }
+        if (assign.isMember("iconLabel")) {
+            iconLabel = assign["iconLabel"].asString();
+        }
+        if (assign.isMember("iconColor")) {
+            std::string hex = assign["iconColor"].asString();
+            std::size_t prefix = (!hex.empty() && hex[0] == '#') ? 1 : 0;
+            iconColor = static_cast<std::uint32_t>(std::stoul(hex.substr(prefix), nullptr, 16));
+        }
+        if (assign.isMember("subTypeDisplay")) {
+            subTypeDisplay = assign["subTypeDisplay"].asString();
+        }
+
+        loaded = true;
+        SKSE::log::info("Loaded i4 JunkIt config: iconSource={}, iconLabel={}, iconColor=0x{:X}, subTypeDisplay={}",
+            iconSource, iconLabel, iconColor, subTypeDisplay);
+    }
 
     void I4Integration::Install(RE::GFxMovieView* a_view, const char* a_pathToObj) {
         assert(a_view);
@@ -31,8 +86,6 @@ namespace JunkIt {
         auto* itemList = UIUtil::ItemList::GetOpenList();
 
         if (itemList && itemList->items.size() > 0) {
-            SKSE::log::trace("Using native ItemList with {} items for per-stack junk matching", itemList->items.size());
-
             for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
                 auto* item = itemList->items[i];
                 if (!item || !item->data.objDesc) {
@@ -43,11 +96,7 @@ namespace JunkIt {
                 item->obj.SetMember("isJunk", isJunk);
             }
         } else {
-            SKSE::log::trace("No native ItemList available, falling back to GFx _entryList with base form matching");
-
-            if (a_params.argCount < 1) {
-                SKSE::log::debug("Expected 1 argument, received {}", a_params.argCount);
-            } else {
+            if (a_params.argCount >= 1) {
                 auto& a_list = a_params.args[0];
                 RE::GFxValue entryList;
                 if (a_list.IsObject()) {
@@ -82,6 +131,83 @@ namespace JunkIt {
                 a_params.retVal,
                 a_params.argsWithThisRef,
                 static_cast<std::uint32_t>(a_params.argCount) + 1);
+        }
+
+        ApplyJunkOverrides(itemList, a_params);
+    }
+
+    static void SetJunkMembers(RE::GFxValue& entry, const I4JunkConfig& config) {
+        if (!config.iconSource.empty()) {
+            entry.SetMember("iconSource", config.iconSource.c_str());
+        }
+        if (!config.iconLabel.empty()) {
+            entry.SetMember("iconLabel", config.iconLabel.c_str());
+        }
+        if (config.iconColor) {
+            entry.SetMember("iconColor", config.iconColor);
+        }
+        if (!config.subTypeDisplay.empty()) {
+            entry.SetMember("subTypeDisplay", config.subTypeDisplay.c_str());
+        }
+    }
+
+    void I4Integration::ProcessListFunc::ApplyJunkOverrides(RE::ItemList* itemList, Params& a_params) {
+        auto& config = I4JunkConfig::GetSingleton();
+        if (!config.loaded) {
+            return;
+        }
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+
+        if (itemList && itemList->items.size() > 0) {
+            for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
+                auto* item = itemList->items[i];
+                if (!item || !item->data.objDesc) {
+                    continue;
+                }
+
+                if (!junkManager.IsJunk(item->data.objDesc)) {
+                    continue;
+                }
+
+                RE::GFxValue isEquipped;
+                item->obj.GetMember("isEquipped", &isEquipped);
+                if (isEquipped.IsBool() && isEquipped.GetBool()) {
+                    continue;
+                }
+
+                SetJunkMembers(item->obj, config);
+            }
+        } else if (a_params.argCount >= 1) {
+            auto& a_list = a_params.args[0];
+            RE::GFxValue entryList;
+            if (a_list.IsObject()) {
+                a_list.GetMember("_entryList", &entryList);
+            }
+
+            if (entryList.IsArray()) {
+                for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
+                    RE::GFxValue entryObject;
+                    entryList.GetElement(i, &entryObject);
+                    if (!entryObject.IsObject()) {
+                        continue;
+                    }
+
+                    RE::GFxValue isJunk;
+                    entryObject.GetMember("isJunk", &isJunk);
+                    if (!isJunk.IsBool() || !isJunk.GetBool()) {
+                        continue;
+                    }
+
+                    RE::GFxValue isEquipped;
+                    entryObject.GetMember("isEquipped", &isEquipped);
+                    if (isEquipped.IsBool() && isEquipped.GetBool()) {
+                        continue;
+                    }
+
+                    SetJunkMembers(entryObject, config);
+                }
+            }
         }
     }
 }

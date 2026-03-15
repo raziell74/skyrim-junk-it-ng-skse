@@ -1,6 +1,26 @@
 #pragma once
 
+#include <string>
+
 namespace JunkIt {
+
+    struct I4JunkConfig {
+        std::string iconSource;
+        std::string iconLabel;
+        std::uint32_t iconColor = 0;
+        std::string subTypeDisplay;
+        bool loaded = false;
+
+        static I4JunkConfig& GetSingleton() {
+            static I4JunkConfig instance;
+            return instance;
+        }
+
+        void Load();
+
+    private:
+        I4JunkConfig() = default;
+    };
 
     class I4Integration final {
     public:
@@ -16,6 +36,8 @@ namespace JunkIt {
             void Call(Params& a_params) override;
 
         private:
+            void ApplyJunkOverrides(RE::ItemList* itemList, Params& a_params);
+
             RE::GFxValue _oldFunc;
         };
     };
