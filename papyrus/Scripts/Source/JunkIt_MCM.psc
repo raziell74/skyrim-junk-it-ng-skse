@@ -23,6 +23,10 @@ GlobalVariable Property NotifyOnJunkTransfer Auto
 GlobalVariable Property NotifyOnJunkSell Auto
 GlobalVariable Property NotifyLargeInventoryLag Auto
 
+GlobalVariable Property UpdateItemIcon Auto
+GlobalVariable Property UpdateSubTypeDisplay Auto
+GlobalVariable Property UseDynamicInventoryIcon Auto
+
 Message Property TransferConfirmationMsg Auto
 Message Property RetrievalConfirmationMsg Auto
 Message Property SellConfirmationMsg Auto
@@ -239,6 +243,14 @@ Event OnSettingChange(String a_ID)
         bAggressiveRefresh = GetModSettingBool(a_ID)
     ElseIf a_ID == "iAggressiveRefreshMaxInterval:Utility"
         iAggressiveRefreshMaxInterval = GetModSettingInt(a_ID)
+
+    ; Integration Settings
+    ElseIf a_ID == "bUpdateItemIcon:IntegrationSettings"
+        UpdateItemIcon.SetValue(GetModSettingBool(a_ID) as Float)
+    ElseIf a_ID == "bUpdateSubTypeDisplay:IntegrationSettings"
+        UpdateSubTypeDisplay.SetValue(GetModSettingBool(a_ID) as Float)
+    ElseIf a_ID == "bUseDynamicInventoryIcon:IntegrationSettings"
+        UseDynamicInventoryIcon.SetValue(GetModSettingBool(a_ID) as Float)
     
     EndIf
 
@@ -278,6 +290,11 @@ Function Default()
     WarnInventorySizeThreshold = 500
     SetModSettingBool("bAggressiveRefresh:Utility", False)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", 10)
+
+    ; Integration Settings
+    SetModSettingBool("bUpdateItemIcon:IntegrationSettings", True)
+    SetModSettingBool("bUpdateSubTypeDisplay:IntegrationSettings", True)
+    SetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings", True)
 
     ; Maintenance Settings
     SetModSettingBool("bEnabled:Maintenance", True)
@@ -323,6 +340,11 @@ Function Load()
     WarnInventorySizeThreshold = GetModSettingInt("iWarnInventorySizeThreshold:MiscSettings")
     bAggressiveRefresh = GetModSettingBool("bAggressiveRefresh:Utility")
     iAggressiveRefreshMaxInterval = GetModSettingInt("iAggressiveRefreshMaxInterval:Utility")
+
+    ; Integration Settings
+    UpdateItemIcon.SetValue(GetModSettingBool("bUpdateItemIcon:IntegrationSettings") as Float)
+    UpdateSubTypeDisplay.SetValue(GetModSettingBool("bUpdateSubTypeDisplay:IntegrationSettings") as Float)
+    UseDynamicInventoryIcon.SetValue(GetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings") as Float)
 
     RefreshDllSettings()
     VerboseMessage("Settings applied!", True)
@@ -373,6 +395,11 @@ Function MigrateToMCMHelper()
     SetModSettingInt("iWarnInventorySizeThreshold:MiscSettings", WarnInventorySizeThreshold)
     SetModSettingBool("bAggressiveRefresh:Utility", bAggressiveRefresh)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", iAggressiveRefreshMaxInterval)
+
+    ; Integration Settings
+    SetModSettingBool("bUpdateItemIcon:IntegrationSettings", UpdateItemIcon.GetValue() as Bool)
+    SetModSettingBool("bUpdateSubTypeDisplay:IntegrationSettings", UpdateSubTypeDisplay.GetValue() as Bool)
+    SetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings", UseDynamicInventoryIcon.GetValue() as Bool)
 
     ; Maintenance Settings
     SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", False)

@@ -220,6 +220,40 @@
                         "defaultValue": 500,
                         "formatString": "{0} Items"
                     }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_IntegrationSettingsHeader"
+                },
+                {
+                    "id": "bUpdateItemIcon:IntegrationSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_UpdateItemIcon",
+                    "help": "$JunkIt_UpdateItemIcon_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "bUpdateSubTypeDisplay:IntegrationSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_UpdateSubTypeDisplay",
+                    "help": "$JunkIt_UpdateSubTypeDisplay_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "id": "bUseDynamicInventoryIcon:IntegrationSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_UseDynamicInventoryIcon",
+                    "help": "$JunkIt_UseDynamicInventoryIcon_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
                 }
             ]
         },

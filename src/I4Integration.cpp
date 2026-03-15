@@ -1,5 +1,6 @@
 #include "I4Integration.h"
 #include "JunkData.h"
+#include "settings.h"
 #include "util.h"
 
 #include <json/json.h>
@@ -137,17 +138,21 @@ namespace JunkIt {
     }
 
     static void SetJunkMembers(RE::GFxValue& entry, const I4JunkConfig& config) {
-        if (!config.iconSource.empty()) {
-            entry.SetMember("iconSource", config.iconSource.c_str());
+        if (Settings::GetUpdateItemIcon()) {
+            if (!config.iconSource.empty()) {
+                entry.SetMember("iconSource", config.iconSource.c_str());
+            }
+            if (!config.iconLabel.empty()) {
+                entry.SetMember("iconLabel", config.iconLabel.c_str());
+            }
+            if (config.iconColor) {
+                entry.SetMember("iconColor", config.iconColor);
+            }
         }
-        if (!config.iconLabel.empty()) {
-            entry.SetMember("iconLabel", config.iconLabel.c_str());
-        }
-        if (config.iconColor) {
-            entry.SetMember("iconColor", config.iconColor);
-        }
-        if (!config.subTypeDisplay.empty()) {
-            entry.SetMember("subTypeDisplay", config.subTypeDisplay.c_str());
+        if (Settings::GetUpdateSubTypeDisplay()) {
+            if (!config.subTypeDisplay.empty()) {
+                entry.SetMember("subTypeDisplay", config.subTypeDisplay.c_str());
+            }
         }
     }
 

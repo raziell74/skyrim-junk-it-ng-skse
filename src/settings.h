@@ -164,6 +164,10 @@ namespace JunkIt {
                 WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x821, static_cast<float>(WarnInventorySizeThreshold)));
                 AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
 
+                UpdateSubTypeDisplay = getGlobalBool("UpdateSubTypeDisplay", 0x823, UpdateSubTypeDisplay);
+                UpdateItemIcon = getGlobalBool("UpdateItemIcon", 0x824, UpdateItemIcon);
+                UseDynamicInventoryIcon = getGlobalBool("UseDynamicInventoryIcon", 0x825, UseDynamicInventoryIcon);
+
                 if (auto* form = getForm("TransferConfirmationMsg", 0x805)) TransferConfirmationMsg = form->As<BGSMessage>();
                 if (auto* form = getForm("RetrievalConfirmationMsg", 0x806)) RetrievalConfirmationMsg = form->As<BGSMessage>();
                 if (auto* form = getForm("SellConfirmationMsg", 0x807)) SellConfirmationMsg = form->As<BGSMessage>();
@@ -197,6 +201,13 @@ namespace JunkIt {
                     AggressiveRefresh
                 );
 
+                SKSE::log::info(
+                    "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {}",
+                    UpdateItemIcon,
+                    UpdateSubTypeDisplay,
+                    UseDynamicInventoryIcon
+                );
+
                 SKSE::log::info(" ");
             }
 
@@ -224,6 +235,10 @@ namespace JunkIt {
             [[nodiscard]] static std::int32_t GetWarnInventorySizeThreshold() { return WarnInventorySizeThreshold; }
             [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
 
+            [[nodiscard]] static bool GetUpdateItemIcon() { return UpdateItemIcon; }
+            [[nodiscard]] static bool GetUpdateSubTypeDisplay() { return UpdateSubTypeDisplay; }
+            [[nodiscard]] static bool GetUseDynamicInventoryIcon() { return UseDynamicInventoryIcon; }
+
             [[nodiscard]] static BGSMessage* GetTransferConfirmationMsg() { return TransferConfirmationMsg; }
             [[nodiscard]] static BGSMessage* GetRetrievalConfirmationMsg() { return RetrievalConfirmationMsg; }
             [[nodiscard]] static BGSMessage* GetSellConfirmationMsg() { return SellConfirmationMsg; }
@@ -243,6 +258,10 @@ namespace JunkIt {
             static inline bool NotifyLargeInventoryLag = true;
             static inline std::int32_t WarnInventorySizeThreshold = 500;
             static inline bool AggressiveRefresh = false;
+
+            static inline bool UpdateSubTypeDisplay = true;
+            static inline bool UpdateItemIcon = true;
+            static inline bool UseDynamicInventoryIcon = true;
 
             static inline BGSListForm* JunkList;  // Only for migration
             static inline JunkTransfer JunkTransfer;
