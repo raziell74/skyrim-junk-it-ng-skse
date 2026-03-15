@@ -5,4 +5,6 @@ set(sources ${sources}
     src/junk.cpp
     src/JunkData.cpp
     src/SendUIMessage.cpp
+    src/I4Integration.cpp
+    src/I4MovieHook.cpp
 )

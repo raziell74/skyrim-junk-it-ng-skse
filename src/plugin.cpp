@@ -4,6 +4,7 @@
 #include "JunkData.h"
 #include "event.h"
 #include "DIIIIntegration.h"
+#include "I4MovieHook.h"
 
 void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 	if (msg->type == DIII::kMessage_GetAPI) {
@@ -18,6 +19,9 @@ void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 	switch (a_msg->type) {
+		case SKSE::MessagingInterface::kInputLoaded:
+			JunkIt::I4MovieHook::Install();
+			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			JunkIt::InputEventHandler::Install();
 			break;
@@ -116,6 +120,8 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     SKSE::Init(skse);
 	SetupLog();
+
+	SKSE::AllocTrampoline(14);
 
 	DIII::ListenForRegistration(&DIIIMessageHandler);
 

@@ -1,0 +1,17 @@
+{
+	"$schema": "https://raw.githubusercontent.com/GroundAura/InventoryInjector/main/docs/InventoryInjector.schema.json",
+	"rules": [
+		{
+			"match": {
+				"isJunk": true,
+        		"isEquipped": false
+			},
+			"assign": {
+				"iconSource": "JunkIt/icons.swf",
+				"iconLabel": "trash",
+				"iconColor": "#717171",
+				"subTypeDisplay": "Junk"
+			}
+		}
+	]
+}

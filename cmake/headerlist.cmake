@@ -10,4 +10,6 @@ set(headers ${headers}
     src/SendUIMessage.h
     src/DIII_API.h
     src/DIIIIntegration.h
+    src/I4Integration.h
+    src/I4MovieHook.h
 )
