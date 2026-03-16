@@ -44,8 +44,15 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			}
 			break;
 		case SKSE::MessagingInterface::kNewGame:
+			JunkIt::Settings::Load();
+			if (JunkIt::Settings::GetAutoImport()) {
+				JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true);
+			}
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
+			if (JunkIt::Settings::GetAutoExport() && JunkIt::JunkDataManager::GetSingleton().Size() > 0) {
+				JunkIt::JunkDataManager::GetSingleton().SaveToFile();
+			}
 			break;
 	}
 }
@@ -101,6 +108,14 @@ std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	return JunkIt::JunkHandler::GetMenuItemValue(a_form);
 }
 
+bool SaveJunkListToFile(RE::StaticFunctionTag*) {
+	return JunkIt::JunkDataManager::GetSingleton().SaveToFile();
+}
+
+bool LoadJunkListFromFile(RE::StaticFunctionTag*, bool replace) {
+	return JunkIt::JunkDataManager::GetSingleton().LoadFromFile(replace);
+}
+
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
@@ -114,6 +129,9 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
 	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
 	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
+	
+	vm->RegisterFunction("SaveJunkListToFile", "JunkIt_MCM", SaveJunkListToFile);
+	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;

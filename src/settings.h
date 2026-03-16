@@ -164,6 +164,9 @@ namespace JunkIt {
                 WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x821, static_cast<float>(WarnInventorySizeThreshold)));
                 AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
 
+                AutoExport = getGlobalBool("AutoExport", 0x826, AutoExport);
+                AutoImport = getGlobalBool("AutoImport", 0x827, AutoImport);
+
                 UpdateSubTypeDisplay = getGlobalBool("UpdateSubTypeDisplay", 0x823, UpdateSubTypeDisplay);
                 UpdateItemIcon = getGlobalBool("UpdateItemIcon", 0x824, UpdateItemIcon);
                 UseDynamicInventoryIcon = getGlobalBool("UseDynamicInventoryIcon", 0x825, UseDynamicInventoryIcon);
@@ -196,9 +199,11 @@ namespace JunkIt {
                 );
 
                 SKSE::log::info(
-                    "Misc Settings | WarnInventorySizeThreshold: {} | AggressiveRefresh: {}",
+                    "Misc Settings | WarnInventorySizeThreshold: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {}",
                     WarnInventorySizeThreshold,
-                    AggressiveRefresh
+                    AggressiveRefresh,
+                    AutoExport,
+                    AutoImport
                 );
 
                 SKSE::log::info(
@@ -235,6 +240,9 @@ namespace JunkIt {
             [[nodiscard]] static std::int32_t GetWarnInventorySizeThreshold() { return WarnInventorySizeThreshold; }
             [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
 
+            [[nodiscard]] static bool GetAutoExport() { return AutoExport; }
+            [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
+
             [[nodiscard]] static bool GetUpdateItemIcon() { return UpdateItemIcon; }
             [[nodiscard]] static bool GetUpdateSubTypeDisplay() { return UpdateSubTypeDisplay; }
             [[nodiscard]] static bool GetUseDynamicInventoryIcon() { return UseDynamicInventoryIcon; }
@@ -258,6 +266,9 @@ namespace JunkIt {
             static inline bool NotifyLargeInventoryLag = true;
             static inline std::int32_t WarnInventorySizeThreshold = 500;
             static inline bool AggressiveRefresh = false;
+
+            static inline bool AutoExport = false;
+            static inline bool AutoImport = false;
 
             static inline bool UpdateSubTypeDisplay = true;
             static inline bool UpdateItemIcon = true;

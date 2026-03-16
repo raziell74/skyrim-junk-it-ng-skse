@@ -56,6 +56,9 @@ namespace JunkIt {
         static uint32_t ComputeExtraDataHash(RE::InventoryEntryData* entry);
         static uint32_t ComputeExtraDataHash(RE::ExtraDataList* extraList);
 
+        bool SaveToFile();
+        bool LoadFromFile(bool replace);
+
         void Save(SKSE::SerializationInterface* intfc);
         void Load(SKSE::SerializationInterface* intfc);
         void Revert(SKSE::SerializationInterface* intfc);

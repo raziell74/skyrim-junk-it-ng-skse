@@ -1,5 +1,8 @@
 #include "JunkData.h"
 #include "util.h"
+#include <json/json.h>
+#include <fstream>
+#include <filesystem>
 
 namespace JunkIt {
 
@@ -439,6 +442,166 @@ namespace JunkIt {
 
     void JunkDataManager::OnRevert(SKSE::SerializationInterface* intfc) {
         GetSingleton().Revert(intfc);
+    }
+
+    bool JunkDataManager::SaveToFile() {
+        std::lock_guard<std::mutex> guard(lock);
+
+        SKSE::log::info(" ");
+        SKSE::log::info("==== Saving Junk List to File ====");
+        SKSE::log::info("Total items to export: {}", junkItems.size());
+
+        Json::Value root;
+        root["version"] = 1;
+        Json::Value itemsArray(Json::arrayValue);
+
+        for (const auto& item : junkItems) {
+            auto* form = RE::TESForm::LookupByID(item.baseFormID);
+            if (!form) {
+                SKSE::log::warn("Failed to lookup form for 0x{:X}, skipping", item.baseFormID);
+                continue;
+            }
+
+            std::string formIdStr = FormUtil::Form::GetFormConfigString(form);
+            
+            Json::Value itemObj;
+            itemObj["formId"] = formIdStr;
+            itemObj["extraDataHash"] = item.extraDataHash;
+            itemObj["name"] = item.displayName;
+            
+            itemsArray.append(itemObj);
+            
+            SKSE::log::info("  Exporting: {} [{}] (hash: 0x{:X})", 
+                item.displayName, formIdStr, item.extraDataHash);
+        }
+
+        root["items"] = itemsArray;
+
+        std::filesystem::path filePath = "Data/SKSE/Plugins/JunkIt";
+        try {
+            if (!std::filesystem::exists(filePath)) {
+                std::filesystem::create_directories(filePath);
+            }
+            
+            filePath /= "JunkIt_JunkList.json";
+            
+            std::ofstream outFile(filePath);
+            if (!outFile.is_open()) {
+                SKSE::log::error("Failed to open file for writing: {}", filePath.string());
+                return false;
+            }
+
+            Json::StreamWriterBuilder builder;
+            builder["indentation"] = "  ";
+            std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+            writer->write(root, &outFile);
+            outFile.close();
+
+            SKSE::log::info("Successfully exported {} junk items to {}", itemsArray.size(), filePath.string());
+            SKSE::log::info("==== Junk List File Export Complete ====");
+            SKSE::log::info(" ");
+            return true;
+
+        } catch (const std::exception& e) {
+            SKSE::log::error("Exception while saving junk list: {}", e.what());
+            return false;
+        }
+    }
+
+    bool JunkDataManager::LoadFromFile(bool replace) {
+        SKSE::log::info(" ");
+        SKSE::log::info("==== Loading Junk List from File ====");
+        SKSE::log::info("Replace mode: {}", replace);
+
+        RE::BSResourceNiBinaryStream fileStream{ "SKSE/Plugins/JunkIt/JunkIt_JunkList.json" };
+        if (!fileStream.good()) {
+            SKSE::log::warn("Could not open junk list file: SKSE/Plugins/JunkIt/JunkIt_JunkList.json");
+            return false;
+        }
+
+        auto size = fileStream.stream->totalSize;
+        auto buffer = std::make_unique<char[]>(size);
+        fileStream.read(buffer.get(), size);
+
+        Json::CharReaderBuilder builder;
+        std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
+
+        Json::Value root;
+        std::string errs;
+        if (!reader->parse(buffer.get(), buffer.get() + size, &root, &errs)) {
+            SKSE::log::error("Failed to parse junk list JSON: {}", errs);
+            return false;
+        }
+
+        if (!root.isMember("items") || !root["items"].isArray()) {
+            SKSE::log::error("Invalid junk list format: missing or invalid 'items' array");
+            return false;
+        }
+
+        std::lock_guard<std::mutex> guard(lock);
+
+        if (replace) {
+            SKSE::log::info("Clearing existing junk list (replace mode)");
+            junkSet.clear();
+            junkItems.clear();
+        }
+
+        const Json::Value& itemsArray = root["items"];
+        uint32_t successCount = 0;
+        uint32_t skipCount = 0;
+
+        for (const auto& itemObj : itemsArray) {
+            if (!itemObj.isMember("formId") || !itemObj.isMember("extraDataHash") || !itemObj.isMember("name")) {
+                SKSE::log::warn("Skipping item with missing fields");
+                skipCount++;
+                continue;
+            }
+
+            std::string formIdStr = itemObj["formId"].asString();
+            uint32_t extraDataHash = itemObj["extraDataHash"].asUInt();
+            std::string displayName = itemObj["name"].asString();
+
+            RE::TESForm* form = nullptr;
+
+            if (formIdStr.find('~') != std::string::npos) {
+                form = FormUtil::Form::GetFormFromConfigString(formIdStr);
+            } else {
+                try {
+                    uint32_t formID = std::stoul(formIdStr, nullptr, 16);
+                    form = RE::TESForm::LookupByID(formID);
+                } catch (...) {
+                    SKSE::log::warn("Failed to parse bare hex FormID: {}", formIdStr);
+                }
+            }
+
+            if (!form) {
+                SKSE::log::warn("Failed to resolve form '{}' for '{}', skipping", formIdStr, displayName);
+                skipCount++;
+                continue;
+            }
+
+            RE::FormID baseFormID = form->GetFormID();
+            uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraDataHash;
+
+            if (junkSet.find(packedKey) != junkSet.end()) {
+                SKSE::log::info("  Item already in junk list, skipping: {} [{}]", displayName, formIdStr);
+                skipCount++;
+                continue;
+            }
+
+            junkSet.insert(packedKey);
+            junkItems.emplace_back(baseFormID, extraDataHash, displayName);
+            successCount++;
+
+            SKSE::log::info("  Imported: {} [{}] (hash: 0x{:X})", displayName, formIdStr, extraDataHash);
+        }
+
+        SKSE::log::info("Import complete: {} items added, {} items skipped", successCount, skipCount);
+        SKSE::log::info("Total junk items after import: {}", junkItems.size());
+        SKSE::log::info("==== Junk List File Import Complete ====");
+        SKSE::log::info(" ");
+
+        return successCount > 0;
     }
 
     void JunkDataManager::MigrateFromFormList(RE::BGSListForm* oldJunkList) {

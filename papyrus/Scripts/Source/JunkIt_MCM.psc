@@ -23,6 +23,9 @@ GlobalVariable Property NotifyOnJunkTransfer Auto
 GlobalVariable Property NotifyOnJunkSell Auto
 GlobalVariable Property NotifyLargeInventoryLag Auto
 
+GlobalVariable Property AutoExport Auto
+GlobalVariable Property AutoImport Auto
+
 GlobalVariable Property UpdateItemIcon Auto
 GlobalVariable Property UpdateSubTypeDisplay Auto
 GlobalVariable Property UseDynamicInventoryIcon Auto
@@ -67,6 +70,9 @@ Int Function GetJunkListSize() global native
 String Function GetJunkItemNameAt(Int index) global native
 Bool Function RemoveJunkItemAtIndex(Int index) global native
 Function ClearAllJunk() global native
+
+Bool Function SaveJunkListToFile() global native
+Bool Function LoadJunkListFromFile(Bool replace) global native
 
 ; --- MCM Helper Functions ----------------------------------------------------------
 
@@ -237,12 +243,10 @@ Event OnSettingChange(String a_ID)
         bAggressiveRefresh = GetModSettingBool(a_ID)
     ElseIf a_ID == "iAggressiveRefreshMaxInterval:Utility"
         iAggressiveRefreshMaxInterval = GetModSettingInt(a_ID)
-
-    ; Export / Import Settings
-    ElseIf a_ID == "bAggressiveRefresh:Utility"
-        bAggressiveRefresh = GetModSettingBool(a_ID)
-    ElseIf a_ID == "iAggressiveRefreshMaxInterval:Utility"
-        iAggressiveRefreshMaxInterval = GetModSettingInt(a_ID)
+    ElseIf a_ID == "bAutoSaveJunkListToFile:Maintenance"
+        AutoExport.SetValue(GetModSettingBool(a_ID) as Float)
+    ElseIf a_ID == "bAutoLoadJunkListFromFile:Maintenance"
+        AutoImport.SetValue(GetModSettingBool(a_ID) as Float)
 
     ; Integration Settings
     ElseIf a_ID == "bUpdateItemIcon:IntegrationSettings"
@@ -301,6 +305,8 @@ Function Default()
     SetModSettingInt("iLoadingDelay:Maintenance", 0)
     SetModSettingBool("bLoadSettingsonReload:Maintenance", False)
     SetModSettingBool("bVerbose:Maintenance", False)
+    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", False)
+    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", False)
     
     VerboseMessage("Settings reset!", True)
     Load()
@@ -340,6 +346,10 @@ Function Load()
     WarnInventorySizeThreshold = GetModSettingInt("iWarnInventorySizeThreshold:MiscSettings")
     bAggressiveRefresh = GetModSettingBool("bAggressiveRefresh:Utility")
     iAggressiveRefreshMaxInterval = GetModSettingInt("iAggressiveRefreshMaxInterval:Utility")
+    
+    ; Maintenance Settings
+    AutoExport.SetValue(GetModSettingBool("bAutoSaveJunkListToFile:Maintenance") as Float)
+    AutoImport.SetValue(GetModSettingBool("bAutoLoadJunkListFromFile:Maintenance") as Float)
 
     ; Integration Settings
     UpdateItemIcon.SetValue(GetModSettingBool("bUpdateItemIcon:IntegrationSettings") as Float)
@@ -402,8 +412,8 @@ Function MigrateToMCMHelper()
     SetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings", UseDynamicInventoryIcon.GetValue() as Bool)
 
     ; Maintenance Settings
-    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", False)
-    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", False)
+    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", AutoImport.GetValue() as Bool)
+    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", AutoExport.GetValue() as Bool)
     SetModSettingBool("bReplaceJunkListOnLoad:Utility", False)
 
 EndFunction
@@ -535,6 +545,52 @@ String Function FormatJunkItemName(String name, String status)
     EndIf
 
     return name
+EndFunction
+
+; TriggerSaveJunkListToFile
+; Exports the current junk list to a JSON file
+;
+; @returns  None
+Function TriggerSaveJunkListToFile()
+    SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_SavingJunkList")
+    RefreshMenu()
+
+    Bool success = SaveJunkListToFile()
+
+    If success
+        SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_JunkSaved")
+        VerboseMessage("Junk list exported successfully!", True)
+    Else
+        SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_SaveJunkListToFile")
+        VerboseMessage("Failed to export junk list", True)
+    EndIf
+    RefreshMenu()
+EndFunction
+
+; TriggerLoadJunkListFromFile
+; Imports a junk list from a JSON file
+;
+; @returns  None
+Function TriggerLoadJunkListFromFile()
+    SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_LoadingJunkList")
+    RefreshMenu()
+
+    Bool bReplace = GetModSettingBool("bReplaceJunkListOnLoad:Utility")
+    Bool success = LoadJunkListFromFile(bReplace)
+
+    If success
+        If bReplace
+            SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_JunkReplaced")
+            VerboseMessage("Junk list replaced with imported list!", True)
+        Else
+            SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_JunkLoaded")
+            VerboseMessage("Junk list merged with imported list!", True)
+        EndIf
+    Else
+        SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_LoadJunkListFromFile")
+        VerboseMessage("Failed to import junk list", True)
+    EndIf
+    RefreshMenu()
 EndFunction
 
 ; ResetJunk
