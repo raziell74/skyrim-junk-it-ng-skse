@@ -489,42 +489,84 @@ namespace JunkIt {
 
         SKSE::log::info("---- Transfer Execution Complete ----");
 
-        RE::SendUIMessage::SendInventoryUpdateMessage(player, nullptr);
-
-        UIUtil::ItemList::Refresh();
-
         std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInSource;
+        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInDest;
         TESObjectREFR* verifySourceRef = nullptr;
+        TESObjectREFR* verifyDestRef = nullptr;
+        
         if (menuView == 0) {
             verifySourceRef = transferContainer;
+            verifyDestRef = player;
             for (auto* entryData : transferList) {
                 if (!entryData || !entryData->object) continue;
                 expectedInSource.push_back({ entryData->object, 0 });
             }
-        } else if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
-            verifySourceRef = player;
             auto playerInvCounts = player->GetInventoryCounts();
             for (auto* entryData : transferList) {
                 if (!entryData || !entryData->object) continue;
-                auto it = playerInvCounts.find(entryData->object);
-                Count remaining = (it != playerInvCounts.end()) ? it->second : 0;
-                expectedInSource.push_back({ entryData->object, remaining });
+                auto invCounts = transferContainer->GetInventoryCounts();
+                auto it = invCounts.find(entryData->object);
+                Count itemCount = (it != invCounts.end()) ? it->second : 0;
+                if (itemCount > 0) {
+                    auto pIt = playerInvCounts.find(entryData->object);
+                    Count currentInPlayer = (pIt != playerInvCounts.end()) ? pIt->second : 0;
+                    expectedInDest.push_back({ entryData->object, currentInPlayer + itemCount });
+                }
+            }
+        } else if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
+            verifySourceRef = player;
+            verifyDestRef = transferContainer;
+            auto playerInvCounts = player->GetInventoryCounts();
+            auto containerInvCounts = transferContainer->GetInventoryCounts();
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) continue;
+                auto pIt = playerInvCounts.find(entryData->object);
+                Count playerCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
+                Count iCount = playerCount;
+                
+                float itemWeight = entryData->object->GetWeight();
+                Actor* transferActor = transferContainer->As<Actor>();
+                float maxWeight = transferActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
+                float currentWeight = transferContainer->GetWeightInContainer();
+                float currentWeightWithItems = (itemWeight * iCount) + currentWeight;
+                
+                while (currentWeightWithItems > maxWeight && iCount > 0) {
+                    iCount -= 1;
+                    currentWeightWithItems = (itemWeight * iCount) + currentWeight;
+                }
+                
+                if (iCount > 0) {
+                    expectedInSource.push_back({ entryData->object, playerCount - iCount });
+                    auto cIt = containerInvCounts.find(entryData->object);
+                    Count currentInContainer = (cIt != containerInvCounts.end()) ? cIt->second : 0;
+                    expectedInDest.push_back({ entryData->object, currentInContainer + iCount });
+                }
             }
         } else {
             verifySourceRef = player;
+            verifyDestRef = transferContainer;
+            auto containerInvCounts = transferContainer->GetInventoryCounts();
             for (auto* entryData : transferList) {
                 if (!entryData || !entryData->object) continue;
-                expectedInSource.push_back({ entryData->object, 0 });
+                Count itemCount = entryData->countDelta;
+                if (itemCount > 0) {
+                    expectedInSource.push_back({ entryData->object, 0 });
+                    auto cIt = containerInvCounts.find(entryData->object);
+                    Count currentInContainer = (cIt != containerInvCounts.end()) ? cIt->second : 0;
+                    expectedInDest.push_back({ entryData->object, currentInContainer + itemCount });
+                }
             }
         }
+        
         if (verifySourceRef && !expectedInSource.empty())
-            ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource));
+            ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource), verifyDestRef, std::move(expectedInDest));
     }
 
     namespace {
-        void VerifyAndDelayedRefreshImpl(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, int attempt) {
+        void VerifyAndDelayedRefreshImpl(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest, int attempt) {
             constexpr int maxAttempts = 30;
             bool verified = true;
+            
             if (sourceRef && !expectedCountsInSource.empty()) {
                 auto counts = sourceRef->GetInventoryCounts();
                 for (const auto& [obj, expected] : expectedCountsInSource) {
@@ -536,22 +578,45 @@ namespace JunkIt {
                     }
                 }
             }
+            
+            if (verified && destRef && !expectedCountsInDest.empty()) {
+                auto counts = destRef->GetInventoryCounts();
+                for (const auto& [obj, expected] : expectedCountsInDest) {
+                    auto it = counts.find(obj);
+                    std::int32_t actual = (it != counts.end()) ? it->second : 0;
+                    if (actual != expected) {
+                        verified = false;
+                        break;
+                    }
+                }
+            }
+            
             if (verified || attempt >= maxAttempts) {
+                if (verified) {
+                    SKSE::log::info("Transfer verification complete, refreshing UI");
+                } else {
+                    SKSE::log::warn("Transfer verification timed out after {} attempts, forcing UI refresh", maxAttempts);
+                }
                 UIUtil::ItemList::Refresh();
                 return;
             }
+            
             auto* ti = SKSE::GetTaskInterface();
             if (ti)
-                ti->AddUITask([sourceRef, expectedCountsInSource, attempt]() { VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, attempt + 1); });
+                ti->AddUITask([sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, attempt]() { 
+                    VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, attempt + 1); 
+                });
             else
                 UIUtil::ItemList::Refresh();
         }
     }
 
-    void JunkHandler::ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource) {
+    void JunkHandler::ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest) {
         auto* ti = SKSE::GetTaskInterface();
         if (ti)
-            ti->AddUITask([sourceRef, expectedCountsInSource]() { VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, 0); });
+            ti->AddUITask([sourceRef, expectedCountsInSource, destRef, expectedCountsInDest]() { 
+                VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, 0); 
+            });
         else
             UIUtil::ItemList::Refresh();
     }
@@ -800,17 +865,21 @@ namespace JunkIt {
             player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
         }
 
-        RE::SendUIMessage::SendInventoryUpdateMessage(player, nullptr);
-
-        UIUtil::ItemList::Refresh();
-
         std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInPlayer;
+        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInVendor;
+        
+        auto vendorInvCounts = vendorContainer->GetInventoryCounts();
         for (const auto& [entryData, count] : itemsToSell) {
-            if (entryData && entryData->object && count > 0)
+            if (entryData && entryData->object && count > 0) {
                 expectedInPlayer.push_back({ entryData->object, 0 });
+                auto vIt = vendorInvCounts.find(entryData->object);
+                Count currentInVendor = (vIt != vendorInvCounts.end()) ? vIt->second : 0;
+                expectedInVendor.push_back({ entryData->object, currentInVendor + count });
+            }
         }
+        
         if (!expectedInPlayer.empty())
-            ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInPlayer));
+            ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInPlayer), vendorContainer, std::move(expectedInVendor));
 
         SKSE::log::info("---- Sale Execution Complete ----");
     }
