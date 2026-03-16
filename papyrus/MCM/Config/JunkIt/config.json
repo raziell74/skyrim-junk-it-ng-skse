@@ -1110,8 +1110,8 @@
                 {
                     "id": "bLoadSettingsonReload:Maintenance",
                     "type": "toggle",
-                    "text": "$LoadSettingsonReload",
-                    "help": "$LoadSettingsonReloadMaintenance_Help",
+                    "text": "$LoadSettingsOnReload",
+                    "help": "$LoadSettingsOnReloadMaintenance_Help",
                     "valueOptions": {
                         "sourceType": "ModSettingBool",
                         "defaultValue": false
