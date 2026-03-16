@@ -868,12 +868,12 @@ namespace JunkIt {
         std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInPlayer;
         std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInVendor;
         
-        auto vendorInvCounts = vendorContainer->GetInventoryCounts();
+        auto vendorContainerInvCounts = vendorContainer->GetInventoryCounts();
         for (const auto& [entryData, count] : itemsToSell) {
             if (entryData && entryData->object && count > 0) {
                 expectedInPlayer.push_back({ entryData->object, 0 });
-                auto vIt = vendorInvCounts.find(entryData->object);
-                Count currentInVendor = (vIt != vendorInvCounts.end()) ? vIt->second : 0;
+                auto vIt = vendorContainerInvCounts.find(entryData->object);
+                Count currentInVendor = (vIt != vendorContainerInvCounts.end()) ? vIt->second : 0;
                 expectedInVendor.push_back({ entryData->object, currentInVendor + count });
             }
         }
