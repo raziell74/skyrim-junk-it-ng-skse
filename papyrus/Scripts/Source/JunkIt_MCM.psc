@@ -74,6 +74,8 @@ Function ClearAllJunk() global native
 Bool Function SaveJunkListToFile() global native
 Bool Function LoadJunkListFromFile(Bool replace) global native
 
+Bool Function IsDIIIInstalled() global native
+
 ; --- MCM Helper Functions ----------------------------------------------------------
 
 ; GetVersion
@@ -177,6 +179,14 @@ Event OnPageSelect(String a_page)
 
     SetModSettingString("sResetJunk:Utility", "$JunkIt_ResetJunk")
     
+    ; Update DIII installed status for the hidden toggle
+    If IsDIIIInstalled()
+        SetModSettingInt("iDIIIInstalledToggle:Hidden", 1)
+    Else
+        SetModSettingInt("iDIIIInstalledToggle:Hidden", 0)
+        SetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings", False)
+    EndIf
+    
     ; Prep the Junk List Page with the first page of items
     _page = 0
     _totalPages = (GetJunkListSize() / _itemsPerPage) + 1
@@ -255,6 +265,7 @@ Event OnSettingChange(String a_ID)
         UpdateSubTypeDisplay.SetValue(GetModSettingBool(a_ID) as Float)
     ElseIf a_ID == "bUseDynamicInventoryIcon:IntegrationSettings"
         UseDynamicInventoryIcon.SetValue(GetModSettingBool(a_ID) as Float)
+        RefreshMenu()
     
     EndIf
 
@@ -317,6 +328,14 @@ EndFunction
 ;
 ; @returns  None
 Function Load()
+    ; Update DIII installed status
+    If IsDIIIInstalled()
+        SetModSettingInt("iDIIIInstalledToggle:Hidden", 1)
+    Else
+        SetModSettingInt("iDIIIInstalledToggle:Hidden", 0)
+        SetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings", False)
+    EndIf
+
     ; Hotkey Settings
     MarkJunkKey.SetValue(GetModSettingInt("iJunkKey:Hotkey") as Float)
     TransferJunkKey.SetValue(GetModSettingInt("iTransferJunkKey:Hotkey") as Float)

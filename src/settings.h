@@ -41,6 +41,9 @@ namespace JunkIt {
                 SKSE::log::info(" ");
                 SKSE::log::info("Updating Settings...");
 
+                DIIIInstalled = (GetModuleHandleA("DynamicInventoryIconInjector.dll") != nullptr);
+                SKSE::log::info("DIII Detection | DynamicInventoryIconInjector.dll loaded: {}", DIIIInstalled);
+
                 auto getForm = [](const char* formDesc, uint32_t formId) -> TESForm* {
                     TESForm* form = FormUtil::Form::GetFormFromMod("JunkIt.esp", formId);
                     if (!form) {
@@ -171,6 +174,11 @@ namespace JunkIt {
                 UpdateItemIcon = getGlobalBool("UpdateItemIcon", 0x824, UpdateItemIcon);
                 UseDynamicInventoryIcon = getGlobalBool("UseDynamicInventoryIcon", 0x825, UseDynamicInventoryIcon);
 
+                if (!DIIIInstalled && UseDynamicInventoryIcon) {
+                    SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
+                    UseDynamicInventoryIcon = false;
+                }
+
                 if (auto* form = getForm("TransferConfirmationMsg", 0x805)) TransferConfirmationMsg = form->As<BGSMessage>();
                 if (auto* form = getForm("RetrievalConfirmationMsg", 0x806)) RetrievalConfirmationMsg = form->As<BGSMessage>();
                 if (auto* form = getForm("SellConfirmationMsg", 0x807)) SellConfirmationMsg = form->As<BGSMessage>();
@@ -243,9 +251,16 @@ namespace JunkIt {
             [[nodiscard]] static bool GetAutoExport() { return AutoExport; }
             [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
 
-            [[nodiscard]] static bool GetUpdateItemIcon() { return UpdateItemIcon; }
+            [[nodiscard]] static bool GetUpdateItemIcon() { 
+                if (DIIIInstalled && UseDynamicInventoryIcon) {
+                    return false;
+                }
+                return UpdateItemIcon;
+            }
             [[nodiscard]] static bool GetUpdateSubTypeDisplay() { return UpdateSubTypeDisplay; }
             [[nodiscard]] static bool GetUseDynamicInventoryIcon() { return UseDynamicInventoryIcon; }
+
+            [[nodiscard]] static bool IsDIIIInstalled() { return DIIIInstalled; }
 
             [[nodiscard]] static BGSMessage* GetTransferConfirmationMsg() { return TransferConfirmationMsg; }
             [[nodiscard]] static BGSMessage* GetRetrievalConfirmationMsg() { return RetrievalConfirmationMsg; }
@@ -273,6 +288,8 @@ namespace JunkIt {
             static inline bool UpdateSubTypeDisplay = true;
             static inline bool UpdateItemIcon = true;
             static inline bool UseDynamicInventoryIcon = true;
+
+            static inline bool DIIIInstalled = false;
 
             static inline BGSListForm* JunkList;  // Only for migration
             static inline JunkTransfer JunkTransfer;

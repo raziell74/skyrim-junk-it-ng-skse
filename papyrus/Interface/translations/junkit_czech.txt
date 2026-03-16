@@ -97,4 +97,12 @@ $JunkIt_Confirm	Ok
 $JunkIt_AggressiveRefresh	Agresivní obnovení
 $JunkIt_AggressiveRefresh_Help	Vynutí uživatelskému rozhraní spuštění obnovení UI každých 5 sekund až do nastavení maximální doby obnovení po zpracování přenosu odpadových předmětů. Toto je poslední možnost, pokud máte problém s tím, že se UI po přenosu odpadu plně neobnovuje.
 $JunkIt_AggressiveRefreshMaxInterval	Maximální doba obnovení
-$JunkIt_AggressiveRefreshMaxInterval	Maximální počet sekund pro agresivní obnovení UI
+$JunkIt_AggressiveRefreshMaxInterval	Maximální počet sekund pro agresivní obnovení UI. Výchozí je 10 sekund.
+$JunkIt_I4IntegrationHeader	Integrace I4
+$JunkIt_UpdateSubTypeDisplay	Přepsat text typu předmětu
+$JunkIt_UpdateSubTypeDisplay_Help	Pokud je povoleno, předměty označené jako Odpad budou zobrazovat "Odpad" jako text typu předmětu v inventářových menu prostřednictvím Inventory Injector (I4). Zakázat pro zachování původního textu typu předmětu.
+$JunkIt_UpdateItemIcon	Přepsat ikonu inventáře
+$JunkIt_UpdateItemIcon_Help	Pokud je povoleno, předměty označené jako Odpad budou zobrazovat ikonu Odpadu v inventářových menu prostřednictvím Inventory Injector (I4). Toto nastavení je automaticky zakázáno, když je aktivní ikona DIII (Dynamic Inventory Icon Injector), protože DIII má přednost.
+$JunkIt_DIIIIntegrationHeader	Integrace DIII
+$JunkIt_UseDynamicInventoryIcon	Dynamická ikona inventáře
+$JunkIt_UseDynamicInventoryIcon_Help	Pokud je povoleno, předměty označené jako Odpad budou zobrazovat ikonu Odpadu prostřednictvím Dynamic Inventory Icon Injector (DIII). Toto nastavení vyžaduje instalaci DIII a má přednost před nastavením ikony I4, když je aktivní.

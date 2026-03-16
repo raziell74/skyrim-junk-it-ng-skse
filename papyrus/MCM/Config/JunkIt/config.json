@@ -223,17 +223,7 @@
                 },
                 {
                     "type": "header",
-                    "text": "$JunkIt_IntegrationSettingsHeader"
-                },
-                {
-                    "id": "bUpdateItemIcon:IntegrationSettings",
-                    "type": "toggle",
-                    "text": "$JunkIt_UpdateItemIcon",
-                    "help": "$JunkIt_UpdateItemIcon_Help",
-                    "valueOptions": {
-                        "sourceType": "ModSettingBool",
-                        "defaultValue": true
-                    }
+                    "text": "$JunkIt_I4IntegrationHeader"
                 },
                 {
                     "id": "bUpdateSubTypeDisplay:IntegrationSettings",
@@ -246,10 +236,39 @@
                     }
                 },
                 {
+                    "id": "bUpdateItemIcon:IntegrationSettings",
+                    "type": "toggle",
+                    "text": "$JunkIt_UpdateItemIcon",
+                    "help": "$JunkIt_UpdateItemIcon_Help",
+                    "groupCondition": {"NOT": 4},
+                    "groupBehavior": "disable",
+                    "valueOptions": {
+                        "sourceType": "ModSettingBool",
+                        "defaultValue": true
+                    }
+                },
+                {
+                    "type": "header",
+                    "text": "$JunkIt_DIIIIntegrationHeader"
+                },
+                {
+                    "id": "iDIIIInstalledToggle:Hidden",
+                    "type": "hiddenToggle",
+                    "text": "Hidden toggle for DIII installed status",
+                    "groupControl": 5,
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt",
+                        "defaultValue": 0
+                    }
+                },
+                {
                     "id": "bUseDynamicInventoryIcon:IntegrationSettings",
                     "type": "toggle",
                     "text": "$JunkIt_UseDynamicInventoryIcon",
                     "help": "$JunkIt_UseDynamicInventoryIcon_Help",
+                    "groupControl": 4,
+                    "groupCondition": 5,
+                    "groupBehavior": "disable",
                     "valueOptions": {
                         "sourceType": "ModSettingBool",
                         "defaultValue": true

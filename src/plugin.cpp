@@ -116,6 +116,10 @@ bool LoadJunkListFromFile(RE::StaticFunctionTag*, bool replace) {
 	return JunkIt::JunkDataManager::GetSingleton().LoadFromFile(replace);
 }
 
+bool IsDIIIInstalled(RE::StaticFunctionTag*) {
+	return JunkIt::Settings::IsDIIIInstalled();
+}
+
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
@@ -132,6 +136,8 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	
 	vm->RegisterFunction("SaveJunkListToFile", "JunkIt_MCM", SaveJunkListToFile);
 	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
+	
+	vm->RegisterFunction("IsDIIIInstalled", "JunkIt_MCM", IsDIIIInstalled);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;
