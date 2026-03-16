@@ -840,7 +840,8 @@ namespace JunkIt {
         for (const auto& [entryData, count] : itemsToSell) {
             if (count > 0 && entryData && entryData->object) {
                 SKSE::log::info("Selling {} x{}", entryData->object->GetName(), count);
-                TransferItem(entryData->object, player, vendorContainer, ITEM_REMOVE_REASON::kSelling, count, entryData);
+                player->RemoveItem(entryData->object, count, ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+                vendorContainer->AddObjectToContainer(entryData->object, nullptr, count, nullptr);
                 SKSE::log::info("Transaction for {} {} complete", count, entryData->object->GetName());
             }
         }
@@ -865,21 +866,14 @@ namespace JunkIt {
             player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
         }
 
-        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInPlayer;
-        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInVendor;
-        
-        auto vendorContainerInvCounts = vendorContainer->GetInventoryCounts();
-        for (const auto& [entryData, count] : itemsToSell) {
-            if (entryData && entryData->object && count > 0) {
-                expectedInPlayer.push_back({ entryData->object, 0 });
-                auto vIt = vendorContainerInvCounts.find(entryData->object);
-                Count currentInVendor = (vIt != vendorContainerInvCounts.end()) ? vIt->second : 0;
-                expectedInVendor.push_back({ entryData->object, currentInVendor + count });
+        {
+            const auto uiRefresh = RE::UI::GetSingleton();
+            auto barterMenu = uiRefresh ? uiRefresh->GetMenu<BarterMenu>() : nullptr;
+            RE::ItemList* itemList = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
+            if (itemList) {
+                itemList->Update();
             }
         }
-        
-        if (!expectedInPlayer.empty())
-            ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInPlayer), vendorContainer, std::move(expectedInVendor));
 
         SKSE::log::info("---- Sale Execution Complete ----");
     }
