@@ -3,13 +3,21 @@
 	"rules": [
 		{
 			"match": {
-				"isJunk": true,
+				"isJunkIcon": true,
         		"isEquipped": false
 			},
 			"assign": {
 				"iconSource": "JunkIt/icons.swf",
 				"iconLabel": "trash",
-				"iconColor": "#717171",
+				"iconColor": "#717171"
+			}
+		},
+		{
+			"match": {
+				"isJunkSubType": true,
+        		"isEquipped": false
+			},
+			"assign": {
 				"subTypeDisplay": "Junk"
 			}
 		}

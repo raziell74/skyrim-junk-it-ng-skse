@@ -95,6 +95,8 @@ namespace JunkIt {
 
                 bool isJunk = junkManager.IsJunk(item->data.objDesc);
                 item->obj.SetMember("isJunk", isJunk);
+                item->obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
+                item->obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
             }
         } else {
             if (a_params.argCount >= 1) {
@@ -121,6 +123,8 @@ namespace JunkIt {
                         auto* form = RE::TESForm::LookupByID(static_cast<RE::FormID>(formId.GetNumber()));
                         bool isJunk = form ? junkManager.IsJunk(form) : false;
                         entryObject.SetMember("isJunk", isJunk);
+                        entryObject.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
+                        entryObject.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
                     }
                 }
             }
@@ -132,87 +136,6 @@ namespace JunkIt {
                 a_params.retVal,
                 a_params.argsWithThisRef,
                 static_cast<std::uint32_t>(a_params.argCount) + 1);
-        }
-
-        ApplyJunkOverrides(itemList, a_params);
-    }
-
-    static void SetJunkMembers(RE::GFxValue& entry, const I4JunkConfig& config) {
-        if (Settings::GetUpdateItemIcon()) {
-            if (!config.iconSource.empty()) {
-                entry.SetMember("iconSource", config.iconSource.c_str());
-            }
-            if (!config.iconLabel.empty()) {
-                entry.SetMember("iconLabel", config.iconLabel.c_str());
-            }
-            if (config.iconColor) {
-                entry.SetMember("iconColor", config.iconColor);
-            }
-        }
-        if (Settings::GetUpdateSubTypeDisplay()) {
-            if (!config.subTypeDisplay.empty()) {
-                entry.SetMember("subTypeDisplay", config.subTypeDisplay.c_str());
-            }
-        }
-    }
-
-    void I4Integration::ProcessListFunc::ApplyJunkOverrides(RE::ItemList* itemList, Params& a_params) {
-        auto& config = I4JunkConfig::GetSingleton();
-        if (!config.loaded) {
-            return;
-        }
-
-        auto& junkManager = JunkDataManager::GetSingleton();
-
-        if (itemList && itemList->items.size() > 0) {
-            for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
-                auto* item = itemList->items[i];
-                if (!item || !item->data.objDesc) {
-                    continue;
-                }
-
-                if (!junkManager.IsJunk(item->data.objDesc)) {
-                    continue;
-                }
-
-                RE::GFxValue isEquipped;
-                item->obj.GetMember("isEquipped", &isEquipped);
-                if (isEquipped.IsBool() && isEquipped.GetBool()) {
-                    continue;
-                }
-
-                SetJunkMembers(item->obj, config);
-            }
-        } else if (a_params.argCount >= 1) {
-            auto& a_list = a_params.args[0];
-            RE::GFxValue entryList;
-            if (a_list.IsObject()) {
-                a_list.GetMember("_entryList", &entryList);
-            }
-
-            if (entryList.IsArray()) {
-                for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
-                    RE::GFxValue entryObject;
-                    entryList.GetElement(i, &entryObject);
-                    if (!entryObject.IsObject()) {
-                        continue;
-                    }
-
-                    RE::GFxValue isJunk;
-                    entryObject.GetMember("isJunk", &isJunk);
-                    if (!isJunk.IsBool() || !isJunk.GetBool()) {
-                        continue;
-                    }
-
-                    RE::GFxValue isEquipped;
-                    entryObject.GetMember("isEquipped", &isEquipped);
-                    if (isEquipped.IsBool() && isEquipped.GetBool()) {
-                        continue;
-                    }
-
-                    SetJunkMembers(entryObject, config);
-                }
-            }
         }
     }
 }

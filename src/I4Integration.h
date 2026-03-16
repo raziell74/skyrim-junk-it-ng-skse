@@ -36,8 +36,6 @@ namespace JunkIt {
             void Call(Params& a_params) override;
 
         private:
-            void ApplyJunkOverrides(RE::ItemList* itemList, Params& a_params);
-
             RE::GFxValue _oldFunc;
         };
     };
