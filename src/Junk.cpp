@@ -1,6 +1,9 @@
 #include "junk.h"
 #include "JunkData.h"
 #include "SendUIMessage.h"
+#include <thread>
+#include <chrono>
+#include <set>
 
 RE::MessageBoxData::~MessageBoxData() = default;
 
@@ -377,6 +380,16 @@ namespace JunkIt {
 
         WarnLargeInventory(player, transferContainer);
 
+        const auto ui = RE::UI::GetSingleton();
+        RE::GFxMovieView* underlyingMovie = nullptr;
+        if (ui) {
+            auto menu = ui->GetMenu<ContainerMenu>();
+            if (menu && menu->uiMovie)
+                underlyingMovie = menu->uiMovie.get();
+        }
+        if (underlyingMovie)
+            underlyingMovie->SetVisible(false);
+
         ITEM_REMOVE_REASON reason = ITEM_REMOVE_REASON::kStoreInContainer;
         if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
             reason = ITEM_REMOVE_REASON::kStoreInTeammate;
@@ -557,14 +570,68 @@ namespace JunkIt {
                 }
             }
         }
+
+        UIUtil::ItemList::Refresh();
         
         if (verifySourceRef && !expectedInSource.empty())
             ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource), verifyDestRef, std::move(expectedInDest));
     }
 
     namespace {
+        bool VerifySWFEntryList(TESObjectREFR* sourceRef, const std::vector<std::pair<TESBoundObject*, std::int32_t>>& expectedCountsInSource, TESObjectREFR* destRef, const std::vector<std::pair<TESBoundObject*, std::int32_t>>& expectedCountsInDest) {
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui) return true;
+
+            RE::GFxMovieView* movieView = nullptr;
+            bool isContainerMenu = ui->IsMenuOpen("ContainerMenu");
+            bool isBarterMenu = ui->IsMenuOpen("BarterMenu");
+            
+            if (isContainerMenu) {
+                auto menu = ui->GetMenu<ContainerMenu>();
+                if (menu && menu->uiMovie)
+                    movieView = menu->uiMovie.get();
+            } else if (isBarterMenu) {
+                auto menu = ui->GetMenu<BarterMenu>();
+                if (menu && menu->uiMovie)
+                    movieView = menu->uiMovie.get();
+            }
+
+            if (!movieView) return true;
+
+            auto* itemList = UIUtil::ItemList::GetOpenList();
+            if (!itemList || !itemList->items.empty() == false) return true;
+
+            std::set<RE::FormID> expectedAbsentForms;
+            for (const auto& [obj, expected] : expectedCountsInSource) {
+                if (expected == 0 && obj) {
+                    expectedAbsentForms.insert(obj->GetFormID());
+                }
+            }
+
+            for (std::uint32_t i = 0; i < itemList->items.size(); i++) {
+                auto* item = itemList->items[i];
+                if (!item || !item->data.objDesc || !item->data.objDesc->object) continue;
+                
+                RE::FormID itemFormId = item->data.objDesc->object->GetFormID();
+                if (expectedAbsentForms.count(itemFormId) > 0) {
+                    SKSE::log::trace("SWF verification failed: found item that should be absent (FormID: 0x{:X})", itemFormId);
+                    return false;
+                }
+            }
+
+            SKSE::log::trace("SWF verification passed");
+            return true;
+        }
+
         void VerifyAndDelayedRefreshImpl(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest, int attempt) {
-            constexpr int maxAttempts = 30;
+            constexpr int maxAttempts = 15;
+            
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui || (!ui->IsMenuOpen("ContainerMenu") && !ui->IsMenuOpen("BarterMenu"))) {
+                SKSE::log::info("Menu closed during verification, aborting refresh");
+                return;
+            }
+            
             bool verified = true;
             
             if (sourceRef && !expectedCountsInSource.empty()) {
@@ -593,32 +660,72 @@ namespace JunkIt {
             
             if (verified || attempt >= maxAttempts) {
                 if (verified) {
-                    SKSE::log::info("Transfer verification complete, refreshing UI");
+                    UIUtil::ItemList::Refresh();
+                    
+                    bool swfVerified = VerifySWFEntryList(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest);
+                    
+                    if (!swfVerified && attempt < maxAttempts) {
+                        SKSE::log::info("Engine counts verified but SWF state mismatch, retrying (attempt {}/{})", attempt + 1, maxAttempts);
+                        std::thread([=]() {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                            auto* ti = SKSE::GetTaskInterface();
+                            if (ti)
+                                ti->AddUITask([=]() {
+                                    VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, attempt + 1);
+                                });
+                        }).detach();
+                        return;
+                    }
+                    
+                    SKSE::log::info("Transfer verification complete, UI refreshed");
                 } else {
                     SKSE::log::warn("Transfer verification timed out after {} attempts, forcing UI refresh", maxAttempts);
+                    UIUtil::ItemList::Refresh();
                 }
-                UIUtil::ItemList::Refresh();
+                
+                const auto ui = RE::UI::GetSingleton();
+                RE::GFxMovieView* movieToShow = nullptr;
+                if (ui) {
+                    auto containerMenu = ui->GetMenu<ContainerMenu>();
+                    if (containerMenu && containerMenu->uiMovie)
+                        movieToShow = containerMenu->uiMovie.get();
+                    else {
+                        auto barterMenu = ui->GetMenu<BarterMenu>();
+                        if (barterMenu && barterMenu->uiMovie)
+                            movieToShow = barterMenu->uiMovie.get();
+                    }
+                }
+                if (movieToShow)
+                    movieToShow->SetVisible(true);
+                    
                 return;
             }
             
-            auto* ti = SKSE::GetTaskInterface();
-            if (ti)
-                ti->AddUITask([sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, attempt]() { 
-                    VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, attempt + 1); 
-                });
-            else
-                UIUtil::ItemList::Refresh();
+            std::thread([=]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                auto* ti = SKSE::GetTaskInterface();
+                if (ti)
+                    ti->AddUITask([=]() {
+                        VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, attempt + 1);
+                    });
+            }).detach();
         }
     }
 
     void JunkHandler::ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest) {
-        auto* ti = SKSE::GetTaskInterface();
-        if (ti)
-            ti->AddUITask([sourceRef, expectedCountsInSource, destRef, expectedCountsInDest]() { 
-                VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, 0); 
-            });
-        else
-            UIUtil::ItemList::Refresh();
+        int initialDelayMs = std::clamp(
+            100 + static_cast<int>(expectedCountsInSource.size()) * 10, 100, 1500);
+
+        std::thread([=]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(initialDelayMs));
+            auto* ti = SKSE::GetTaskInterface();
+            if (ti)
+                ti->AddUITask([=]() {
+                    VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, 0);
+                });
+            else
+                UIUtil::ItemList::Refresh();
+        }).detach();
     }
 
     void JunkHandler::SellJunk() {
@@ -783,6 +890,16 @@ namespace JunkIt {
 
         WarnLargeInventory(player, vendorContainer);
 
+        const auto ui = RE::UI::GetSingleton();
+        RE::GFxMovieView* underlyingMovie = nullptr;
+        if (ui) {
+            auto menu = ui->GetMenu<BarterMenu>();
+            if (menu && menu->uiMovie)
+                underlyingMovie = menu->uiMovie.get();
+        }
+        if (underlyingMovie)
+            underlyingMovie->SetVisible(false);
+
         if (Settings::GetNotifyOnJunkSell()) {
             DebugNotification("JunkIt - Processing Sale...");
         }
@@ -828,7 +945,6 @@ namespace JunkIt {
         Count totalVendorGoldLeft = static_cast<Count>(vendorGoldDisplay) - totalSellValue;
         if (totalVendorGoldLeft < 0) totalVendorGoldLeft = 0;
 
-        const auto ui = RE::UI::GetSingleton();
         auto menu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
         if (menu && menu->uiMovie) {
             RE::GFxValue goldVal(static_cast<double>(totalVendorGoldLeft));
@@ -866,14 +982,28 @@ namespace JunkIt {
             player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
         }
 
-        {
-            const auto uiRefresh = RE::UI::GetSingleton();
-            auto barterMenu = uiRefresh ? uiRefresh->GetMenu<BarterMenu>() : nullptr;
-            RE::ItemList* itemList = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
-            if (itemList) {
-                itemList->Update();
+        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInSource;
+        std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedInDest;
+        
+        auto playerInvCountsAfter = player->GetInventoryCounts();
+        auto vendorInvCountsAfter = vendorContainer->GetInventoryCounts();
+        
+        for (const auto& [entryData, soldCount] : itemsToSell) {
+            if (soldCount > 0 && entryData && entryData->object) {
+                auto pIt = playerInvCountsAfter.find(entryData->object);
+                Count expectedPlayerCount = (pIt != playerInvCountsAfter.end()) ? pIt->second : 0;
+                expectedInSource.push_back({ entryData->object, expectedPlayerCount });
+                
+                auto vIt = vendorInvCountsAfter.find(entryData->object);
+                Count expectedVendorCount = (vIt != vendorInvCountsAfter.end()) ? vIt->second : 0;
+                expectedInDest.push_back({ entryData->object, expectedVendorCount });
             }
         }
+        
+        UIUtil::ItemList::Refresh();
+        
+        if (!expectedInSource.empty())
+            ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInSource), vendorContainer, std::move(expectedInDest));
 
         SKSE::log::info("---- Sale Execution Complete ----");
     }
