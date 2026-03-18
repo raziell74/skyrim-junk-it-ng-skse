@@ -166,6 +166,7 @@ namespace JunkIt {
 
                 WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x821, static_cast<float>(WarnInventorySizeThreshold)));
                 AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
+                HeavyLoadDelayMultiplier = getGlobalValue("HeavyLoadDelayMultiplier", 0x828, HeavyLoadDelayMultiplier);
 
                 AutoExport = getGlobalBool("AutoExport", 0x826, AutoExport);
                 AutoImport = getGlobalBool("AutoImport", 0x827, AutoImport);
@@ -207,11 +208,12 @@ namespace JunkIt {
                 );
 
                 SKSE::log::info(
-                    "Misc Settings | WarnInventorySizeThreshold: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {}",
+                    "Misc Settings | WarnInventorySizeThreshold: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f}",
                     WarnInventorySizeThreshold,
                     AggressiveRefresh,
                     AutoExport,
-                    AutoImport
+                    AutoImport,
+                    HeavyLoadDelayMultiplier
                 );
 
                 SKSE::log::info(
@@ -247,6 +249,7 @@ namespace JunkIt {
             [[nodiscard]] static bool GetNotifyLargeInventoryLag() { return NotifyLargeInventoryLag; }
             [[nodiscard]] static std::int32_t GetWarnInventorySizeThreshold() { return WarnInventorySizeThreshold; }
             [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
+            [[nodiscard]] static float GetHeavyLoadDelayMultiplier() { return HeavyLoadDelayMultiplier; }
 
             [[nodiscard]] static bool GetAutoExport() { return AutoExport; }
             [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
@@ -281,6 +284,7 @@ namespace JunkIt {
             static inline bool NotifyLargeInventoryLag = true;
             static inline std::int32_t WarnInventorySizeThreshold = 500;
             static inline bool AggressiveRefresh = false;
+            static inline float HeavyLoadDelayMultiplier = 1.0f;
 
             static inline bool AutoExport = false;
             static inline bool AutoImport = false;

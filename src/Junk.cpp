@@ -713,8 +713,13 @@ namespace JunkIt {
     }
 
     void JunkHandler::ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest) {
+        float multiplier = Settings::GetHeavyLoadDelayMultiplier();
+        int baseDelay = 100 + static_cast<int>(expectedCountsInSource.size()) * 10;
         int initialDelayMs = std::clamp(
-            100 + static_cast<int>(expectedCountsInSource.size()) * 10, 100, 1500);
+            static_cast<int>(baseDelay * multiplier), 
+            100, 
+            static_cast<int>(2000 * multiplier)
+        );
 
         std::thread([=]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(initialDelayMs));

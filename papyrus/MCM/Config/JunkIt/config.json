@@ -222,6 +222,20 @@
                     }
                 },
                 {
+                    "id": "fHeavyLoadDelayMultiplier:MiscSettings",
+                    "type": "slider",
+                    "text": "$JunkIt_HeavyLoadDelayMultiplier",
+                    "help": "$JunkIt_HeavyLoadDelayMultiplier_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingFloat",
+                        "min": 0.5,
+                        "max": 5.0,
+                        "step": 0.1,
+                        "defaultValue": 1.0,
+                        "formatString": "{1}x"
+                    }
+                },
+                {
                     "type": "header",
                     "text": "$JunkIt_I4IntegrationHeader"
                 },

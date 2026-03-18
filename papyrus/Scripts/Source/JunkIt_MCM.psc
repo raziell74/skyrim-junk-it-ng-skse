@@ -23,6 +23,8 @@ GlobalVariable Property NotifyOnJunkTransfer Auto
 GlobalVariable Property NotifyOnJunkSell Auto
 GlobalVariable Property NotifyLargeInventoryLag Auto
 
+GlobalVariable Property HeavyLoadDelayMultiplier Auto
+
 GlobalVariable Property AutoExport Auto
 GlobalVariable Property AutoImport Auto
 
@@ -249,6 +251,8 @@ Event OnSettingChange(String a_ID)
         NotifyLargeInventoryLag.SetValue(GetModSettingBool(a_ID) as Float)
     ElseIf a_ID == "iWarnInventorySizeThreshold:MiscSettings"
         WarnInventorySizeThreshold = GetModSettingInt(a_ID)
+    ElseIf a_ID == "fHeavyLoadDelayMultiplier:MiscSettings"
+        HeavyLoadDelayMultiplier.SetValue(GetModSettingFloat(a_ID))
     ElseIf a_ID == "bAggressiveRefresh:Utility"
         bAggressiveRefresh = GetModSettingBool(a_ID)
     ElseIf a_ID == "iAggressiveRefreshMaxInterval:Utility"
@@ -261,12 +265,17 @@ Event OnSettingChange(String a_ID)
     ; Integration Settings
     ElseIf a_ID == "bUpdateItemIcon:IntegrationSettings"
         UpdateItemIcon.SetValue(GetModSettingBool(a_ID) as Float)
+        RefreshDllSettings()
+        RefreshUIIcons()
     ElseIf a_ID == "bUpdateSubTypeDisplay:IntegrationSettings"
         UpdateSubTypeDisplay.SetValue(GetModSettingBool(a_ID) as Float)
+        RefreshDllSettings()
+        RefreshUIIcons()
     ElseIf a_ID == "bUseDynamicInventoryIcon:IntegrationSettings"
         UseDynamicInventoryIcon.SetValue(GetModSettingBool(a_ID) as Float)
+        RefreshDllSettings()
+        RefreshUIIcons()
         RefreshMenu()
-    
     EndIf
 
     RefreshDllSettings()
@@ -303,6 +312,7 @@ Function Default()
     SetModSettingBool("bNotifyLargeInventoryLag:MiscSettings", True)
     SetModSettingInt("iWarnInventorySizeThreshold:MiscSettings", 500)
     WarnInventorySizeThreshold = 500
+    SetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings", 1.0)
     SetModSettingBool("bAggressiveRefresh:Utility", False)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", 10)
 
@@ -363,6 +373,7 @@ Function Load()
     NotifyOnJunkSell.SetValue(GetModSettingBool("bNotifyOnJunkSell:MiscSettings") as Float)
     NotifyLargeInventoryLag.SetValue(GetModSettingBool("bNotifyLargeInventoryLag:MiscSettings") as Float)
     WarnInventorySizeThreshold = GetModSettingInt("iWarnInventorySizeThreshold:MiscSettings")
+    HeavyLoadDelayMultiplier.SetValue(GetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings"))
     bAggressiveRefresh = GetModSettingBool("bAggressiveRefresh:Utility")
     iAggressiveRefreshMaxInterval = GetModSettingInt("iAggressiveRefreshMaxInterval:Utility")
     
@@ -376,6 +387,7 @@ Function Load()
     UseDynamicInventoryIcon.SetValue(GetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings") as Float)
 
     RefreshDllSettings()
+    RefreshUIIcons()
     VerboseMessage("Settings applied!", True)
 EndFunction
 
@@ -422,6 +434,7 @@ Function MigrateToMCMHelper()
     SetModSettingBool("bNotifyOnJunkSell:MiscSettings", NotifyOnJunkSell.GetValue() as Bool)
     SetModSettingBool("bNotifyLargeInventoryLag:MiscSettings", NotifyLargeInventoryLag.GetValue() as Bool)
     SetModSettingInt("iWarnInventorySizeThreshold:MiscSettings", WarnInventorySizeThreshold)
+    SetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings", HeavyLoadDelayMultiplier.GetValue())
     SetModSettingBool("bAggressiveRefresh:Utility", bAggressiveRefresh)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", iAggressiveRefreshMaxInterval)
 
