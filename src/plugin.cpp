@@ -22,6 +22,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 	switch (a_msg->type) {
 		case SKSE::MessagingInterface::kInputLoaded:
 			JunkIt::I4MovieHook::Install();
+			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			JunkIt::InputEventHandler::Install();
@@ -32,6 +33,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 		case SKSE::MessagingInterface::kPreLoadGame:
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
+			JunkIt::I4JunkConfig::GetSingleton().Load();
 			JunkIt::Settings::Load();
 			
 			// Migration: if co-save is empty but old FormList has data, migrate
@@ -44,6 +46,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			}
 			break;
 		case SKSE::MessagingInterface::kNewGame:
+			JunkIt::I4JunkConfig::GetSingleton().Load();
 			JunkIt::Settings::Load();
 			if (JunkIt::Settings::GetAutoImport()) {
 				JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true);
