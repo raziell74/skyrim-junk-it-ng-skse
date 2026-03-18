@@ -10,6 +10,7 @@ RE::MessageBoxData::~MessageBoxData() = default;
 namespace JunkIt {
 
     std::atomic<bool> JunkHandler::operationInProgress{ false };
+    std::atomic<bool> refreshInProgress{ false };
 
     bool JunkHandler::WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2) {
         std::int32_t count1 = a_container1->GetInventoryCount();
@@ -253,6 +254,12 @@ namespace JunkIt {
     void JunkHandler::TransferJunk() {
         SKSE::log::info(" ");
         SKSE::log::info("==== Starting Junk Transfer Operation ====");
+
+        if (refreshInProgress.load()) {
+            SKSE::log::info("TransferJunk blocked: UI refresh verification is still running");
+            RE::DebugMessageBox("Junk transfers are still being updated. Please wait a moment and try again.");
+            return;
+        }
 
         bool expected = false;
         if (!operationInProgress.compare_exchange_strong(expected, true)) {
@@ -629,6 +636,7 @@ namespace JunkIt {
             const auto ui = RE::UI::GetSingleton();
             if (!ui || (!ui->IsMenuOpen("ContainerMenu") && !ui->IsMenuOpen("BarterMenu"))) {
                 SKSE::log::info("Menu closed during verification, aborting refresh");
+                refreshInProgress.store(false);
                 return;
             }
             
@@ -697,7 +705,7 @@ namespace JunkIt {
                 }
                 if (movieToShow)
                     movieToShow->SetVisible(true);
-                    
+                refreshInProgress.store(false);
                 return;
             }
             
@@ -713,29 +721,38 @@ namespace JunkIt {
     }
 
     void JunkHandler::ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest) {
-        float multiplier = Settings::GetHeavyLoadDelayMultiplier();
-        int baseDelay = 100 + static_cast<int>(expectedCountsInSource.size()) * 10;
-        int initialDelayMs = std::clamp(
-            static_cast<int>(baseDelay * multiplier), 
-            100, 
-            static_cast<int>(2000 * multiplier)
-        );
-
         std::thread([=]() {
+            float multiplier = Settings::GetHeavyLoadDelayMultiplier();
+            int baseDelay = 100 + static_cast<int>(expectedCountsInSource.size()) * 10;
+            int initialDelayMs = std::clamp(
+                static_cast<int>(baseDelay * multiplier), 
+                100, 
+                static_cast<int>(2000 * multiplier)
+            );
+
             std::this_thread::sleep_for(std::chrono::milliseconds(initialDelayMs));
             auto* ti = SKSE::GetTaskInterface();
-            if (ti)
+            if (ti) {
+                refreshInProgress.store(true);
                 ti->AddUITask([=]() {
                     VerifyAndDelayedRefreshImpl(sourceRef, expectedCountsInSource, destRef, expectedCountsInDest, 0);
                 });
-            else
+            } else {
+                refreshInProgress.store(false);
                 UIUtil::ItemList::Refresh();
+            }
         }).detach();
     }
 
     void JunkHandler::SellJunk() {
         SKSE::log::info(" ");
         SKSE::log::info("==== Starting Junk Sell Operation ====");
+
+        if (refreshInProgress.load()) {
+            SKSE::log::info("SellJunk blocked: UI refresh verification is still running");
+            RE::DebugMessageBox("Junk sales are still being updated. Please wait a moment and try again.");
+            return;
+        }
 
         bool expected = false;
         if (!operationInProgress.compare_exchange_strong(expected, true)) {
