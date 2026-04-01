@@ -2,6 +2,7 @@
 #include "settings.h"
 #include <atomic>
 #include <functional>
+#include <unordered_map>
 using namespace RE;
 
 namespace JunkIt {
@@ -26,6 +27,8 @@ namespace JunkIt {
         unsigned int offset;
     };
 
+    using GFxObjMap = std::unordered_map<InventoryEntryData*, RE::GFxValue>;
+
     class JunkHandler {
         using Count = std::int32_t;
         using InventoryCountMap = std::map<TESBoundObject*, Count>;
@@ -35,8 +38,8 @@ namespace JunkIt {
         static TESForm* ToggleSelectedItemJunk();
         static void ToggleIsJunk();
 
-        static std::vector<InventoryEntryData*> BuildTransferList();
-        static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
+        static std::pair<std::vector<InventoryEntryData*>, GFxObjMap> BuildTransferList();
+        static std::pair<std::vector<std::pair<InventoryEntryData*, std::int32_t>>, GFxObjMap> BuildSellList();
         static std::int32_t GetMenuItemValue(TESForm* a_form);
 
         static TESObjectREFR* GetContainerMenuContainer();
@@ -84,8 +87,8 @@ namespace JunkIt {
 
         static void ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef = nullptr, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest = {});
 
-        static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
-        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
+        static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, GFxObjMap gfxObjMap, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
+        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, GFxObjMap gfxObjMap, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
     };

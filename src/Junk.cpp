@@ -66,22 +66,24 @@ namespace JunkIt {
         messageBoxData->QueueMessage();
     }
 
-    std::vector<InventoryEntryData*> JunkHandler::BuildTransferList() {
+    std::pair<std::vector<InventoryEntryData*>, GFxObjMap> JunkHandler::BuildTransferList() {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Transferrable Junk ----");
 
         std::vector<InventoryEntryData*> transferList;
+        GFxObjMap gfxObjMap;
 
         const auto ui = RE::UI::GetSingleton();
         GPtr<ContainerMenu> containerMenu = ui ? ui->GetMenu<ContainerMenu>() : nullptr;
         ItemList* itemListMenu = containerMenu ? containerMenu->GetRuntimeData().itemList : nullptr;
         if (!itemListMenu) {
             SKSE::log::error("No ItemListMenu found");
-            return transferList;
+            return {transferList, gfxObjMap};
         }
 
         BSTArray<ItemList::Item*> listItems = itemListMenu->items;
         std::vector<InventoryEntryData*> sortFormData;
+        std::unordered_map<InventoryEntryData*, RE::GFxValue> sortGfxMap;
 
         SKSE::log::info("Processing Entry List for transferable junk items");
         auto& junkManager = JunkDataManager::GetSingleton();
@@ -102,6 +104,7 @@ namespace JunkIt {
             }
 
             sortFormData.push_back(entryItem->data.objDesc);
+            sortGfxMap[entryItem->data.objDesc] = entryItem->obj;
         }
 
         auto priority = Settings::GetTransferPriority();
@@ -132,25 +135,27 @@ namespace JunkIt {
             const TESBoundObject* entryObject = entryData->object;
             if (!entryObject) continue;
             transferList.push_back(entryData);
+            gfxObjMap[entryData] = sortGfxMap[entryData];
             SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
         }
 
         SKSE::log::info("---- Completed Junk Transfer List Generation ----");
         SKSE::log::info(" ");
-        return transferList;
+        return {transferList, gfxObjMap};
     }
 
-    std::vector<std::pair<InventoryEntryData*, std::int32_t>> JunkHandler::BuildSellList() {
+    std::pair<std::vector<std::pair<InventoryEntryData*, std::int32_t>>, GFxObjMap> JunkHandler::BuildSellList() {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Sellable Junk ----");
 
         std::vector<std::pair<InventoryEntryData*, std::int32_t>> sellList;
+        GFxObjMap gfxObjMap;
 
         auto& junkManager = JunkDataManager::GetSingleton();
         auto junkInventory = junkManager.GetPlayerJunkInventory();
         if (junkInventory.empty()) {
             SKSE::log::info("No junk items in player inventory");
-            return sellList;
+            return {sellList, gfxObjMap};
         }
 
         const auto ui = RE::UI::GetSingleton();
@@ -158,10 +163,11 @@ namespace JunkIt {
         ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
         if (!itemListMenu) {
             SKSE::log::error("No ItemListMenu found");
-            return sellList;
+            return {sellList, gfxObjMap};
         }
 
         std::unordered_map<uint64_t, InventoryEntryData*> barterIndex;
+        std::unordered_map<InventoryEntryData*, RE::GFxValue> barterGfxMap;
         for (std::uint32_t i = 0, size = itemListMenu->items.size(); i < size; i++) {
             auto* item = itemListMenu->items[i];
             if (item && item->data.objDesc && item->data.objDesc->object) {
@@ -169,6 +175,7 @@ namespace JunkIt {
                 uint32_t extraHash = junkManager.ComputeExtraDataHash(item->data.objDesc);
                 uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraHash;
                 barterIndex[packedKey] = item->data.objDesc;
+                barterGfxMap[item->data.objDesc] = item->obj;
             }
         }
 
@@ -238,13 +245,14 @@ namespace JunkIt {
         for (auto& [objDesc, count, _] : sortData) {
             if (!objDesc->object) continue;
             sellList.push_back({objDesc, count});
+            gfxObjMap[objDesc] = barterGfxMap[objDesc];
             SKSE::log::info("     {} x{} [{}]", objDesc->object->GetName(), count,
                 FormUtil::Form::GetFormConfigString(objDesc->object->As<TESForm>()));
         }
 
         SKSE::log::info("---- Generated Junk Sell FormList ----");
         SKSE::log::info(" ");
-        return sellList;
+        return {sellList, gfxObjMap};
     }
 
     void JunkHandler::ToggleIsJunk() {
@@ -307,7 +315,7 @@ namespace JunkIt {
         menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
         int menuView = static_cast<int>(result.GetNumber());
 
-        auto transferList = BuildTransferList();
+        auto [transferList, gfxObjMap] = BuildTransferList();
         SKSE::log::info("Transfer list contains {} unique item types", transferList.size());
 
         if (menuView == 0) {
@@ -322,10 +330,10 @@ namespace JunkIt {
             if (Settings::ConfirmTransfer()) {
                 SKSE::log::info("Showing confirmation dialog for retrieval");
                 ShowConfirmationMessageBox("Retrieve all junk items from this container?", {"Yes", "No"},
-                    [transferList, transferContainer, containerMode, menuView, playerCarryWeight](unsigned int choice) {
+                    [transferList, gfxObjMap, transferContainer, containerMode, menuView, playerCarryWeight](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed retrieval");
-                            ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                            ExecuteTransfer(transferList, gfxObjMap, transferContainer, containerMode, menuView);
                             auto p = RE::PlayerCharacter::GetSingleton();
                             if (p->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
                                 p->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
@@ -337,7 +345,7 @@ namespace JunkIt {
                     });
             } else {
                 SKSE::log::info("Confirmation disabled, proceeding with retrieval");
-                ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                ExecuteTransfer(transferList, gfxObjMap, transferContainer, containerMode, menuView);
                 if (player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
                     player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
                 }
@@ -355,10 +363,10 @@ namespace JunkIt {
             if (Settings::ConfirmTransfer()) {
                 SKSE::log::info("Showing confirmation dialog for transfer");
                 ShowConfirmationMessageBox("Transfer all junk items to this container?", {"Yes", "No"},
-                    [transferList, transferContainer, containerMode, menuView, playerCarryWeight](unsigned int choice) {
+                    [transferList, gfxObjMap, transferContainer, containerMode, menuView, playerCarryWeight](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed transfer");
-                            ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                            ExecuteTransfer(transferList, gfxObjMap, transferContainer, containerMode, menuView);
                             auto p = RE::PlayerCharacter::GetSingleton();
                             if (p->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
                                 p->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
@@ -370,7 +378,7 @@ namespace JunkIt {
                     });
             } else {
                 SKSE::log::info("Confirmation disabled, proceeding with transfer");
-                ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                ExecuteTransfer(transferList, gfxObjMap, transferContainer, containerMode, menuView);
                 if (player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight) != playerCarryWeight) {
                     player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kCarryWeight, playerCarryWeight);
                 }
@@ -381,7 +389,7 @@ namespace JunkIt {
         SKSE::log::info(" ");
     }
 
-    void JunkHandler::ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView) {
+    void JunkHandler::ExecuteTransfer(std::vector<InventoryEntryData*> transferList, GFxObjMap gfxObjMap, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView) {
         SKSE::log::info("---- Executing Junk Transfer ----");
         auto player = RE::PlayerCharacter::GetSingleton();
 
@@ -578,7 +586,33 @@ namespace JunkIt {
             }
         }
 
-        UIUtil::ItemList::Refresh();
+        for (auto* entryData : transferList) {
+            auto it = gfxObjMap.find(entryData);
+            if (it == gfxObjMap.end()) continue;
+            RE::GFxValue& obj = it->second;
+            RE::GFxValue currentFlag;
+            obj.GetMember("filterFlag", &currentFlag);
+            if (currentFlag.IsNumber()) {
+                auto flag = static_cast<std::uint32_t>(currentFlag.GetNumber());
+                std::uint32_t newFlag = (menuView == 0)
+                    ? (flag & 0xFFC00u) >> 10
+                    : (flag & 0x003FFu) << 10;
+                obj.SetMember("filterFlag", RE::GFxValue(static_cast<double>(newFlag)));
+            }
+        }
+        if (underlyingMovie) {
+            RE::GFxValue itemListObj;
+            underlyingMovie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
+            if (itemListObj.IsObject())
+                itemListObj.Invoke("requestUpdate", nullptr, nullptr, 0);
+        }
+
+        std::thread([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            auto* ti = SKSE::GetTaskInterface();
+            if (ti)
+                ti->AddUITask([]() { UIUtil::ItemList::Refresh(); });
+        }).detach();
         
         if (verifySourceRef && !expectedInSource.empty())
             ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource), verifyDestRef, std::move(expectedInDest));
@@ -773,7 +807,7 @@ namespace JunkIt {
         auto player = RE::PlayerCharacter::GetSingleton();
         float playerCarryWeight = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
 
-        auto sellList = BuildSellList();
+        auto [sellList, gfxObjMap] = BuildSellList();
 
         SKSE::log::info("SellList generated. Entry Count: {}", sellList.size());
 
@@ -888,10 +922,10 @@ namespace JunkIt {
             SKSE::log::info("Showing confirmation dialog for sale");
             std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, totalSellValue);
             ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
-                [itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight](unsigned int choice) {
+                [itemsToSell, gfxObjMap, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight](unsigned int choice) {
                     if (choice == 0) {
                         SKSE::log::info("User confirmed sale");
-                        ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
+                        ExecuteSell(itemsToSell, gfxObjMap, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
                     } else {
                         SKSE::log::info("User cancelled sale");
                     }
@@ -899,14 +933,14 @@ namespace JunkIt {
                 });
         } else {
             SKSE::log::info("Confirmation disabled, proceeding with sale");
-            ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
+            ExecuteSell(itemsToSell, gfxObjMap, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
             operationInProgress.store(false);
         }
         SKSE::log::info("==== Junk Sell Operation Complete ====");
         SKSE::log::info(" ");
     }
 
-    void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
+    void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, GFxObjMap gfxObjMap, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
         SKSE::log::info("---- Executing Junk Sale ----");
         auto player = RE::PlayerCharacter::GetSingleton();
 
@@ -1022,7 +1056,30 @@ namespace JunkIt {
             }
         }
         
-        UIUtil::ItemList::Refresh();
+        for (const auto& [entryData, soldCount] : itemsToSell) {
+            auto it = gfxObjMap.find(entryData);
+            if (it == gfxObjMap.end()) continue;
+            RE::GFxValue& obj = it->second;
+            RE::GFxValue currentFlag;
+            obj.GetMember("filterFlag", &currentFlag);
+            if (currentFlag.IsNumber()) {
+                auto flag = static_cast<std::uint32_t>(currentFlag.GetNumber());
+                obj.SetMember("filterFlag", RE::GFxValue(static_cast<double>((flag & 0x003FFu) << 10)));
+            }
+        }
+        if (underlyingMovie) {
+            RE::GFxValue itemListObj;
+            underlyingMovie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
+            if (itemListObj.IsObject())
+                itemListObj.Invoke("requestUpdate", nullptr, nullptr, 0);
+        }
+
+        std::thread([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            auto* ti = SKSE::GetTaskInterface();
+            if (ti)
+                ti->AddUITask([]() { UIUtil::ItemList::Refresh(); });
+        }).detach();
         
         if (!expectedInSource.empty())
             ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInSource), vendorContainer, std::move(expectedInDest));
