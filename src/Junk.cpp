@@ -31,29 +31,6 @@ namespace JunkIt {
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
-        RE::GFxMovieView* underlyingMovie = nullptr;
-        const auto ui = RE::UI::GetSingleton();
-        if (ui) {
-            auto containerMenu = ui->GetMenu<ContainerMenu>();
-            if (containerMenu && containerMenu->uiMovie) {
-                underlyingMovie = containerMenu->uiMovie.get();
-            } else {
-                auto barterMenu = ui->GetMenu<BarterMenu>();
-                if (barterMenu && barterMenu->uiMovie)
-                    underlyingMovie = barterMenu->uiMovie.get();
-            }
-        }
-
-        if (underlyingMovie)
-            underlyingMovie->SetVisible(false);
-
-        auto wrappedCallback = [originalCallback = std::move(callback), underlyingMovie](unsigned int choice) {
-            if (originalCallback)
-                originalCallback(choice);
-            if (underlyingMovie)
-                underlyingMovie->SetVisible(true);
-        };
-
         auto messageBoxData = new RE::MessageBoxData();
         messageBoxData->bodyText = bodyText;
         for (const auto& button : buttons) {
@@ -62,7 +39,7 @@ namespace JunkIt {
         messageBoxData->optionIndexOffset = 4;
         messageBoxData->type = 10;
         messageBoxData->menuDepth = 10;
-        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(wrappedCallback), messageBoxData->optionIndexOffset));
+        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback), messageBoxData->optionIndexOffset));
         messageBoxData->QueueMessage();
     }
 
@@ -318,11 +295,15 @@ namespace JunkIt {
         auto [transferList, gfxObjMap] = BuildTransferList();
         SKSE::log::info("Transfer list contains {} unique item types", transferList.size());
 
+        RE::GFxMovieView* menuMovie = UIUtil::Menu::GetActiveMenuMovie();
+        if (menuMovie) menuMovie->SetVisible(false);
+
         if (menuView == 0) {
             SKSE::log::info("Transfer Direction: Retrieve FROM container TO player");
             if (transferList.empty()) {
                 SKSE::log::info("No Junk to retrieve!");
                 RE::DebugMessageBox("No Junk to take!");
+                if (menuMovie) menuMovie->SetVisible(true);
                 operationInProgress.store(false);
                 return;
             }
@@ -330,7 +311,7 @@ namespace JunkIt {
             if (Settings::ConfirmTransfer()) {
                 SKSE::log::info("Showing confirmation dialog for retrieval");
                 ShowConfirmationMessageBox("Retrieve all junk items from this container?", {"Yes", "No"},
-                    [transferList, gfxObjMap, transferContainer, containerMode, menuView, playerCarryWeight](unsigned int choice) {
+                    [transferList, gfxObjMap, transferContainer, containerMode, menuView, playerCarryWeight, menuMovie](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed retrieval");
                             ExecuteTransfer(transferList, gfxObjMap, transferContainer, containerMode, menuView);
@@ -340,6 +321,7 @@ namespace JunkIt {
                             }
                         } else {
                             SKSE::log::info("User cancelled retrieval");
+                            if (menuMovie) menuMovie->SetVisible(true);
                         }
                         operationInProgress.store(false);
                     });
@@ -356,6 +338,7 @@ namespace JunkIt {
             if (transferList.empty()) {
                 SKSE::log::info("No Junk to transfer!");
                 RE::DebugMessageBox("No Junk to transfer!");
+                if (menuMovie) menuMovie->SetVisible(true);
                 operationInProgress.store(false);
                 return;
             }
@@ -363,7 +346,7 @@ namespace JunkIt {
             if (Settings::ConfirmTransfer()) {
                 SKSE::log::info("Showing confirmation dialog for transfer");
                 ShowConfirmationMessageBox("Transfer all junk items to this container?", {"Yes", "No"},
-                    [transferList, gfxObjMap, transferContainer, containerMode, menuView, playerCarryWeight](unsigned int choice) {
+                    [transferList, gfxObjMap, transferContainer, containerMode, menuView, playerCarryWeight, menuMovie](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed transfer");
                             ExecuteTransfer(transferList, gfxObjMap, transferContainer, containerMode, menuView);
@@ -373,6 +356,7 @@ namespace JunkIt {
                             }
                         } else {
                             SKSE::log::info("User cancelled transfer");
+                            if (menuMovie) menuMovie->SetVisible(true);
                         }
                         operationInProgress.store(false);
                     });
@@ -394,16 +378,6 @@ namespace JunkIt {
         auto player = RE::PlayerCharacter::GetSingleton();
 
         // WarnLargeInventory(player, transferContainer);
-
-        const auto ui = RE::UI::GetSingleton();
-        RE::GFxMovieView* underlyingMovie = nullptr;
-        if (ui) {
-            auto menu = ui->GetMenu<ContainerMenu>();
-            if (menu && menu->uiMovie)
-                underlyingMovie = menu->uiMovie.get();
-        }
-        if (underlyingMovie)
-            underlyingMovie->SetVisible(false);
 
         ITEM_REMOVE_REASON reason = ITEM_REMOVE_REASON::kStoreInContainer;
         if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
@@ -600,22 +574,26 @@ namespace JunkIt {
                 obj.SetMember("filterFlag", RE::GFxValue(static_cast<double>(newFlag)));
             }
         }
-        if (underlyingMovie) {
+        if (auto* movie = UIUtil::Menu::GetActiveMenuMovie()) {
             RE::GFxValue itemListObj;
-            underlyingMovie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
+            movie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
             if (itemListObj.IsObject())
                 itemListObj.Invoke("requestUpdate", nullptr, nullptr, 0);
         }
 
         std::thread([]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
             auto* ti = SKSE::GetTaskInterface();
             if (ti)
-                ti->AddUITask([]() { UIUtil::ItemList::Refresh(); });
+                ti->AddUITask([]() { 
+                    UIUtil::ItemList::Refresh(); 
+                    if (auto* movie = UIUtil::Menu::GetActiveMenuMovie())
+                        movie->SetVisible(true);
+                });
         }).detach();
         
-        if (verifySourceRef && !expectedInSource.empty())
-            ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource), verifyDestRef, std::move(expectedInDest));
+        // if (verifySourceRef && !expectedInSource.empty())
+        //     ScheduleVerifyAndDelayedRefresh(verifySourceRef, std::move(expectedInSource), verifyDestRef, std::move(expectedInDest));
     }
 
     namespace {
@@ -665,7 +643,7 @@ namespace JunkIt {
         }
 
         void VerifyAndDelayedRefreshImpl(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest, int attempt) {
-            constexpr int maxAttempts = 15;
+            constexpr int maxAttempts = 2;
             
             const auto ui = RE::UI::GetSingleton();
             if (!ui || (!ui->IsMenuOpen("ContainerMenu") && !ui->IsMenuOpen("BarterMenu"))) {
@@ -725,20 +703,6 @@ namespace JunkIt {
                     UIUtil::ItemList::Refresh();
                 }
                 
-                const auto ui = RE::UI::GetSingleton();
-                RE::GFxMovieView* movieToShow = nullptr;
-                if (ui) {
-                    auto containerMenu = ui->GetMenu<ContainerMenu>();
-                    if (containerMenu && containerMenu->uiMovie)
-                        movieToShow = containerMenu->uiMovie.get();
-                    else {
-                        auto barterMenu = ui->GetMenu<BarterMenu>();
-                        if (barterMenu && barterMenu->uiMovie)
-                            movieToShow = barterMenu->uiMovie.get();
-                    }
-                }
-                if (movieToShow)
-                    movieToShow->SetVisible(true);
                 refreshInProgress.store(false);
                 return;
             }
@@ -918,16 +882,20 @@ namespace JunkIt {
 
         SKSE::log::info("Sale Summary: Selling {} items for {} gold (Vendor will have {} gold remaining)", totalToSell, totalSellValue, RoundNumber(calculatedVendorGold));
 
+        RE::GFxMovieView* menuMovie = UIUtil::Menu::GetActiveMenuMovie();
+        if (menuMovie) menuMovie->SetVisible(false);
+
         if (Settings::ConfirmSell()) {
             SKSE::log::info("Showing confirmation dialog for sale");
             std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, totalSellValue);
             ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
-                [itemsToSell, gfxObjMap, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight](unsigned int choice) {
+                [itemsToSell, gfxObjMap, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight, menuMovie](unsigned int choice) {
                     if (choice == 0) {
                         SKSE::log::info("User confirmed sale");
                         ExecuteSell(itemsToSell, gfxObjMap, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay, playerCarryWeight);
                     } else {
                         SKSE::log::info("User cancelled sale");
+                        if (menuMovie) menuMovie->SetVisible(true);
                     }
                     operationInProgress.store(false);
                 });
@@ -947,14 +915,6 @@ namespace JunkIt {
         // WarnLargeInventory(player, vendorContainer);
 
         const auto ui = RE::UI::GetSingleton();
-        RE::GFxMovieView* underlyingMovie = nullptr;
-        if (ui) {
-            auto menu = ui->GetMenu<BarterMenu>();
-            if (menu && menu->uiMovie)
-                underlyingMovie = menu->uiMovie.get();
-        }
-        if (underlyingMovie)
-            underlyingMovie->SetVisible(false);
 
         if (Settings::GetNotifyOnJunkSell()) {
             DebugNotification("JunkIt - Processing Sale...");
@@ -1006,7 +966,6 @@ namespace JunkIt {
             RE::GFxValue goldVal(static_cast<double>(totalVendorGoldLeft));
             menu->uiMovie->SetVariable("_root.Menu_mc._vendorGold", goldVal);
         }
-
         SKSE::log::info("SellList Size: {}", itemsToSell.size());
         SKSE::log::info("Transferring junk items to vendor...");
         for (const auto& [entryData, count] : itemsToSell) {
@@ -1067,22 +1026,26 @@ namespace JunkIt {
                 obj.SetMember("filterFlag", RE::GFxValue(static_cast<double>((flag & 0x003FFu) << 10)));
             }
         }
-        if (underlyingMovie) {
+        if (auto* movie = UIUtil::Menu::GetActiveMenuMovie()) {
             RE::GFxValue itemListObj;
-            underlyingMovie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
+            movie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
             if (itemListObj.IsObject())
                 itemListObj.Invoke("requestUpdate", nullptr, nullptr, 0);
         }
 
         std::thread([]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
             auto* ti = SKSE::GetTaskInterface();
             if (ti)
-                ti->AddUITask([]() { UIUtil::ItemList::Refresh(); });
+                ti->AddUITask([]() { 
+                    UIUtil::ItemList::Refresh(); 
+                    if (auto* movie = UIUtil::Menu::GetActiveMenuMovie())
+                        movie->SetVisible(true);
+                });
         }).detach();
         
-        if (!expectedInSource.empty())
-            ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInSource), vendorContainer, std::move(expectedInDest));
+        // if (!expectedInSource.empty())
+        //     ScheduleVerifyAndDelayedRefresh(player, std::move(expectedInSource), vendorContainer, std::move(expectedInDest));
 
         SKSE::log::info("---- Sale Execution Complete ----");
     }
