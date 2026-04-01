@@ -13,19 +13,19 @@ namespace JunkIt {
     std::atomic<bool> refreshInProgress{ false };
 
     bool JunkHandler::WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2) {
-        std::int32_t count1 = a_container1->GetInventoryCount();
-        std::int32_t count2 = a_container2->GetInventoryCount();
-        std::int32_t totalCount = count1 + count2;
+        // std::int32_t count1 = a_container1->GetInventoryCount();
+        // std::int32_t count2 = a_container2->GetInventoryCount();
+        // std::int32_t totalCount = count1 + count2;
 
-        SKSE::log::info("Large Inventory Check: Total Menu Form Count: {}", totalCount);
+        // SKSE::log::info("Large Inventory Check: Total Menu Form Count: {}", totalCount);
 
-        if (totalCount >= Settings::GetWarnInventorySizeThreshold()) {
-            SKSE::log::info("Large Container Inventory Detected!");
-            if (Settings::GetNotifyLargeInventoryLag()) {
-                RE::DebugMessageBox("Large Inventory detected, transfer could lag. Please allow for a few additional seconds for the transfer to complete.");
-            }
-            return true;
-        }
+        // if (totalCount >= Settings::GetWarnInventorySizeThreshold()) {
+        //     SKSE::log::info("Large Container Inventory Detected!");
+        //     if (Settings::GetNotifyLargeInventoryLag()) {
+        //         RE::DebugMessageBox("Large Inventory detected, transfer could lag. Please allow for a few additional seconds for the transfer to complete.");
+        //     }
+        //     return true;
+        // }
 
         return false;
     }
@@ -385,7 +385,7 @@ namespace JunkIt {
         SKSE::log::info("---- Executing Junk Transfer ----");
         auto player = RE::PlayerCharacter::GetSingleton();
 
-        WarnLargeInventory(player, transferContainer);
+        // WarnLargeInventory(player, transferContainer);
 
         const auto ui = RE::UI::GetSingleton();
         RE::GFxMovieView* underlyingMovie = nullptr;
@@ -910,7 +910,7 @@ namespace JunkIt {
         SKSE::log::info("---- Executing Junk Sale ----");
         auto player = RE::PlayerCharacter::GetSingleton();
 
-        WarnLargeInventory(player, vendorContainer);
+        // WarnLargeInventory(player, vendorContainer);
 
         const auto ui = RE::UI::GetSingleton();
         RE::GFxMovieView* underlyingMovie = nullptr;
@@ -1264,6 +1264,36 @@ namespace JunkIt {
         return goldValue;
     }
 
+    static bool HasTransferableExtraData(ExtraDataList* a_list)
+    {
+        bool hasTransferableData = false;
+        for (const RE::BSExtraData& node : *a_list) {
+            switch (node.GetType()) {
+                case RE::ExtraDataType::kReferenceHandle:
+                    return false;
+                case RE::ExtraDataType::kHealth:
+                case RE::ExtraDataType::kEnchantment:
+                case RE::ExtraDataType::kCharge:
+                case RE::ExtraDataType::kPoison:
+                case RE::ExtraDataType::kOwnership:
+                case RE::ExtraDataType::kWorn:
+                case RE::ExtraDataType::kWornLeft:
+                case RE::ExtraDataType::kUniqueID:
+                case RE::ExtraDataType::kHotkey:
+                case RE::ExtraDataType::kAliasInstanceArray:
+                case RE::ExtraDataType::kSoul:
+                case RE::ExtraDataType::kTextDisplayData:
+                case RE::ExtraDataType::kFlags:
+                case RE::ExtraDataType::kCount:
+                    hasTransferableData = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+        return hasTransferableData;
+    }
+
     void JunkHandler::TransferItem(
         TESBoundObject* a_item, 
         TESObjectREFR* a_fromContainer, 
@@ -1275,12 +1305,284 @@ namespace JunkIt {
         using Count = std::int32_t;
         Count remainingCount = a_count;
 
+        const std::string itemName = a_item ? a_item->GetName() : "(null)";
+        const std::string itemFormId = a_item ? FormUtil::Form::GetFormConfigString(a_item) : "(null)";
+        const std::string fromName = a_fromContainer ? a_fromContainer->GetName() : "(null)";
+        const std::string toName = a_toContainer ? a_toContainer->GetName() : "(null)";
+
+        SKSE::log::info("  >> TransferItem: {} [{}] x{}", itemName, itemFormId, a_count);
+        SKSE::log::info("       from: {} [{}]", fromName, a_fromContainer ? FormUtil::Form::GetFormConfigString(a_fromContainer) : "(null)");
+        SKSE::log::info("       to:   {} [{}]", toName, a_toContainer ? FormUtil::Form::GetFormConfigString(a_toContainer) : "(null)");
+        SKSE::log::info("       reason: {}", static_cast<int>(a_reason));
+
+        if (a_invData) {
+            SKSE::log::info("       invData: countDelta={} worn={} favorited={} enchanted={} poisoned={} quest={}",
+                a_invData->countDelta,
+                a_invData->IsWorn(),
+                a_invData->IsFavorited(),
+                a_invData->IsEnchanted(),
+                a_invData->IsPoisoned(),
+                a_invData->IsQuestObject()
+            );
+            if (a_invData->extraLists) {
+                std::int32_t listIndex = 0;
+                for (ExtraDataList* xList : *a_invData->extraLists) {
+                    if (!xList) {
+                        SKSE::log::info("       extraList[{}]: nullptr", listIndex);
+                    } else {
+                        bool hasData = xList->begin() != xList->end();
+                        SKSE::log::info("       extraList[{}]: ptr=0x{:X} count={} hasData={}",
+                            listIndex,
+                            reinterpret_cast<uintptr_t>(xList),
+                            xList->GetCount(),
+                            hasData
+                        );
+                        if (hasData) {
+                            auto extraTypeName = [](RE::ExtraDataType t) -> const char* {
+                                switch (t) {
+                                    case RE::ExtraDataType::kNone:                  return "kNone";
+                                    case RE::ExtraDataType::kHavok:                 return "kHavok";
+                                    case RE::ExtraDataType::kCell3D:                return "kCell3D";
+                                    case RE::ExtraDataType::kCellWaterType:         return "kCellWaterType";
+                                    case RE::ExtraDataType::kRegionList:            return "kRegionList";
+                                    case RE::ExtraDataType::kSeenData:              return "kSeenData";
+                                    case RE::ExtraDataType::kEditorID:              return "kEditorID";
+                                    case RE::ExtraDataType::kCellMusicType:         return "kCellMusicType";
+                                    case RE::ExtraDataType::kCellSkyRegion:         return "kCellSkyRegion";
+                                    case RE::ExtraDataType::kProcessMiddleLow:      return "kProcessMiddleLow";
+                                    case RE::ExtraDataType::kDetachTime:            return "kDetachTime";
+                                    case RE::ExtraDataType::kPersistentCell:        return "kPersistentCell";
+                                    case RE::ExtraDataType::kUnk0C:                 return "kUnk0C";
+                                    case RE::ExtraDataType::kAction:                return "kAction";
+                                    case RE::ExtraDataType::kStartingPosition:      return "kStartingPosition";
+                                    case RE::ExtraDataType::kUnk0F:                 return "kUnk0F";
+                                    case RE::ExtraDataType::kAnimGraphManager:      return "kAnimGraphManager";
+                                    case RE::ExtraDataType::kBiped:                 return "kBiped";
+                                    case RE::ExtraDataType::kUsedMarkers:           return "kUsedMarkers";
+                                    case RE::ExtraDataType::kDistantData:           return "kDistantData";
+                                    case RE::ExtraDataType::kRagDollData:           return "kRagDollData";
+                                    case RE::ExtraDataType::kContainerChanges:      return "kContainerChanges";
+                                    case RE::ExtraDataType::kWorn:                  return "kWorn";
+                                    case RE::ExtraDataType::kWornLeft:              return "kWornLeft";
+                                    case RE::ExtraDataType::kPackageStartLocation:  return "kPackageStartLocation";
+                                    case RE::ExtraDataType::kPackage:               return "kPackage";
+                                    case RE::ExtraDataType::kTresPassPackage:       return "kTresPassPackage";
+                                    case RE::ExtraDataType::kRunOncePacks:          return "kRunOncePacks";
+                                    case RE::ExtraDataType::kReferenceHandle:       return "kReferenceHandle";
+                                    case RE::ExtraDataType::kFollower:              return "kFollower";
+                                    case RE::ExtraDataType::kLevCreaModifier:       return "kLevCreaModifier";
+                                    case RE::ExtraDataType::kGhost:                 return "kGhost";
+                                    case RE::ExtraDataType::kOriginalReference:     return "kOriginalReference";
+                                    case RE::ExtraDataType::kOwnership:             return "kOwnership";
+                                    case RE::ExtraDataType::kGlobal:                return "kGlobal";
+                                    case RE::ExtraDataType::kRank:                  return "kRank";
+                                    case RE::ExtraDataType::kCount:                 return "kCount";
+                                    case RE::ExtraDataType::kHealth:                return "kHealth";
+                                    case RE::ExtraDataType::kUnk26:                 return "kUnk26";
+                                    case RE::ExtraDataType::kTimeLeft:              return "kTimeLeft";
+                                    case RE::ExtraDataType::kCharge:                return "kCharge";
+                                    case RE::ExtraDataType::kLight:                 return "kLight";
+                                    case RE::ExtraDataType::kLock:                  return "kLock";
+                                    case RE::ExtraDataType::kTeleport:              return "kTeleport";
+                                    case RE::ExtraDataType::kMapMarker:             return "kMapMarker";
+                                    case RE::ExtraDataType::kLeveledCreature:       return "kLeveledCreature";
+                                    case RE::ExtraDataType::kLeveledItem:           return "kLeveledItem";
+                                    case RE::ExtraDataType::kScale:                 return "kScale";
+                                    case RE::ExtraDataType::kMissingLinkedRefIDs:   return "kMissingLinkedRefIDs";
+                                    case RE::ExtraDataType::kMagicCaster:           return "kMagicCaster";
+                                    case RE::ExtraDataType::kNonActorMagicTarget:   return "kNonActorMagicTarget";
+                                    case RE::ExtraDataType::kUnk33:                 return "kUnk33";
+                                    case RE::ExtraDataType::kPlayerCrimeList:       return "kPlayerCrimeList";
+                                    case RE::ExtraDataType::kUnk35:                 return "kUnk35";
+                                    case RE::ExtraDataType::kEnableStateParent:     return "kEnableStateParent";
+                                    case RE::ExtraDataType::kEnableStateChildren:   return "kEnableStateChildren";
+                                    case RE::ExtraDataType::kItemDropper:           return "kItemDropper";
+                                    case RE::ExtraDataType::kDroppedItemList:       return "kDroppedItemList";
+                                    case RE::ExtraDataType::kRandomTeleportMarker:  return "kRandomTeleportMarker";
+                                    case RE::ExtraDataType::kUnk3B:                 return "kUnk3B";
+                                    case RE::ExtraDataType::kSavedHavokData:        return "kSavedHavokData";
+                                    case RE::ExtraDataType::kCannotWear:            return "kCannotWear";
+                                    case RE::ExtraDataType::kPoison:                return "kPoison";
+                                    case RE::ExtraDataType::kMagicLight:            return "kMagicLight";
+                                    case RE::ExtraDataType::kLastFinishedSequence:  return "kLastFinishedSequence";
+                                    case RE::ExtraDataType::kSavedAnimation:        return "kSavedAnimation";
+                                    case RE::ExtraDataType::kNorthRotation:         return "kNorthRotation";
+                                    case RE::ExtraDataType::kSpawnContainer:        return "kSpawnContainer";
+                                    case RE::ExtraDataType::kFriendHits:            return "kFriendHits";
+                                    case RE::ExtraDataType::kHeadingTarget:         return "kHeadingTarget";
+                                    case RE::ExtraDataType::kUnk46:                 return "kUnk46";
+                                    case RE::ExtraDataType::kRefractionProperty:    return "kRefractionProperty";
+                                    case RE::ExtraDataType::kStartingWorldOrCell:   return "kStartingWorldOrCell";
+                                    case RE::ExtraDataType::kHotkey:                return "kHotkey";
+                                    case RE::ExtraDataType::kEditorRef3DData:       return "kEditorRef3DData";
+                                    case RE::ExtraDataType::kEditorRefMoveData:     return "kEditorRefMoveData";
+                                    case RE::ExtraDataType::kInfoGeneralTopic:      return "kInfoGeneralTopic";
+                                    case RE::ExtraDataType::kHasNoRumors:           return "kHasNoRumors";
+                                    case RE::ExtraDataType::kSound:                 return "kSound";
+                                    case RE::ExtraDataType::kTerminalState:         return "kTerminalState";
+                                    case RE::ExtraDataType::kLinkedRef:             return "kLinkedRef";
+                                    case RE::ExtraDataType::kLinkedRefChildren:     return "kLinkedRefChildren";
+                                    case RE::ExtraDataType::kActivateRef:           return "kActivateRef";
+                                    case RE::ExtraDataType::kActivateRefChildren:   return "kActivateRefChildren";
+                                    case RE::ExtraDataType::kCanTalkToPlayer:       return "kCanTalkToPlayer";
+                                    case RE::ExtraDataType::kObjectHealth:          return "kObjectHealth";
+                                    case RE::ExtraDataType::kCellImageSpace:        return "kCellImageSpace";
+                                    case RE::ExtraDataType::kNavMeshPortal:         return "kNavMeshPortal";
+                                    case RE::ExtraDataType::kModelSwap:             return "kModelSwap";
+                                    case RE::ExtraDataType::kRadius:                return "kRadius";
+                                    case RE::ExtraDataType::kUnk5A:                 return "kUnk5A";
+                                    case RE::ExtraDataType::kFactionChanges:        return "kFactionChanges";
+                                    case RE::ExtraDataType::kDismemberedLimbs:      return "kDismemberedLimbs";
+                                    case RE::ExtraDataType::kActorCause:            return "kActorCause";
+                                    case RE::ExtraDataType::kMultiBound:            return "kMultiBound";
+                                    case RE::ExtraDataType::kMultiBoundMarkerData:  return "kMultiBoundMarkerData";
+                                    case RE::ExtraDataType::kMultiBoundRef:         return "kMultiBoundRef";
+                                    case RE::ExtraDataType::kReflectedRefs:         return "kReflectedRefs";
+                                    case RE::ExtraDataType::kReflectorRefs:         return "kReflectorRefs";
+                                    case RE::ExtraDataType::kEmittanceSource:       return "kEmittanceSource";
+                                    case RE::ExtraDataType::kUnk64:                 return "kUnk64";
+                                    case RE::ExtraDataType::kCombatStyle:           return "kCombatStyle";
+                                    case RE::ExtraDataType::kUnk66:                 return "kUnk66";
+                                    case RE::ExtraDataType::kPrimitive:             return "kPrimitive";
+                                    case RE::ExtraDataType::kOpenCloseActivateRef:  return "kOpenCloseActivateRef";
+                                    case RE::ExtraDataType::kAnimNoteReceiver:      return "kAnimNoteReceiver";
+                                    case RE::ExtraDataType::kAmmo:                  return "kAmmo";
+                                    case RE::ExtraDataType::kPatrolRefData:         return "kPatrolRefData";
+                                    case RE::ExtraDataType::kPackageData:           return "kPackageData";
+                                    case RE::ExtraDataType::kOcclusionShape:        return "kOcclusionShape";
+                                    case RE::ExtraDataType::kCollisionData:         return "kCollisionData";
+                                    case RE::ExtraDataType::kSayTopicInfoOnceADay:  return "kSayTopicInfoOnceADay";
+                                    case RE::ExtraDataType::kEncounterZone:         return "kEncounterZone";
+                                    case RE::ExtraDataType::kSayTopicInfo:          return "kSayTopicInfo";
+                                    case RE::ExtraDataType::kOcclusionPlaneRefData: return "kOcclusionPlaneRefData";
+                                    case RE::ExtraDataType::kPortalRefData:         return "kPortalRefData";
+                                    case RE::ExtraDataType::kPortal:                return "kPortal";
+                                    case RE::ExtraDataType::kRoom:                  return "kRoom";
+                                    case RE::ExtraDataType::kHealthPerc:            return "kHealthPerc";
+                                    case RE::ExtraDataType::kRoomRefData:           return "kRoomRefData";
+                                    case RE::ExtraDataType::kGuardedRefData:        return "kGuardedRefData";
+                                    case RE::ExtraDataType::kCreatureAwakeSound:    return "kCreatureAwakeSound";
+                                    case RE::ExtraDataType::kUnk7A:                 return "kUnk7A";
+                                    case RE::ExtraDataType::kHorse:                 return "kHorse";
+                                    case RE::ExtraDataType::kIgnoredBySandbox:      return "kIgnoredBySandbox";
+                                    case RE::ExtraDataType::kCellAcousticSpace:     return "kCellAcousticSpace";
+                                    case RE::ExtraDataType::kReservedMarkers:       return "kReservedMarkers";
+                                    case RE::ExtraDataType::kWeaponIdleSound:       return "kWeaponIdleSound";
+                                    case RE::ExtraDataType::kWaterLightRefs:        return "kWaterLightRefs";
+                                    case RE::ExtraDataType::kLitWaterRefs:          return "kLitWaterRefs";
+                                    case RE::ExtraDataType::kWeaponAttackSound:     return "kWeaponAttackSound";
+                                    case RE::ExtraDataType::kActivateLoopSound:     return "kActivateLoopSound";
+                                    case RE::ExtraDataType::kPatrolRefInUseData:    return "kPatrolRefInUseData";
+                                    case RE::ExtraDataType::kAshPileRef:            return "kAshPileRef";
+                                    case RE::ExtraDataType::kCreatureMovementSound: return "kCreatureMovementSound";
+                                    case RE::ExtraDataType::kFollowerSwimBreadcrumbs: return "kFollowerSwimBreadcrumbs";
+                                    case RE::ExtraDataType::kAliasInstanceArray:    return "kAliasInstanceArray";
+                                    case RE::ExtraDataType::kLocation:              return "kLocation";
+                                    case RE::ExtraDataType::kUnk8A:                 return "kUnk8A";
+                                    case RE::ExtraDataType::kLocationRefType:       return "kLocationRefType";
+                                    case RE::ExtraDataType::kPromotedRef:           return "kPromotedRef";
+                                    case RE::ExtraDataType::kAnimationSequencer:    return "kAnimationSequencer";
+                                    case RE::ExtraDataType::kOutfitItem:            return "kOutfitItem";
+                                    case RE::ExtraDataType::kUnk8F:                 return "kUnk8F";
+                                    case RE::ExtraDataType::kLeveledItemBase:       return "kLeveledItemBase";
+                                    case RE::ExtraDataType::kLightData:             return "kLightData";
+                                    case RE::ExtraDataType::kSceneData:             return "kSceneData";
+                                    case RE::ExtraDataType::kBadPosition:           return "kBadPosition";
+                                    case RE::ExtraDataType::kHeadTrackingWeight:    return "kHeadTrackingWeight";
+                                    case RE::ExtraDataType::kFromAlias:             return "kFromAlias";
+                                    case RE::ExtraDataType::kShouldWear:            return "kShouldWear";
+                                    case RE::ExtraDataType::kFavorCost:             return "kFavorCost";
+                                    case RE::ExtraDataType::kAttachedArrows3D:      return "kAttachedArrows3D";
+                                    case RE::ExtraDataType::kTextDisplayData:       return "kTextDisplayData";
+                                    case RE::ExtraDataType::kAlphaCutoff:           return "kAlphaCutoff";
+                                    case RE::ExtraDataType::kEnchantment:           return "kEnchantment";
+                                    case RE::ExtraDataType::kSoul:                  return "kSoul";
+                                    case RE::ExtraDataType::kForcedTarget:          return "kForcedTarget";
+                                    case RE::ExtraDataType::kUnk9E:                 return "kUnk9E";
+                                    case RE::ExtraDataType::kUniqueID:              return "kUniqueID";
+                                    case RE::ExtraDataType::kFlags:                 return "kFlags";
+                                    case RE::ExtraDataType::kRefrPath:              return "kRefrPath";
+                                    case RE::ExtraDataType::kDecalGroup:            return "kDecalGroup";
+                                    case RE::ExtraDataType::kLockList:              return "kLockList";
+                                    case RE::ExtraDataType::kForcedLandingMarker:   return "kForcedLandingMarker";
+                                    case RE::ExtraDataType::kLargeRefOwnerCells:    return "kLargeRefOwnerCells";
+                                    case RE::ExtraDataType::kCellWaterEnvMap:       return "kCellWaterEnvMap";
+                                    case RE::ExtraDataType::kCellGrassData:         return "kCellGrassData";
+                                    case RE::ExtraDataType::kTeleportName:          return "kTeleportName";
+                                    case RE::ExtraDataType::kInteraction:           return "kInteraction";
+                                    case RE::ExtraDataType::kWaterData:             return "kWaterData";
+                                    case RE::ExtraDataType::kWaterCurrentZoneData:  return "kWaterCurrentZoneData";
+                                    case RE::ExtraDataType::kAttachRef:             return "kAttachRef";
+                                    case RE::ExtraDataType::kAttachRefChildren:     return "kAttachRefChildren";
+                                    case RE::ExtraDataType::kGroupConstraint:       return "kGroupConstraint";
+                                    case RE::ExtraDataType::kScriptedAnimDependence: return "kScriptedAnimDependence";
+                                    case RE::ExtraDataType::kCachedScale:           return "kCachedScale";
+                                    case RE::ExtraDataType::kRaceData:              return "kRaceData";
+                                    case RE::ExtraDataType::kGIDBuffer:             return "kGIDBuffer";
+                                    case RE::ExtraDataType::kMissingRefIDs:         return "kMissingRefIDs";
+                                    case RE::ExtraDataType::kUnkB4:                 return "kUnkB4";
+                                    case RE::ExtraDataType::kResourcesPreload:      return "kResourcesPreload";
+                                    case RE::ExtraDataType::kUnkB6:                 return "kUnkB6";
+                                    case RE::ExtraDataType::kUnkB7:                 return "kUnkB7";
+                                    case RE::ExtraDataType::kUnkB8:                 return "kUnkB8";
+                                    case RE::ExtraDataType::kUnkB9:                 return "kUnkB9";
+                                    case RE::ExtraDataType::kUnkBA:                 return "kUnkBA";
+                                    case RE::ExtraDataType::kUnkBB:                 return "kUnkBB";
+                                    case RE::ExtraDataType::kUnkBC:                 return "kUnkBC";
+                                    case RE::ExtraDataType::kUnkBD:                 return "kUnkBD";
+                                    case RE::ExtraDataType::kUnkBE:                 return "kUnkBE";
+                                    case RE::ExtraDataType::kUnkBF:                 return "kUnkBF";
+                                    default:                                         return "kUnknown";
+                                }
+                            };
+
+                            std::int32_t nodeIndex = 0;
+                            for (const RE::BSExtraData& node : *xList) {
+                                auto nodeType = node.GetType();
+                                if (nodeType == RE::ExtraDataType::kReferenceHandle) {
+                                    const auto* refHandle = static_cast<const RE::ExtraReferenceHandle*>(&node);
+                                    RE::NiPointer<RE::TESObjectREFR> origRef = const_cast<RE::ExtraReferenceHandle*>(refHandle)->GetOriginalReference();
+                                    SKSE::log::info("         node[{}]: {} (0x{:02X}) handle=0x{:X} origRef={}",
+                                        nodeIndex,
+                                        extraTypeName(nodeType),
+                                        static_cast<uint32_t>(nodeType),
+                                        refHandle->containerRef.native_handle(),
+                                        origRef ? origRef->GetName() : "(null)"
+                                    );
+                                } else if (nodeType == RE::ExtraDataType::kCount) {
+                                    const auto* extraCount = static_cast<const RE::ExtraCount*>(&node);
+                                    SKSE::log::info("         node[{}]: {} (0x{:02X}) count={}",
+                                        nodeIndex,
+                                        extraTypeName(nodeType),
+                                        static_cast<uint32_t>(nodeType),
+                                        extraCount->count
+                                    );
+                                } else {
+                                    SKSE::log::info("         node[{}]: {} (0x{:02X})",
+                                        nodeIndex,
+                                        extraTypeName(nodeType),
+                                        static_cast<uint32_t>(nodeType)
+                                    );
+                                }
+                                ++nodeIndex;
+                            }
+                        }
+                    }
+                    ++listIndex;
+                }
+            } else {
+                SKSE::log::info("       extraLists: nullptr");
+            }
+        } else {
+            SKSE::log::info("       invData: nullptr");
+        }
+
         // Check if the invData is valid or not, if it's not just do a generic item move
         if (!a_invData || !a_invData->extraLists || a_invData->extraLists->empty()) {
             SKSE::log::info("     Moving {} {} [{}] without an ExtraDataList", 
                 a_count, 
-                a_item->GetName(),
-                FormUtil::Form::GetFormConfigString(a_item)
+                itemName,
+                itemFormId
             );
             a_fromContainer->RemoveItem(a_item, a_count, a_reason, nullptr, a_toContainer);
             return;
@@ -1290,17 +1592,26 @@ namespace JunkIt {
         std::for_each(a_invData->extraLists->begin(), a_invData->extraLists->end(), [&](ExtraDataList* dataList) {
             if (dataList == nullptr) {
                 SKSE::log::error("     Ignoring null or invalid ExtraDataList on {} [{}]", 
-                    a_item->GetName(),
-                    FormUtil::Form::GetFormConfigString(a_item)
+                    itemName,
+                    itemFormId
                 );
                 return -1;
             }
-    
+
+            if (!HasTransferableExtraData(dataList)) {
+                SKSE::log::warn("     Skipping non-transferable ExtraDataList on {} [{}], deferring to fallback",
+                    itemName,
+                    itemFormId
+                );
+                return -1;
+            }
+
             Count itemCount = dataList->GetCount();
-            SKSE::log::info("     Moving {} {} [{}] with valid ExtraDataList", 
+            SKSE::log::info("     Moving {} {} [{}] with valid ExtraDataList (ptr=0x{:X})", 
                 itemCount, 
-                a_item->GetName(),
-                FormUtil::Form::GetFormConfigString(a_item)
+                itemName,
+                itemFormId,
+                reinterpret_cast<uintptr_t>(dataList)
             );
             a_fromContainer->RemoveItem(a_item, itemCount, a_reason, dataList, a_toContainer);
             remainingCount -= itemCount;
@@ -1311,8 +1622,8 @@ namespace JunkIt {
         if (remainingCount > 0) {
             SKSE::log::info("     Moving remaining {} {} [{}] with no ExtraDataList", 
                 remainingCount, 
-                a_item->GetName(),
-                FormUtil::Form::GetFormConfigString(a_item)
+                itemName,
+                itemFormId
             );
             a_fromContainer->RemoveItem(a_item, remainingCount, a_reason, nullptr, a_toContainer);
         }
