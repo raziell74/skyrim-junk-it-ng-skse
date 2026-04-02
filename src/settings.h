@@ -162,9 +162,7 @@ namespace JunkIt {
                 NotifyOnMarkUnmark = getGlobalBool("NotifyOnMarkUnmark", 0x814, NotifyOnMarkUnmark);
                 NotifyOnJunkTransfer = getGlobalBool("NotifyOnJunkTransfer", 0x815, NotifyOnJunkTransfer);
                 NotifyOnJunkSell = getGlobalBool("NotifyOnJunkSell", 0x816, NotifyOnJunkSell);
-                NotifyLargeInventoryLag = getGlobalBool("NotifyLargeInventoryLag", 0x819, NotifyLargeInventoryLag);
 
-                WarnInventorySizeThreshold = static_cast<std::int32_t>(getGlobalValue("WarnInventorySizeThreshold", 0x821, static_cast<float>(WarnInventorySizeThreshold)));
                 AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
                 HeavyLoadDelayMultiplier = getGlobalValue("HeavyLoadDelayMultiplier", 0x828, HeavyLoadDelayMultiplier);
 
@@ -192,11 +190,10 @@ namespace JunkIt {
                 }
 
                 SKSE::log::info(
-                    "Notification Settings | NotifyOnMarkUnmark: {} | NotifyOnJunkTransfer: {} | NotifyOnJunkSell: {} | NotifyLargeInventoryLag: {}",
+                    "Notification Settings | NotifyOnMarkUnmark: {} | NotifyOnJunkTransfer: {} | NotifyOnJunkSell: {}",
                     NotifyOnMarkUnmark,
                     NotifyOnJunkTransfer,
-                    NotifyOnJunkSell,
-                    NotifyLargeInventoryLag
+                    NotifyOnJunkSell
                 );
 
                 SKSE::log::info(
@@ -208,8 +205,7 @@ namespace JunkIt {
                 );
 
                 SKSE::log::info(
-                    "Misc Settings | WarnInventorySizeThreshold: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f}",
-                    WarnInventorySizeThreshold,
+                    "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f}",
                     AggressiveRefresh,
                     AutoExport,
                     AutoImport,
@@ -246,8 +242,6 @@ namespace JunkIt {
             [[nodiscard]] static bool GetNotifyOnMarkUnmark() { return NotifyOnMarkUnmark; }
             [[nodiscard]] static bool GetNotifyOnJunkTransfer() { return NotifyOnJunkTransfer; }
             [[nodiscard]] static bool GetNotifyOnJunkSell() { return NotifyOnJunkSell; }
-            [[nodiscard]] static bool GetNotifyLargeInventoryLag() { return NotifyLargeInventoryLag; }
-            [[nodiscard]] static std::int32_t GetWarnInventorySizeThreshold() { return WarnInventorySizeThreshold; }
             [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
             [[nodiscard]] static float GetHeavyLoadDelayMultiplier() { return HeavyLoadDelayMultiplier; }
 
@@ -281,8 +275,6 @@ namespace JunkIt {
             static inline bool NotifyOnMarkUnmark = true;
             static inline bool NotifyOnJunkTransfer = true;
             static inline bool NotifyOnJunkSell = true;
-            static inline bool NotifyLargeInventoryLag = true;
-            static inline std::int32_t WarnInventorySizeThreshold = 500;
             static inline bool AggressiveRefresh = false;
             static inline float HeavyLoadDelayMultiplier = 1.0f;
 

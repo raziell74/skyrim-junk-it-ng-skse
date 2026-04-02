@@ -21,7 +21,6 @@ GlobalVariable Property ProtectEnchanted Auto
 GlobalVariable Property NotifyOnMarkUnmark Auto
 GlobalVariable Property NotifyOnJunkTransfer Auto
 GlobalVariable Property NotifyOnJunkSell Auto
-GlobalVariable Property NotifyLargeInventoryLag Auto
 
 GlobalVariable Property HeavyLoadDelayMultiplier Auto
 
@@ -40,8 +39,6 @@ Message Property UpdateMessage Auto
 MiscObject Property Gold001 Auto
 
 ;--- JunkIt Non Property MCM Variables ----------------------------------------------
-
-GlobalVariable Property WarnInventorySizeThreshold Auto
 
 Bool UIFrozen = False
 
@@ -247,10 +244,6 @@ Event OnSettingChange(String a_ID)
         NotifyOnJunkTransfer.SetValue(GetModSettingBool(a_ID) as Float)
     ElseIf a_ID == "bNotifyOnJunkSell:MiscSettings"
         NotifyOnJunkSell.SetValue(GetModSettingBool(a_ID) as Float)
-    ElseIf a_ID == "bNotifyLargeInventoryLag:MiscSettings"
-        NotifyLargeInventoryLag.SetValue(GetModSettingBool(a_ID) as Float)
-    ElseIf a_ID == "iWarnInventorySizeThreshold:MiscSettings"
-        WarnInventorySizeThreshold.SetValue(GetModSettingInt(a_ID) as Float)
     ElseIf a_ID == "fHeavyLoadDelayMultiplier:MiscSettings"
         HeavyLoadDelayMultiplier.SetValue(GetModSettingFloat(a_ID))
     ElseIf a_ID == "bAggressiveRefresh:Utility"
@@ -309,9 +302,6 @@ Function Default()
     SetModSettingBool("bNotifyOnMarkUnmark:MiscSettings", True)
     SetModSettingBool("bNotifyOnJunkTransfer:MiscSettings", True)
     SetModSettingBool("bNotifyOnJunkSell:MiscSettings", True)
-    SetModSettingBool("bNotifyLargeInventoryLag:MiscSettings", True)
-    SetModSettingInt("iWarnInventorySizeThreshold:MiscSettings", 500)
-    WarnInventorySizeThreshold.SetValue(500)
     SetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings", 1.0)
     SetModSettingBool("bAggressiveRefresh:Utility", False)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", 10)
@@ -371,8 +361,6 @@ Function Load()
     NotifyOnMarkUnmark.SetValue(GetModSettingBool("bNotifyOnMarkUnmark:MiscSettings") as Float)
     NotifyOnJunkTransfer.SetValue(GetModSettingBool("bNotifyOnJunkTransfer:MiscSettings") as Float)
     NotifyOnJunkSell.SetValue(GetModSettingBool("bNotifyOnJunkSell:MiscSettings") as Float)
-    NotifyLargeInventoryLag.SetValue(GetModSettingBool("bNotifyLargeInventoryLag:MiscSettings") as Float)
-    WarnInventorySizeThreshold.SetValue(GetModSettingInt("iWarnInventorySizeThreshold:MiscSettings") as Float)
     HeavyLoadDelayMultiplier.SetValue(GetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings"))
     bAggressiveRefresh = GetModSettingBool("bAggressiveRefresh:Utility")
     iAggressiveRefreshMaxInterval = GetModSettingInt("iAggressiveRefreshMaxInterval:Utility")
@@ -432,8 +420,6 @@ Function MigrateToMCMHelper()
     SetModSettingBool("bNotifyOnMarkUnmark:MiscSettings", NotifyOnMarkUnmark.GetValue() as Bool)
     SetModSettingBool("bNotifyOnJunkTransfer:MiscSettings", NotifyOnJunkTransfer.GetValue() as Bool)
     SetModSettingBool("bNotifyOnJunkSell:MiscSettings", NotifyOnJunkSell.GetValue() as Bool)
-    SetModSettingBool("bNotifyLargeInventoryLag:MiscSettings", NotifyLargeInventoryLag.GetValue() as Bool)
-    SetModSettingInt("iWarnInventorySizeThreshold:MiscSettings", WarnInventorySizeThreshold.GetValue() as Int)
     SetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings", HeavyLoadDelayMultiplier.GetValue())
     SetModSettingBool("bAggressiveRefresh:Utility", bAggressiveRefresh)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", iAggressiveRefreshMaxInterval)

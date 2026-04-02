@@ -83,8 +83,6 @@ namespace JunkIt {
             return (ceiling - number > 0.5f) ? static_cast<std::int32_t>(std::floor(number)) : static_cast<std::int32_t>(ceiling);
         }
 
-        static bool WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2);
-
         static void ScheduleVerifyAndDelayedRefresh(TESObjectREFR* sourceRef, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInSource, TESObjectREFR* destRef = nullptr, std::vector<std::pair<TESBoundObject*, std::int32_t>> expectedCountsInDest = {});
 
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, GFxObjMap gfxObjMap, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);

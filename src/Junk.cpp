@@ -12,24 +12,6 @@ namespace JunkIt {
     std::atomic<bool> JunkHandler::operationInProgress{ false };
     std::atomic<bool> refreshInProgress{ false };
 
-    bool JunkHandler::WarnLargeInventory(TESObjectREFR* a_container1, TESObjectREFR* a_container2) {
-        // std::int32_t count1 = a_container1->GetInventoryCount();
-        // std::int32_t count2 = a_container2->GetInventoryCount();
-        // std::int32_t totalCount = count1 + count2;
-
-        // SKSE::log::info("Large Inventory Check: Total Menu Form Count: {}", totalCount);
-
-        // if (totalCount >= Settings::GetWarnInventorySizeThreshold()) {
-        //     SKSE::log::info("Large Container Inventory Detected!");
-        //     if (Settings::GetNotifyLargeInventoryLag()) {
-        //         RE::DebugMessageBox("Large Inventory detected, transfer could lag. Please allow for a few additional seconds for the transfer to complete.");
-        //     }
-        //     return true;
-        // }
-
-        return false;
-    }
-
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
         auto messageBoxData = new RE::MessageBoxData();
         messageBoxData->bodyText = bodyText;
@@ -376,8 +358,6 @@ namespace JunkIt {
     void JunkHandler::ExecuteTransfer(std::vector<InventoryEntryData*> transferList, GFxObjMap gfxObjMap, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView) {
         SKSE::log::info("---- Executing Junk Transfer ----");
         auto player = RE::PlayerCharacter::GetSingleton();
-
-        // WarnLargeInventory(player, transferContainer);
 
         ITEM_REMOVE_REASON reason = ITEM_REMOVE_REASON::kStoreInContainer;
         if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
@@ -911,8 +891,6 @@ namespace JunkIt {
     void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, GFxObjMap gfxObjMap, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight) {
         SKSE::log::info("---- Executing Junk Sale ----");
         auto player = RE::PlayerCharacter::GetSingleton();
-
-        // WarnLargeInventory(player, vendorContainer);
 
         const auto ui = RE::UI::GetSingleton();
 

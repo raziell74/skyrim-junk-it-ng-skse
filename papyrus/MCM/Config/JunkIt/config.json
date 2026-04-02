@@ -198,30 +198,6 @@
                     }
                 },
                 {
-                    "id": "bNotifyLargeInventoryLag:MiscSettings",
-                    "type": "toggle",
-                    "text": "$JunkIt_NotifyLargeInventoryLag",
-                    "help": "$JunkIt_NotifyLargeInventoryLag_Help",
-                    "valueOptions": {
-                        "sourceType": "ModSettingBool",
-                        "defaultValue": true
-                    }
-                },
-                {
-                    "id": "iWarnInventorySizeThreshold:MiscSettings",
-                    "type": "slider",
-                    "text": "$JunkIt_WarnInventorySizeThreshold",
-                    "help": "$JunkIt_WarnInventorySizeThreshold_Help",
-                    "valueOptions": {
-                        "sourceType": "ModSettingInt",
-                        "min": 100,
-                        "max": 1000,
-                        "step": 25,
-                        "defaultValue": 500,
-                        "formatString": "{0} Items"
-                    }
-                },
-                {
                     "id": "fHeavyLoadDelayMultiplier:MiscSettings",
                     "type": "slider",
                     "text": "$JunkIt_HeavyLoadDelayMultiplier",
