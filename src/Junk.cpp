@@ -1011,20 +1011,17 @@ namespace JunkIt {
 
     static bool HasTransferableExtraData(ExtraDataList* a_list)
     {
-        bool hasTransferableData = false;
+        bool hasTransferableData = true;
         for (const RE::BSExtraData& node : *a_list) {
             switch (node.GetType()) {
-                case RE::ExtraDataType::kReferenceHandle:
-                    return false;
+                // case RE::ExtraDataType::kReferenceHandle:
+                //     return false;
                 case RE::ExtraDataType::kHealth:
                 case RE::ExtraDataType::kEnchantment:
                 case RE::ExtraDataType::kCharge:
                 case RE::ExtraDataType::kPoison:
                 case RE::ExtraDataType::kOwnership:
-                case RE::ExtraDataType::kWorn:
-                case RE::ExtraDataType::kWornLeft:
                 case RE::ExtraDataType::kUniqueID:
-                case RE::ExtraDataType::kHotkey:
                 case RE::ExtraDataType::kAliasInstanceArray:
                 case RE::ExtraDataType::kSoul:
                 case RE::ExtraDataType::kTextDisplayData:
