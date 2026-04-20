@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <array>
+#include <optional>
 
 namespace JunkIt {
 
@@ -43,6 +45,25 @@ namespace JunkIt {
 
     class JunkDataManager {
     public:
+        struct MatchDiagnostics {
+            uint64_t matchedCanonical = 0;
+            uint64_t matchedCompatV2 = 0;
+            uint64_t matchedCompatLegacy = 0;
+            uint64_t normalizedCount = 0;
+            uint64_t unresolvedCount = 0;
+        };
+
+        enum class KeyScheme : std::uint8_t {
+            kCompatLegacy = 0,
+            kCompatV2 = 1,
+            kCanonicalV3Stable = 2,
+            kCanonicalUnique = 3
+        };
+
+        static uint32_t EncodeSchemeHash(KeyScheme scheme, uint32_t payload) noexcept;
+        static KeyScheme DecodeScheme(uint32_t encodedHash) noexcept;
+        static uint32_t DecodePayload(uint32_t encodedHash) noexcept;
+
         static JunkDataManager& GetSingleton() {
             static JunkDataManager instance;
             return instance;
@@ -60,6 +81,7 @@ namespace JunkIt {
         bool IsJunk(RE::TESForm* form) const { return IsBaseFormMarkedJunk(form); }
 
         [[nodiscard]] bool IsJunkKey(uint64_t packedKey) const;
+        [[nodiscard]] bool IsJunk(RE::FormID baseFormID, const RE::ExtraDataList* extraList) const;
 
         void Clear();
         size_t Size() const;
@@ -77,12 +99,15 @@ namespace JunkIt {
         /** Previous hash algorithm; co-saves and older JSON lists may still use these values. Runtime matching checks both v2 and legacy. */
         static uint32_t ComputeLegacyExtraDataHash(RE::InventoryEntryData* entry);
         static uint32_t ComputeLegacyExtraDataHash(RE::ExtraDataList* extraList);
+        static uint32_t ComputeStableV3ExtraDataHash(RE::InventoryEntryData* entry);
+        static uint32_t ComputeStableV3ExtraDataHash(RE::ExtraDataList* extraList);
+        static std::array<uint64_t, 4> BuildPackedKeyCandidates(RE::FormID baseFormID, const RE::ExtraDataList* extraList);
 
         bool SaveToFile();
         bool LoadFromFile(bool replace);
 
         void Save(SKSE::SerializationInterface* intfc);
-        void Load(SKSE::SerializationInterface* intfc);
+        void Load(SKSE::SerializationInterface* intfc, uint32_t recordVersion);
         void Revert(SKSE::SerializationInterface* intfc);
 
         static void OnSave(SKSE::SerializationInterface* intfc);
@@ -92,18 +117,34 @@ namespace JunkIt {
         void MigrateFromFormList(RE::BGSListForm* oldJunkList);
 
     private:
+        static constexpr uint32_t kKeySchemeMask = 0xC0000000u;
+        static constexpr uint32_t kKeyPayloadMask = 0x3FFFFFFFu;
+        static std::optional<uint32_t> BuildUniquePayload(const RE::ExtraDataList* extraList);
+        static std::array<uint64_t, 4> BuildCandidateKeysFromExtraList(RE::FormID baseFormID, const RE::ExtraDataList* extraList);
+        static std::vector<uint64_t> BuildCandidateKeysFromEntry(RE::InventoryEntryData* entry);
+        static uint64_t BuildCanonicalPackedKey(RE::InventoryEntryData* entry);
+        static uint64_t BuildCanonicalPackedKey(RE::FormID baseFormID, const RE::ExtraDataList* extraList);
+        [[nodiscard]] bool AnyCandidateInJunkSet(const std::vector<uint64_t>& keys) const;
+        [[nodiscard]] bool AnyCandidateInJunkSet(const std::array<uint64_t, 4>& keys) const;
+        [[nodiscard]] bool IsPackedKeyInJunkSet(uint64_t packedKey) const;
+        void ResetMatchDiagnosticsLocked();
+        void RecordMatchForPackedKeyLocked(uint64_t packedKey) const;
+        void RecordNormalizationLocked() const;
+        void RecordUnresolvedLocked() const;
+        void LogMatchSummaryLocked(const char* context) const;
+
         JunkDataManager() = default;
         JunkDataManager(const JunkDataManager&) = delete;
         JunkDataManager& operator=(const JunkDataManager&) = delete;
 
-        [[nodiscard]] bool InstanceKeysInJunkSet(RE::FormID baseFormID, uint32_t v2Hash, uint32_t legacyHash) const;
-
         static uint32_t HashExtraListLegacy(const RE::ExtraDataList* extraList);
         static uint32_t HashEntryLegacy(const RE::InventoryEntryData* entry);
+        static uint32_t HashExtraListV3Stable(const RE::ExtraDataList* extraList);
 
         std::unordered_set<uint64_t> junkSet;
         std::vector<JunkItem> junkItems;
         mutable std::mutex lock;
+        mutable MatchDiagnostics diagnostics;
 
         void RebuildJunkItemsVector();
     };

@@ -131,14 +131,18 @@ namespace JunkIt {
             if (item && item->data.objDesc && item->data.objDesc->object) {
                 RE::FormID baseFormID = item->data.objDesc->object->GetFormID();
                 InventoryEntryData* objDesc = item->data.objDesc;
-                const uint32_t v2 = junkManager.ComputeExtraDataHash(objDesc);
-                const uint32_t leg = junkManager.ComputeLegacyExtraDataHash(objDesc);
-                const uint64_t pkV2 = JunkItem::PackJunkKey(baseFormID, v2);
-                const uint64_t pkLeg = JunkItem::PackJunkKey(baseFormID, leg);
-                barterIndex[pkV2] = objDesc;
-                if (pkLeg != pkV2) {
-                    barterIndex[pkLeg] = objDesc;
+                if (objDesc->extraLists && !objDesc->extraLists->empty()) {
+                    for (auto* extraList : *objDesc->extraLists) {
+                        if (!extraList) {
+                            continue;
+                        }
+                        const auto candidates = JunkDataManager::BuildPackedKeyCandidates(baseFormID, extraList);
+                        barterIndex[candidates[0]] = objDesc;
+                        barterIndex[candidates[1]] = objDesc;
+                        barterIndex[candidates[2]] = objDesc;
+                    }
                 }
+                barterIndex[JunkItem::PackJunkKey(baseFormID, 0)] = objDesc;
                 barterGfxMap[objDesc] = item->obj;
             }
         }
@@ -1109,7 +1113,7 @@ namespace JunkIt {
         }
 
         auto& junkManager = JunkDataManager::GetSingleton();
-        const bool isBaseFormJunk = junkManager.IsJunk(baseFormID, 0);
+        const bool isBaseFormJunk = junkManager.IsJunk(baseFormID, 0u);
 
         Count remainingCount = budget;
 
@@ -1432,15 +1436,11 @@ namespace JunkIt {
                 continue;
             }
 
-            const uint32_t v2Hash = JunkDataManager::ComputeExtraDataHash(dataList);
-            const uint32_t legacyHash = JunkDataManager::ComputeLegacyExtraDataHash(dataList);
-            if (!junkManager.IsJunk(baseFormID, v2Hash) && !junkManager.IsJunk(baseFormID, legacyHash)) {
-                SKSE::log::info("     Skipping non-junk ExtraDataList on {} [{}] idx={} hashV2=0x{:X} hashLegacy=0x{:X}",
+            if (!junkManager.IsJunk(baseFormID, dataList)) {
+                SKSE::log::info("     Skipping non-junk ExtraDataList on {} [{}] idx={}",
                     itemName,
                     itemFormId,
-                    extraListIdx,
-                    v2Hash,
-                    legacyHash);
+                    extraListIdx);
                 ++extraListIdx;
                 continue;
             }

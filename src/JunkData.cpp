@@ -4,6 +4,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cmath>
+#include <algorithm>
 
 #include "RE/E/ExtraCharge.h"
 #include "RE/E/ExtraEnchantment.h"
@@ -174,6 +175,175 @@ namespace JunkIt {
         return hash;
     }
 
+    uint32_t JunkDataManager::EncodeSchemeHash(KeyScheme scheme, uint32_t payload) noexcept {
+        const auto schemeBits = static_cast<uint32_t>(scheme) << 30;
+        return schemeBits | (payload & kKeyPayloadMask);
+    }
+
+    JunkDataManager::KeyScheme JunkDataManager::DecodeScheme(uint32_t encodedHash) noexcept {
+        return static_cast<KeyScheme>((encodedHash & kKeySchemeMask) >> 30);
+    }
+
+    uint32_t JunkDataManager::DecodePayload(uint32_t encodedHash) noexcept {
+        return encodedHash & kKeyPayloadMask;
+    }
+
+    std::optional<uint32_t> JunkDataManager::BuildUniquePayload(const RE::ExtraDataList* extraList) {
+        if (!extraList) {
+            return std::nullopt;
+        }
+        auto* unique = extraList->GetByType<RE::ExtraUniqueID>();
+        if (!unique || unique->baseID == 0 || unique->uniqueID == 0) {
+            return std::nullopt;
+        }
+        uint32_t payload = 2166136261u;
+        payload ^= static_cast<uint32_t>(unique->baseID);
+        payload *= 16777619u;
+        payload ^= static_cast<uint32_t>(unique->uniqueID);
+        payload *= 16777619u;
+        return payload & kKeyPayloadMask;
+    }
+
+    uint32_t JunkDataManager::HashExtraListV3Stable(const RE::ExtraDataList* extraList) {
+        if (!extraList) {
+            return 0;
+        }
+        uint32_t h = 2166136261u;
+        if (auto* health = extraList->GetByType<RE::ExtraHealth>()) {
+            h ^= 0xE102u;
+            h *= 16777619u;
+            h ^= static_cast<uint32_t>(std::lround(static_cast<double>(health->health) * 1000.0));
+            h *= 16777619u;
+        }
+        return h & kKeyPayloadMask;
+    }
+
+    std::array<uint64_t, 4> JunkDataManager::BuildCandidateKeysFromExtraList(RE::FormID baseFormID, const RE::ExtraDataList* extraList) {
+        std::array<uint64_t, 4> keys{};
+        const auto uniquePayload = BuildUniquePayload(extraList);
+        const uint32_t canonicalHash = uniquePayload
+            ? EncodeSchemeHash(KeyScheme::kCanonicalUnique, *uniquePayload)
+            : EncodeSchemeHash(KeyScheme::kCanonicalV3Stable, HashExtraListV3Stable(extraList));
+        const uint32_t v2Hash = EncodeSchemeHash(KeyScheme::kCompatV2, HashExtraListV2(extraList));
+        const uint32_t legacyHash = EncodeSchemeHash(KeyScheme::kCompatLegacy, HashExtraListLegacy(extraList));
+        keys[0] = JunkItem::PackJunkKey(baseFormID, canonicalHash);
+        keys[1] = JunkItem::PackJunkKey(baseFormID, v2Hash);
+        keys[2] = JunkItem::PackJunkKey(baseFormID, legacyHash);
+        keys[3] = JunkItem::PackJunkKey(baseFormID, 0);
+        return keys;
+    }
+
+    std::vector<uint64_t> JunkDataManager::BuildCandidateKeysFromEntry(RE::InventoryEntryData* entry) {
+        std::vector<uint64_t> keys;
+        if (!entry || !entry->object) {
+            return keys;
+        }
+
+        const RE::FormID baseFormID = entry->object->GetFormID();
+        if (!entry->extraLists || entry->extraLists->empty()) {
+            keys.push_back(JunkItem::PackJunkKey(baseFormID, 0));
+            return keys;
+        }
+
+        keys.reserve(16);
+        for (auto* extraList : *entry->extraLists) {
+            if (!extraList) {
+                continue;
+            }
+            auto cands = BuildCandidateKeysFromExtraList(baseFormID, extraList);
+            keys.push_back(cands[0]);
+            keys.push_back(cands[1]);
+            keys.push_back(cands[2]);
+        }
+        keys.push_back(JunkItem::PackJunkKey(baseFormID, 0));
+        std::sort(keys.begin(), keys.end());
+        keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+        return keys;
+    }
+
+    uint64_t JunkDataManager::BuildCanonicalPackedKey(RE::FormID baseFormID, const RE::ExtraDataList* extraList) {
+        const auto uniquePayload = BuildUniquePayload(extraList);
+        const uint32_t canonicalHash = uniquePayload
+            ? EncodeSchemeHash(KeyScheme::kCanonicalUnique, *uniquePayload)
+            : EncodeSchemeHash(KeyScheme::kCanonicalV3Stable, HashExtraListV3Stable(extraList));
+        return JunkItem::PackJunkKey(baseFormID, canonicalHash);
+    }
+
+    uint64_t JunkDataManager::BuildCanonicalPackedKey(RE::InventoryEntryData* entry) {
+        if (!entry || !entry->object) {
+            return 0;
+        }
+        if (entry->extraLists && !entry->extraLists->empty()) {
+            for (auto* extraList : *entry->extraLists) {
+                if (extraList) {
+                    return BuildCanonicalPackedKey(entry->object->GetFormID(), extraList);
+                }
+            }
+        }
+        return JunkItem::PackJunkKey(entry->object->GetFormID(), 0);
+    }
+
+    bool JunkDataManager::AnyCandidateInJunkSet(const std::vector<uint64_t>& keys) const {
+        for (auto key : keys) {
+            if (junkSet.find(key) != junkSet.end()) {
+                RecordMatchForPackedKeyLocked(key);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool JunkDataManager::AnyCandidateInJunkSet(const std::array<uint64_t, 4>& keys) const {
+        for (auto key : keys) {
+            if (junkSet.find(key) != junkSet.end()) {
+                RecordMatchForPackedKeyLocked(key);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool JunkDataManager::IsPackedKeyInJunkSet(uint64_t packedKey) const {
+        return junkSet.find(packedKey) != junkSet.end();
+    }
+
+    void JunkDataManager::ResetMatchDiagnosticsLocked() {
+        diagnostics = {};
+    }
+
+    void JunkDataManager::RecordMatchForPackedKeyLocked(uint64_t packedKey) const {
+        const uint32_t encodedHash = static_cast<uint32_t>(packedKey & 0xFFFFFFFFu);
+        if (encodedHash == 0) {
+            return;
+        }
+        const auto scheme = DecodeScheme(encodedHash);
+        if (scheme == KeyScheme::kCanonicalUnique || scheme == KeyScheme::kCanonicalV3Stable) {
+            diagnostics.matchedCanonical++;
+        } else if (scheme == KeyScheme::kCompatV2) {
+            diagnostics.matchedCompatV2++;
+        } else if (scheme == KeyScheme::kCompatLegacy) {
+            diagnostics.matchedCompatLegacy++;
+        }
+    }
+
+    void JunkDataManager::RecordNormalizationLocked() const {
+        diagnostics.normalizedCount++;
+    }
+
+    void JunkDataManager::RecordUnresolvedLocked() const {
+        diagnostics.unresolvedCount++;
+    }
+
+    void JunkDataManager::LogMatchSummaryLocked(const char* context) const {
+        SKSE::log::info("[JunkIt][Diag] {} | matched_canonical={} matched_compat_v2={} matched_compat_legacy={} normalized_count={} unresolved_count={}",
+            context ? context : "summary",
+            diagnostics.matchedCanonical,
+            diagnostics.matchedCompatV2,
+            diagnostics.matchedCompatLegacy,
+            diagnostics.normalizedCount,
+            diagnostics.unresolvedCount);
+    }
+
     uint32_t JunkDataManager::ComputeExtraDataHash(RE::InventoryEntryData* entry) {
         return HashEntryV2(entry);
     }
@@ -190,15 +360,34 @@ namespace JunkIt {
         return HashExtraListLegacy(extraList);
     }
 
-    bool JunkDataManager::InstanceKeysInJunkSet(RE::FormID baseFormID, uint32_t v2Hash, uint32_t legacyHash) const {
-        const uint64_t k2 = JunkItem::PackJunkKey(baseFormID, v2Hash);
-        const uint64_t k1 = JunkItem::PackJunkKey(baseFormID, legacyHash);
-        return junkSet.find(k2) != junkSet.end() || junkSet.find(k1) != junkSet.end();
+    uint32_t JunkDataManager::ComputeStableV3ExtraDataHash(RE::InventoryEntryData* entry) {
+        if (!entry || !entry->extraLists || entry->extraLists->empty()) {
+            return 0;
+        }
+        for (auto* extraList : *entry->extraLists) {
+            if (extraList) {
+                return HashExtraListV3Stable(extraList);
+            }
+        }
+        return 0;
+    }
+
+    uint32_t JunkDataManager::ComputeStableV3ExtraDataHash(RE::ExtraDataList* extraList) {
+        return HashExtraListV3Stable(extraList);
+    }
+
+    std::array<uint64_t, 4> JunkDataManager::BuildPackedKeyCandidates(RE::FormID baseFormID, const RE::ExtraDataList* extraList) {
+        return BuildCandidateKeysFromExtraList(baseFormID, extraList);
     }
 
     bool JunkDataManager::IsJunkKey(uint64_t packedKey) const {
         std::lock_guard<std::mutex> guard(lock);
-        return junkSet.find(packedKey) != junkSet.end();
+        return IsPackedKeyInJunkSet(packedKey);
+    }
+
+    bool JunkDataManager::IsJunk(RE::FormID baseFormID, const RE::ExtraDataList* extraList) const {
+        std::lock_guard<std::mutex> guard(lock);
+        return AnyCandidateInJunkSet(BuildCandidateKeysFromExtraList(baseFormID, extraList));
     }
 
     bool JunkDataManager::AddJunkItem(RE::InventoryEntryData* entry) {
@@ -214,10 +403,10 @@ namespace JunkIt {
 
         std::lock_guard<std::mutex> guard(lock);
 
-        const uint32_t extraHash = HashEntryV2(entry);
-        const uint64_t packedKey = JunkItem::PackJunkKey(baseFormID, extraHash);
+        const uint64_t packedKey = BuildCanonicalPackedKey(entry);
+        const uint32_t extraHash = static_cast<uint32_t>(packedKey & 0xFFFFFFFFu);
 
-        if (junkSet.find(packedKey) != junkSet.end()) {
+        if (IsPackedKeyInJunkSet(packedKey)) {
             return false;
         }
 
@@ -241,21 +430,16 @@ namespace JunkIt {
 
         std::lock_guard<std::mutex> guard(lock);
 
-        const uint32_t v2 = HashEntryV2(entry);
-        const uint32_t leg = HashEntryLegacy(entry);
-        const uint64_t pkV2 = JunkItem::PackJunkKey(baseFormID, v2);
-        const uint64_t pkLeg = JunkItem::PackJunkKey(baseFormID, leg);
-
-        if (junkSet.erase(pkV2) != 0u) {
+        const auto candidates = BuildCandidateKeysFromEntry(entry);
+        for (auto packedKey : candidates) {
+            if (junkSet.erase(packedKey) == 0u) {
+                continue;
+            }
             RebuildJunkItemsVector();
-            SKSE::log::info("Removed junk item: {} [FormID: 0x{:X}, Hash: 0x{:X}]",
-                entry->GetDisplayName(), baseFormID, v2);
-            return true;
-        }
-        if (junkSet.erase(pkLeg) != 0u) {
-            RebuildJunkItemsVector();
-            SKSE::log::info("Removed junk item (legacy hash): {} [FormID: 0x{:X}, Hash: 0x{:X}]",
-                entry->GetDisplayName(), baseFormID, leg);
+            const uint32_t encodedHash = static_cast<uint32_t>(packedKey & 0xFFFFFFFFu);
+            const auto scheme = DecodeScheme(encodedHash);
+            SKSE::log::info("Removed junk item: {} [FormID: 0x{:X}, Hash: 0x{:X}, Scheme:{}]",
+                entry->GetDisplayName(), baseFormID, encodedHash, static_cast<uint32_t>(scheme));
             return true;
         }
 
@@ -271,32 +455,47 @@ namespace JunkIt {
             return false;
         }
 
-        RE::FormID baseFormID = entry->object->GetFormID();
-
         std::lock_guard<std::mutex> guard(lock);
 
-        const uint32_t v2 = HashEntryV2(entry);
-        const uint32_t leg = HashEntryLegacy(entry);
-        return InstanceKeysInJunkSet(baseFormID, v2, leg);
+        return AnyCandidateInJunkSet(BuildCandidateKeysFromEntry(entry));
     }
 
     bool JunkDataManager::IsJunk(RE::FormID baseFormID, uint32_t extraDataHash) const {
         std::lock_guard<std::mutex> guard(lock);
         const uint64_t packedKey = JunkItem::PackJunkKey(baseFormID, extraDataHash);
-        return junkSet.find(packedKey) != junkSet.end();
+        if (IsPackedKeyInJunkSet(packedKey)) {
+            RecordMatchForPackedKeyLocked(packedKey);
+            return true;
+        }
+        if (extraDataHash == 0) {
+            return false;
+        }
+        const uint32_t payload = DecodePayload(extraDataHash);
+        const uint64_t v2Compat = JunkItem::PackJunkKey(baseFormID, EncodeSchemeHash(KeyScheme::kCompatV2, payload));
+        const uint64_t legacyCompat = JunkItem::PackJunkKey(baseFormID, EncodeSchemeHash(KeyScheme::kCompatLegacy, payload));
+        if (IsPackedKeyInJunkSet(v2Compat)) {
+            RecordMatchForPackedKeyLocked(v2Compat);
+            return true;
+        }
+        if (IsPackedKeyInJunkSet(legacyCompat)) {
+            RecordMatchForPackedKeyLocked(legacyCompat);
+            return true;
+        }
+        return false;
     }
 
     bool JunkDataManager::IsBaseFormMarkedJunk(RE::TESForm* form) const {
         if (!form) {
             return false;
         }
-        return IsJunk(form->GetFormID(), 0);
+        return IsJunk(form->GetFormID(), 0u);
     }
 
     void JunkDataManager::Clear() {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
         junkItems.clear();
+        ResetMatchDiagnosticsLocked();
         SKSE::log::info("Cleared all junk items");
     }
 
@@ -355,18 +554,17 @@ namespace JunkIt {
         std::map<uint64_t, int32_t> packedKeyCounts;
         std::map<uint64_t, std::string> packedKeyNames;
 
-        auto addIfJunk = [&](RE::FormID baseFormID, uint32_t v2Hash, uint32_t legacyHash, int32_t itemCount,
-                             const std::string& displayName) {
+        auto addIfJunk = [&](const std::array<uint64_t, 4>& candidates, int32_t itemCount, const std::string& displayName) {
             if (itemCount <= 0) {
                 return;
             }
-            const uint64_t pkV2 = JunkItem::PackJunkKey(baseFormID, v2Hash);
-            const uint64_t pkLeg = JunkItem::PackJunkKey(baseFormID, legacyHash);
             uint64_t keyUsed = 0;
-            if (junkSet.find(pkV2) != junkSet.end()) {
-                keyUsed = pkV2;
-            } else if (junkSet.find(pkLeg) != junkSet.end()) {
-                keyUsed = pkLeg;
+            if (IsPackedKeyInJunkSet(candidates[0])) {
+                keyUsed = candidates[0];
+            } else if (IsPackedKeyInJunkSet(candidates[1])) {
+                keyUsed = candidates[1];
+            } else if (IsPackedKeyInJunkSet(candidates[2])) {
+                keyUsed = candidates[2];
             } else {
                 return;
             }
@@ -389,13 +587,12 @@ namespace JunkIt {
                     if (!extraList) {
                         continue;
                     }
-                    const uint32_t v2 = HashExtraListV2(extraList);
-                    const uint32_t leg = HashExtraListLegacy(extraList);
-                    addIfJunk(baseFormID, v2, leg, extraList->GetCount(), entryData->GetDisplayName());
+                    const auto candidates = BuildCandidateKeysFromExtraList(baseFormID, extraList);
+                    addIfJunk(candidates, extraList->GetCount(), entryData->GetDisplayName());
                 }
             }
 
-            if (junkSet.find(JunkItem::PackJunkKey(baseFormID, 0)) != junkSet.end()) {
+            if (IsPackedKeyInJunkSet(JunkItem::PackJunkKey(baseFormID, 0))) {
                 int32_t baseCount = data.first;
 
                 if (entryData && entryData->extraLists && !entryData->extraLists->empty()) {
@@ -472,6 +669,12 @@ namespace JunkIt {
                 return;
             }
 
+            const uint8_t keyScheme = static_cast<uint8_t>(DecodeScheme(item.extraDataHash));
+            if (!intfc->WriteRecordData(&keyScheme, sizeof(keyScheme))) {
+                SKSE::log::error("Failed to write keyScheme");
+                return;
+            }
+
             uint16_t nameLength = static_cast<uint16_t>(item.displayName.length());
             if (!intfc->WriteRecordData(&nameLength, sizeof(nameLength))) {
                 SKSE::log::error("Failed to write displayName length");
@@ -495,7 +698,7 @@ namespace JunkIt {
         SKSE::log::info(" ");
     }
 
-    void JunkDataManager::Load(SKSE::SerializationInterface* intfc) {
+    void JunkDataManager::Load(SKSE::SerializationInterface* intfc, uint32_t recordVersion) {
         if (!intfc) {
             SKSE::log::error("JunkDataManager::Load - SerializationInterface is null");
             return;
@@ -504,6 +707,7 @@ namespace JunkIt {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
         junkItems.clear();
+        ResetMatchDiagnosticsLocked();
 
         uint32_t itemCount = 0;
         if (!intfc->ReadRecordData(&itemCount, sizeof(itemCount))) {
@@ -520,6 +724,7 @@ namespace JunkIt {
             RE::FormID baseFormID = 0;
             uint32_t extraDataHash = 0;
             uint16_t nameLength = 0;
+            uint8_t keyScheme = static_cast<uint8_t>(KeyScheme::kCompatV2);
 
             if (!intfc->ReadRecordData(&baseFormID, sizeof(baseFormID))) {
                 SKSE::log::error("Failed to read baseFormID at index {}", i);
@@ -529,6 +734,13 @@ namespace JunkIt {
             if (!intfc->ReadRecordData(&extraDataHash, sizeof(extraDataHash))) {
                 SKSE::log::error("Failed to read extraDataHash at index {}", i);
                 return;
+            }
+
+            if (recordVersion >= 2) {
+                if (!intfc->ReadRecordData(&keyScheme, sizeof(keyScheme))) {
+                    SKSE::log::error("Failed to read keyScheme at index {}", i);
+                    return;
+                }
             }
 
             if (!intfc->ReadRecordData(&nameLength, sizeof(nameLength))) {
@@ -547,19 +759,35 @@ namespace JunkIt {
 
             if (!intfc->ResolveFormID(baseFormID, baseFormID)) {
                 SKSE::log::warn("Failed to resolve FormID 0x{:X} for '{}', skipping", baseFormID, displayName);
+                RecordUnresolvedLocked();
                 continue;
             }
 
-            uint64_t packedKey = JunkItem::PackJunkKey(baseFormID, extraDataHash);
+            uint32_t storedHash = extraDataHash;
+            if (recordVersion == 1) {
+                storedHash = EncodeSchemeHash(KeyScheme::kCompatV2, extraDataHash);
+                RecordNormalizationLocked();
+            } else {
+                const auto decodedScheme = DecodeScheme(extraDataHash);
+                if (decodedScheme != KeyScheme::kCompatLegacy &&
+                    decodedScheme != KeyScheme::kCompatV2 &&
+                    decodedScheme != KeyScheme::kCanonicalV3Stable &&
+                    decodedScheme != KeyScheme::kCanonicalUnique) {
+                    storedHash = EncodeSchemeHash(static_cast<KeyScheme>(keyScheme), extraDataHash);
+                    RecordNormalizationLocked();
+                }
+            }
+            uint64_t packedKey = JunkItem::PackJunkKey(baseFormID, storedHash);
             junkSet.insert(packedKey);
-            junkItems.emplace_back(baseFormID, extraDataHash, displayName);
+            junkItems.emplace_back(baseFormID, storedHash, displayName);
 
             SKSE::log::info("  [{}] {} [FormID: 0x{:X}, Hash: 0x{:X}]",
-                i + 1, displayName, baseFormID, extraDataHash);
+                i + 1, displayName, baseFormID, storedHash);
         }
 
         SKSE::log::info(" ");
         SKSE::log::info("Successfully loaded {} junk items from save", junkItems.size());
+        LogMatchSummaryLocked("Load(co-save)");
         SKSE::log::info("==== Junk List Load Complete ====");
         SKSE::log::info(" ");
     }
@@ -568,11 +796,12 @@ namespace JunkIt {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
         junkItems.clear();
+        ResetMatchDiagnosticsLocked();
         SKSE::log::info("JunkDataManager reverted (new game)");
     }
 
     void JunkDataManager::OnSave(SKSE::SerializationInterface* intfc) {
-        if (!intfc->OpenRecord('JNKT', 1)) {
+        if (!intfc->OpenRecord('JNKT', 2)) {
             SKSE::log::error("Failed to open JNKT record for saving");
             return;
         }
@@ -586,11 +815,11 @@ namespace JunkIt {
 
         while (intfc->GetNextRecordInfo(type, version, length)) {
             if (type == 'JNKT') {
-                if (version != 1) {
+                if (version != 1 && version != 2) {
                     SKSE::log::error("Unknown JNKT record version: {}", version);
                     continue;
                 }
-                GetSingleton().Load(intfc);
+                GetSingleton().Load(intfc, version);
             }
         }
     }
@@ -607,7 +836,7 @@ namespace JunkIt {
         SKSE::log::info("Total items to export: {}", junkItems.size());
 
         Json::Value root;
-        root["version"] = 2;
+        root["version"] = 3;
         Json::Value itemsArray(Json::arrayValue);
 
         for (const auto& item : junkItems) {
@@ -622,6 +851,7 @@ namespace JunkIt {
             Json::Value itemObj;
             itemObj["formId"] = formIdStr;
             itemObj["extraDataHash"] = item.extraDataHash;
+            itemObj["keyScheme"] = static_cast<uint32_t>(DecodeScheme(item.extraDataHash));
             itemObj["name"] = item.displayName;
 
             itemsArray.append(itemObj);
@@ -694,6 +924,7 @@ namespace JunkIt {
         }
 
         std::lock_guard<std::mutex> guard(lock);
+        ResetMatchDiagnosticsLocked();
 
         if (replace) {
             SKSE::log::info("Clearing existing junk list (replace mode)");
@@ -708,12 +939,15 @@ namespace JunkIt {
         for (const auto& itemObj : itemsArray) {
             if (!itemObj.isMember("formId") || !itemObj.isMember("extraDataHash") || !itemObj.isMember("name")) {
                 SKSE::log::warn("Skipping item with missing fields");
+                RecordUnresolvedLocked();
                 skipCount++;
                 continue;
             }
 
             std::string formIdStr = itemObj["formId"].asString();
             uint32_t extraDataHash = itemObj["extraDataHash"].asUInt();
+            const bool hasKeyScheme = itemObj.isMember("keyScheme");
+            auto keyScheme = static_cast<KeyScheme>(itemObj.get("keyScheme", static_cast<uint32_t>(KeyScheme::kCompatV2)).asUInt());
             std::string displayName = itemObj["name"].asString();
 
             RE::TESForm* form = nullptr;
@@ -731,12 +965,24 @@ namespace JunkIt {
 
             if (!form) {
                 SKSE::log::warn("Failed to resolve form '{}' for '{}', skipping", formIdStr, displayName);
+                RecordUnresolvedLocked();
                 skipCount++;
                 continue;
             }
 
             RE::FormID baseFormID = form->GetFormID();
-            uint64_t packedKey = JunkItem::PackJunkKey(baseFormID, extraDataHash);
+            uint32_t storedHash = extraDataHash;
+            if (!hasKeyScheme) {
+                storedHash = EncodeSchemeHash(KeyScheme::kCompatV2, extraDataHash);
+                RecordNormalizationLocked();
+            } else if (DecodeScheme(extraDataHash) != KeyScheme::kCompatLegacy &&
+                       DecodeScheme(extraDataHash) != KeyScheme::kCompatV2 &&
+                       DecodeScheme(extraDataHash) != KeyScheme::kCanonicalV3Stable &&
+                       DecodeScheme(extraDataHash) != KeyScheme::kCanonicalUnique) {
+                storedHash = EncodeSchemeHash(keyScheme, extraDataHash);
+                RecordNormalizationLocked();
+            }
+            uint64_t packedKey = JunkItem::PackJunkKey(baseFormID, storedHash);
 
             if (junkSet.find(packedKey) != junkSet.end()) {
                 SKSE::log::info("  Item already in junk list, skipping: {} [{}]", displayName, formIdStr);
@@ -745,7 +991,7 @@ namespace JunkIt {
             }
 
             junkSet.insert(packedKey);
-            junkItems.emplace_back(baseFormID, extraDataHash, displayName);
+            junkItems.emplace_back(baseFormID, storedHash, displayName);
             successCount++;
 
             SKSE::log::info("  Imported: {} [{}] (hash: 0x{:X})", displayName, formIdStr, extraDataHash);
@@ -753,6 +999,7 @@ namespace JunkIt {
 
         SKSE::log::info("Import complete: {} items added, {} items skipped", successCount, skipCount);
         SKSE::log::info("Total junk items after import: {}", junkItems.size());
+        LogMatchSummaryLocked("LoadFromFile(json)");
         SKSE::log::info("==== Junk List File Import Complete ====");
         SKSE::log::info(" ");
 
