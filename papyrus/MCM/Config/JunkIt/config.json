@@ -230,8 +230,6 @@
                     "type": "toggle",
                     "text": "$JunkIt_UpdateItemIcon",
                     "help": "$JunkIt_UpdateItemIcon_Help",
-                    "groupCondition": {"NOT": 4},
-                    "groupBehavior": "disable",
                     "valueOptions": {
                         "sourceType": "ModSettingBool",
                         "defaultValue": true
