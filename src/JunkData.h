@@ -17,7 +17,16 @@ namespace JunkIt {
             : baseFormID(formID), extraDataHash(hash), displayName(std::move(name)) {}
 
         uint64_t GetPackedKey() const {
-            return (static_cast<uint64_t>(baseFormID) << 32) | extraDataHash;
+            return PackJunkKey(baseFormID, extraDataHash);
+        }
+
+        static uint64_t PackJunkKey(RE::FormID baseFormID, uint32_t instanceExtraHash) {
+            return (static_cast<uint64_t>(baseFormID) << 32) | static_cast<uint64_t>(instanceExtraHash);
+        }
+
+        static void UnpackJunkKey(uint64_t packed, RE::FormID& outForm, uint32_t& outHash) {
+            outForm = static_cast<RE::FormID>(packed >> 32);
+            outHash = static_cast<uint32_t>(packed & 0xFFFFFFFFu);
         }
     };
 
@@ -43,7 +52,15 @@ namespace JunkIt {
         bool RemoveJunkItem(RE::InventoryEntryData* entry);
         bool IsJunk(RE::InventoryEntryData* entry) const;
         bool IsJunk(RE::FormID baseFormID, uint32_t extraDataHash) const;
-        bool IsJunk(RE::TESForm* form) const;
+
+        /** True iff (base form, extra hash 0) is in the junk set — legacy / FormList semantics (all "plain" stacks). */
+        bool IsBaseFormMarkedJunk(RE::TESForm* form) const;
+
+        /** @deprecated Prefer IsBaseFormMarkedJunk — same behavior: base form only, hash 0. */
+        bool IsJunk(RE::TESForm* form) const { return IsBaseFormMarkedJunk(form); }
+
+        [[nodiscard]] bool IsJunkKey(uint64_t packedKey) const;
+
         void Clear();
         size_t Size() const;
 
@@ -53,8 +70,13 @@ namespace JunkIt {
 
         std::vector<InventoryJunkEntry> GetPlayerJunkInventory() const;
 
+        /** Stable instance hash (v2) used for new junk entries and UI matching. */
         static uint32_t ComputeExtraDataHash(RE::InventoryEntryData* entry);
         static uint32_t ComputeExtraDataHash(RE::ExtraDataList* extraList);
+
+        /** Previous hash algorithm; co-saves and older JSON lists may still use these values. Runtime matching checks both v2 and legacy. */
+        static uint32_t ComputeLegacyExtraDataHash(RE::InventoryEntryData* entry);
+        static uint32_t ComputeLegacyExtraDataHash(RE::ExtraDataList* extraList);
 
         bool SaveToFile();
         bool LoadFromFile(bool replace);
@@ -73,6 +95,11 @@ namespace JunkIt {
         JunkDataManager() = default;
         JunkDataManager(const JunkDataManager&) = delete;
         JunkDataManager& operator=(const JunkDataManager&) = delete;
+
+        [[nodiscard]] bool InstanceKeysInJunkSet(RE::FormID baseFormID, uint32_t v2Hash, uint32_t legacyHash) const;
+
+        static uint32_t HashExtraListLegacy(const RE::ExtraDataList* extraList);
+        static uint32_t HashEntryLegacy(const RE::InventoryEntryData* entry);
 
         std::unordered_set<uint64_t> junkSet;
         std::vector<JunkItem> junkItems;

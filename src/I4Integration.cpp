@@ -114,14 +114,8 @@ namespace JunkIt {
                             continue;
                         }
 
-                        RE::GFxValue formId;
-                        entryObject.GetMember("formId", &formId);
-                        if (!formId.IsNumber()) {
-                            continue;
-                        }
-
-                        auto* form = RE::TESForm::LookupByID(static_cast<RE::FormID>(formId.GetNumber()));
-                        bool isJunk = form ? junkManager.IsJunk(form) : false;
+                        // No InventoryEntryData: cannot classify instance junk; avoid form-only checks (mislabels renamed/tempered items).
+                        constexpr bool isJunk = false;
                         entryObject.SetMember("isJunk", isJunk);
                         entryObject.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
                         entryObject.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());

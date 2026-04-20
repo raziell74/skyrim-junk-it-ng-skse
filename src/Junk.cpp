@@ -1,8 +1,9 @@
 #include "junk.h"
 #include "JunkData.h"
 #include "SendUIMessage.h"
-#include <thread>
+#include <algorithm>
 #include <chrono>
+#include <thread>
 
 RE::MessageBoxData::~MessageBoxData() = default;
 
@@ -129,10 +130,16 @@ namespace JunkIt {
             auto* item = itemListMenu->items[i];
             if (item && item->data.objDesc && item->data.objDesc->object) {
                 RE::FormID baseFormID = item->data.objDesc->object->GetFormID();
-                uint32_t extraHash = junkManager.ComputeExtraDataHash(item->data.objDesc);
-                uint64_t packedKey = (static_cast<uint64_t>(baseFormID) << 32) | extraHash;
-                barterIndex[packedKey] = item->data.objDesc;
-                barterGfxMap[item->data.objDesc] = item->obj;
+                InventoryEntryData* objDesc = item->data.objDesc;
+                const uint32_t v2 = junkManager.ComputeExtraDataHash(objDesc);
+                const uint32_t leg = junkManager.ComputeLegacyExtraDataHash(objDesc);
+                const uint64_t pkV2 = JunkItem::PackJunkKey(baseFormID, v2);
+                const uint64_t pkLeg = JunkItem::PackJunkKey(baseFormID, leg);
+                barterIndex[pkV2] = objDesc;
+                if (pkLeg != pkV2) {
+                    barterIndex[pkLeg] = objDesc;
+                }
+                barterGfxMap[objDesc] = item->obj;
             }
         }
 
@@ -140,7 +147,7 @@ namespace JunkIt {
 
         SKSE::log::info("Processing player junk inventory for sellable items");
         for (const auto& junkEntry : junkInventory) {
-            uint64_t packedKey = (static_cast<uint64_t>(junkEntry.baseFormID) << 32) | junkEntry.extraDataHash;
+            uint64_t packedKey = JunkItem::PackJunkKey(junkEntry.baseFormID, junkEntry.extraDataHash);
             auto bIt = barterIndex.find(packedKey);
             if (bIt == barterIndex.end()) continue;
 
@@ -1009,13 +1016,31 @@ namespace JunkIt {
         return goldValue;
     }
 
-    static bool HasTransferableExtraData(ExtraDataList* a_list)
+    /** Vanilla-style generic misc objects (Creation Kit "Clutter"): MISC forms that are not currency, keys, lockpicks, or soul gems. */
+    static bool IsMiscClutterItem(const TESBoundObject* a_item)
     {
+        if (!a_item || !a_item->Is(FormType::Misc)) {
+            return false;
+        }
+        if (a_item->IsSoulGem()) {
+            return false;
+        }
+        if (a_item->IsGold() || a_item->IsKey() || a_item->IsLockpick()) {
+            return false;
+        }
+        return true;
+    }
+
+    static bool HasTransferableExtraData(TESBoundObject* a_item, ExtraDataList* a_list)
+    {
+        if (a_item && IsMiscClutterItem(a_item)) {
+            return false;
+        }
         bool hasTransferableData = true;
         for (const RE::BSExtraData& node : *a_list) {
             switch (node.GetType()) {
-                // case RE::ExtraDataType::kReferenceHandle:
-                //     return false;
+                case RE::ExtraDataType::kReferenceHandle:
+                    return false;
                 case RE::ExtraDataType::kHealth:
                 case RE::ExtraDataType::kEnchantment:
                 case RE::ExtraDataType::kCharge:
@@ -1045,7 +1070,6 @@ namespace JunkIt {
         InventoryEntryData* a_invData) 
     {
         using Count = std::int32_t;
-        Count remainingCount = a_count;
 
         const std::string itemName = a_item ? a_item->GetName() : "(null)";
         const std::string itemFormId = a_item ? FormUtil::Form::GetFormConfigString(a_item) : "(null)";
@@ -1057,6 +1081,38 @@ namespace JunkIt {
         SKSE::log::info("       to:   {} [{}]", toName, a_toContainer ? FormUtil::Form::GetFormConfigString(a_toContainer) : "(null)");
         SKSE::log::info("       reason: {}", static_cast<int>(a_reason));
 
+        // Fix/Experiment 1: Reconcile with live inventory (cap by GetInventoryCounts). Caller/menu countDelta can desync from the real container.
+        Count liveTotal = 0;
+        if (a_fromContainer && a_item) {
+            const auto invCounts = a_fromContainer->GetInventoryCounts();
+            const auto liveIt = invCounts.find(a_item);
+            if (liveIt != invCounts.end()) {
+                liveTotal = liveIt->second;
+            }
+        }
+        const Count safeRequested = std::max(static_cast<Count>(0), a_count);
+        Count budget = std::min(safeRequested, std::max(static_cast<Count>(0), liveTotal));
+        SKSE::log::info("[JunkIt][Fix1] a_count={} liveTotal={} budget={}", a_count, liveTotal, budget);
+        if (budget < safeRequested) {
+            SKSE::log::info("[JunkIt][Fix1] requested count capped (caller/menu vs live inventory on source)");
+        }
+        if (budget <= 0) {
+            SKSE::log::info("[JunkIt][Fix1] abort: no items available on source container for this form [{}] {}", itemFormId, itemName);
+            return;
+        }
+
+        const RE::FormID baseFormID = a_item ? a_item->GetFormID() :
+            ((a_invData && a_invData->object) ? a_invData->object->GetFormID() : static_cast<RE::FormID>(0));
+        if (baseFormID == 0) {
+            SKSE::log::warn("     abort: invalid base form while transferring {} [{}]", itemName, itemFormId);
+            return;
+        }
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+        const bool isBaseFormJunk = junkManager.IsJunk(baseFormID, 0);
+
+        Count remainingCount = budget;
+
         if (a_invData) {
             SKSE::log::info("       invData: countDelta={} worn={} favorited={} enchanted={} poisoned={} quest={}",
                 a_invData->countDelta,
@@ -1066,6 +1122,26 @@ namespace JunkIt {
                 a_invData->IsPoisoned(),
                 a_invData->IsQuestObject()
             );
+
+            if (Settings::ProtectEquipped() && a_invData->IsWorn()) {
+                SKSE::log::info("     Skipping transfer for {} [{}] because item is actively worn",
+                    itemName,
+                    itemFormId);
+                return;
+            }
+            if (Settings::ProtectFavorites() && a_invData->IsFavorited()) {
+                SKSE::log::info("     Skipping transfer for {} [{}] because item is favorited",
+                    itemName,
+                    itemFormId);
+                return;
+            }
+            if (a_invData->IsQuestObject()) {
+                SKSE::log::info("     Skipping transfer for {} [{}] because item is a quest item",
+                    itemName,
+                    itemFormId);
+                return;
+            }
+
             if (a_invData->extraLists) {
                 std::int32_t listIndex = 0;
                 for (ExtraDataList* xList : *a_invData->extraLists) {
@@ -1080,6 +1156,8 @@ namespace JunkIt {
                             hasData
                         );
                         if (hasData) {
+                            // Fix/Experiment 4: GetOriginalReference() disabled below in kReferenceHandle branch — re-enable if crashes persist without it.
+                            SKSE::log::info("[JunkIt][Fix4] verbose extra-node dump: GetOriginalReference() disabled; logging handle ids / types only.");
                             auto extraTypeName = [](RE::ExtraDataType t) -> const char* {
                                 switch (t) {
                                     case RE::ExtraDataType::kNone:                  return "kNone";
@@ -1321,52 +1399,107 @@ namespace JunkIt {
 
         // Check if the invData is valid or not, if it's not just do a generic item move
         if (!a_invData || !a_invData->extraLists || a_invData->extraLists->empty()) {
-            SKSE::log::info("     Moving {} {} [{}] without an ExtraDataList", 
-                a_count, 
+            if (!isBaseFormJunk) {
+                SKSE::log::info("     Skipping transfer for {} [{}] without ExtraDataList: base form is not marked junk",
+                    itemName,
+                    itemFormId);
+                return;
+            }
+            SKSE::log::info("     Moving {} {} [{}] without an ExtraDataList",
+                budget,
                 itemName,
-                itemFormId
-            );
-            a_fromContainer->RemoveItem(a_item, a_count, a_reason, nullptr, a_toContainer);
+                itemFormId);
+            a_fromContainer->RemoveItem(a_item, budget, a_reason, nullptr, a_toContainer);
             return;
         }
 
-        // Iterate through the ExtraDataLists and add each one to the receiving container
-        std::for_each(a_invData->extraLists->begin(), a_invData->extraLists->end(), [&](ExtraDataList* dataList) {
+        // Fix/Experiment 2: Clamp per-list removal to remaining budget (prevents over-remove when sums exceed live totals).
+        std::uint32_t extraListIdx = 0;
+        for (ExtraDataList* dataList : *a_invData->extraLists) {
             if (dataList == nullptr) {
-                SKSE::log::error("     Ignoring null or invalid ExtraDataList on {} [{}]", 
+                SKSE::log::error("     Ignoring null or invalid ExtraDataList on {} [{}]",
                     itemName,
-                    itemFormId
-                );
-                return -1;
+                    itemFormId);
+                ++extraListIdx;
+                continue;
             }
 
-            if (!HasTransferableExtraData(dataList)) {
+            if (!HasTransferableExtraData(a_item, dataList)) {
                 SKSE::log::warn("     Skipping non-transferable ExtraDataList on {} [{}], deferring to fallback",
                     itemName,
-                    itemFormId
-                );
-                return -1;
+                    itemFormId);
+                ++extraListIdx;
+                continue;
             }
 
-            Count itemCount = dataList->GetCount();
-            SKSE::log::info("     Moving {} {} [{}] with valid ExtraDataList (ptr=0x{:X})", 
-                itemCount, 
-                itemName,
-                itemFormId,
-                reinterpret_cast<uintptr_t>(dataList)
-            );
-            a_fromContainer->RemoveItem(a_item, itemCount, a_reason, dataList, a_toContainer);
-            remainingCount -= itemCount;
-            return 1;
-        });
+            const uint32_t v2Hash = JunkDataManager::ComputeExtraDataHash(dataList);
+            const uint32_t legacyHash = JunkDataManager::ComputeLegacyExtraDataHash(dataList);
+            if (!junkManager.IsJunk(baseFormID, v2Hash) && !junkManager.IsJunk(baseFormID, legacyHash)) {
+                SKSE::log::info("     Skipping non-junk ExtraDataList on {} [{}] idx={} hashV2=0x{:X} hashLegacy=0x{:X}",
+                    itemName,
+                    itemFormId,
+                    extraListIdx,
+                    v2Hash,
+                    legacyHash);
+                ++extraListIdx;
+                continue;
+            }
+
+            const Count stackCount = dataList->GetCount();
+            const Count remainingBeforeTake = remainingCount;
+            const Count take = std::min(stackCount, remainingCount);
+
+            SKSE::log::info("[JunkIt][Fix2] idx={} dataList=0x{:X} stackCount={} remainingBefore={} take={}",
+                extraListIdx,
+                reinterpret_cast<uintptr_t>(dataList),
+                stackCount,
+                remainingBeforeTake,
+                take);
+            if (take < stackCount) {
+                SKSE::log::warn("[JunkIt][Fix2] partial stack move (budget clamp): take={} stackCount={}",
+                    take,
+                    stackCount);
+            }
+
+            if (take > 0) {
+                // Fix/Experiment 3: Strip ExtraReferenceHandle in-place on this stack's ExtraDataList before RemoveItem (same pointer the engine keys on).
+                // if (const auto* refSnap = dataList->GetByType<RE::ExtraReferenceHandle>()) {
+                //     SKSE::log::info("[JunkIt][Fix3] stripping ExtraReferenceHandle pre-RemoveItem dataList=0x{:X} handle=0x{:X} take={}",
+                //         reinterpret_cast<uintptr_t>(dataList),
+                //         refSnap->containerRef.native_handle(),
+                //         take);
+                //     dataList->RemoveByType(RE::ExtraDataType::kReferenceHandle);
+                //     SKSE::log::info("[JunkIt][Fix3] removed ExtraReferenceHandle in-place; proceeding RemoveItem take={}", take);
+                // }
+
+                SKSE::log::info("     Moving {} {} [{}] with valid ExtraDataList (ptr=0x{:X})",
+                    take,
+                    itemName,
+                    itemFormId,
+                    reinterpret_cast<uintptr_t>(dataList));
+                a_fromContainer->RemoveItem(a_item, take, a_reason, dataList, a_toContainer);
+                remainingCount -= take;
+            }
+
+            SKSE::log::info("[JunkIt][Fix2] idx={} remainingAfter={}", extraListIdx, remainingCount);
+            ++extraListIdx;
+        }
+
+        SKSE::log::info("[JunkIt][Fix2] done extraLists pass; remainingIntoNullptrPass={}", remainingCount);
 
         // Get any items missed by the ExtraDataLists
         if (remainingCount > 0) {
-            SKSE::log::info("     Moving remaining {} {} [{}] with no ExtraDataList", 
-                remainingCount, 
+            if (!isBaseFormJunk) {
+                SKSE::log::info("     Skipping fallback transfer of remaining {} {} [{}]: base form is not marked junk",
+                    remainingCount,
+                    itemName,
+                    itemFormId);
+                return;
+            }
+            SKSE::log::info("     Moving remaining {} {} [{}] with no ExtraDataList",
+                remainingCount,
                 itemName,
-                itemFormId
-            );
+                itemFormId);
             a_fromContainer->RemoveItem(a_item, remainingCount, a_reason, nullptr, a_toContainer);
         }
     }

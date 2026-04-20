@@ -64,6 +64,7 @@ Function RefreshUIIcons() global native
 Int Function GetContainerMode() global native
 Int Function GetMenuItemValue(Form a_form) global native
 
+; True only if the base form is marked as junk with no per-instance extras (hash 0), e.g. legacy FormList junk — not tempered/enchanted-specific rows.
 Bool Function IsItemJunk(Form a_form) global native
 Int Function GetJunkListSize() global native
 String Function GetJunkItemNameAt(Int index) global native

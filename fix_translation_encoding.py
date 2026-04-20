@@ -3,25 +3,57 @@
 Fix Skyrim MCM Translation File Encoding
 
 This script ensures all translation files in papyrus/Interface/translations/
-have the required UTF-16 LE BOM (Byte Order Mark) that Skyrim needs to
+are stored as UTF-16 LE with BOM (Byte Order Mark), which Skyrim requires to
 properly parse MCM translation files.
 
-Without the BOM, Skyrim displays translation keys (e.g., $JunkItMCM)
-instead of the actual translated text.
+Without correct UTF-16 LE + BOM, Skyrim displays translation keys (e.g.,
+$JunkItMCM) instead of the actual translated text.
+
+Files saved as UTF-8 (or other encodings) are decoded and re-encoded to
+UTF-16 LE; prepending BOM bytes alone would corrupt non–UTF-16 source files.
 """
 
-import os
 from pathlib import Path
 
 BOM_UTF16_LE = b'\xff\xfe'
+BOM_UTF16_BE = b'\xfe\xff'
+BOM_UTF8 = b'\xef\xbb\xbf'
+
+
+def _decode_translation_bytes(raw: bytes) -> str:
+    """Decode translation file bytes from common source encodings."""
+    # Use "utf-16" when a BOM is present: "utf-16-le"/"utf-16-be" do not strip FF FE /
+    # FE FF and would decode them as U+FEFF, duplicating the BOM on re-encode.
+    if raw.startswith(BOM_UTF16_LE) or raw.startswith(BOM_UTF16_BE):
+        return raw.decode('utf-16')
+    if raw.startswith(BOM_UTF8):
+        return raw.decode('utf-8-sig')
+    try:
+        return raw.decode('utf-8')
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode('cp1252')
+    except UnicodeDecodeError:
+        pass
+    return raw.decode('latin-1')
+
+
+def _encode_utf16_le_with_bom(text: str) -> bytes:
+    """Encode text as UTF-16 LE with BOM (Skyrim MCM expectation)."""
+    # Normalize stray BOM characters (e.g. from mis-decoded sources).
+    if text.startswith('\ufeff'):
+        text = text.lstrip('\ufeff')
+    return BOM_UTF16_LE + text.encode('utf-16-le')
+
 
 def fix_translation_files(translations_dir='papyrus/Interface/translations'):
     """
-    Scan translation files and add UTF-16 LE BOM if missing.
-    
+    Scan translation files and normalize each to UTF-16 LE with BOM.
+
     Args:
         translations_dir: Path to translations directory
-        
+
     Returns:
         Tuple of (files_fixed, files_already_ok, files_total)
     """
@@ -50,12 +82,14 @@ def fix_translation_files(translations_dir='papyrus/Interface/translations'):
                 print(f"Warning: {file_path.name} is empty, skipping")
                 continue
             
-            if not content.startswith(BOM_UTF16_LE):
-                with open(file_path, 'wb') as f:
-                    f.write(BOM_UTF16_LE + content)
-                files_fixed.append(file_path.name)
-            else:
+            text = _decode_translation_bytes(content)
+            normalized = _encode_utf16_le_with_bom(text)
+            if normalized == content:
                 files_already_ok.append(file_path.name)
+            else:
+                with open(file_path, 'wb') as f:
+                    f.write(normalized)
+                files_fixed.append(file_path.name)
                 
         except Exception as e:
             print(f"Error processing {file_path.name}: {e}")
@@ -71,13 +105,13 @@ def main():
     files_fixed, files_already_ok, total = fix_translation_files()
     
     if files_fixed:
-        print(f"[FIXED] {len(files_fixed)} file(s) by adding UTF-16 LE BOM:")
+        print(f"[FIXED] {len(files_fixed)} file(s) converted to UTF-16 LE with BOM:")
         for filename in sorted(files_fixed):
             print(f"  - {filename}")
         print()
     
     if files_already_ok:
-        print(f"[OK] {len(files_already_ok)} file(s) already had correct encoding:")
+        print(f"[OK] {len(files_already_ok)} file(s) already UTF-16 LE with BOM:")
         for filename in sorted(files_already_ok):
             print(f"  - {filename}")
         print()

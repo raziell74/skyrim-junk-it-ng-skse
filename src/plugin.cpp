@@ -78,7 +78,7 @@ bool IsItemJunk(RE::StaticFunctionTag*, RE::TESForm* a_form) {
 	if (!a_form) {
 		return false;
 	}
-	return JunkIt::JunkDataManager::GetSingleton().IsJunk(a_form);
+	return JunkIt::JunkDataManager::GetSingleton().IsBaseFormMarkedJunk(a_form);
 }
 
 std::int32_t GetJunkListSize(RE::StaticFunctionTag*) {
