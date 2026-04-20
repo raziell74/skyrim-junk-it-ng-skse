@@ -1127,6 +1127,15 @@ namespace JunkIt {
                 a_invData->IsQuestObject()
             );
 
+            // Temporary work around, don't transfer MISC items, certain MISC items break po3's outfit OnContainerChanged hook in SPID if they have kReferenceHandle extra data.
+            // TODO: Remove this once po3's outfit OnContainerChanged hook is fixed.
+            if (IsMiscClutterItem(a_invData->object)) {
+                SKSE::log::info("     Skipping transfer for {} [{}] because item is a MISC item",
+                    itemName,
+                    itemFormId);
+                return;
+            }
+
             if (Settings::ProtectEquipped() && a_invData->IsWorn()) {
                 SKSE::log::info("     Skipping transfer for {} [{}] because item is actively worn",
                     itemName,
