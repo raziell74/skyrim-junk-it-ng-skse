@@ -249,9 +249,9 @@ namespace JunkIt {
             [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
 
             [[nodiscard]] static bool GetUpdateItemIcon() { 
-                if (DIIIInstalled && UseDynamicInventoryIcon) {
-                    return false;
-                }
+                // if (DIIIInstalled && UseDynamicInventoryIcon) {
+                //     return false;
+                // }
                 return UpdateItemIcon;
             }
             [[nodiscard]] static bool GetUpdateSubTypeDisplay() { return UpdateSubTypeDisplay; }
