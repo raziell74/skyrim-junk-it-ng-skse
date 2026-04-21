@@ -24,6 +24,21 @@ namespace JunkIt {
         messageBoxData->QueueMessage();
     }
 
+    /** Vanilla-style generic misc objects (Creation Kit "Clutter"): MISC forms that are not currency, keys, lockpicks, or soul gems. */
+    static bool IsMiscClutterItem(const TESBoundObject* a_item)
+    {
+        if (!a_item || !a_item->Is(FormType::Misc)) {
+            return false;
+        }
+        if (a_item->IsSoulGem()) {
+            return false;
+        }
+        if (a_item->IsGold() || a_item->IsKey() || a_item->IsLockpick()) {
+            return false;
+        }
+        return true;
+    }
+
     std::pair<std::vector<InventoryEntryData*>, GFxObjMap> JunkHandler::BuildTransferList() {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Transferrable Junk ----");
@@ -58,6 +73,12 @@ namespace JunkIt {
             }
             if (Settings::ProtectFavorites() && entryItem->data.objDesc->IsFavorited()) {
                 SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->object->GetName());
+                continue;
+            }
+
+            // check if item is a MISC clutter item and skip if it is
+            if (IsMiscClutterItem(entryItem->data.objDesc->object)) {
+                SKSE::log::info("MISC Clutter Item - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
             }
 
@@ -1020,21 +1041,6 @@ namespace JunkIt {
         return goldValue;
     }
 
-    /** Vanilla-style generic misc objects (Creation Kit "Clutter"): MISC forms that are not currency, keys, lockpicks, or soul gems. */
-    static bool IsMiscClutterItem(const TESBoundObject* a_item)
-    {
-        if (!a_item || !a_item->Is(FormType::Misc)) {
-            return false;
-        }
-        if (a_item->IsSoulGem()) {
-            return false;
-        }
-        if (a_item->IsGold() || a_item->IsKey() || a_item->IsLockpick()) {
-            return false;
-        }
-        return true;
-    }
-
     static bool HasTransferableExtraData(TESBoundObject* a_item, ExtraDataList* a_list)
     {
         if (a_item && IsMiscClutterItem(a_item)) {
@@ -1127,8 +1133,8 @@ namespace JunkIt {
                 a_invData->IsQuestObject()
             );
 
-            // Temporary work around, don't transfer MISC items, certain MISC items break po3's outfit OnContainerChanged hook in SPID if they have kReferenceHandle extra data.
-            // TODO: Remove this once po3's outfit OnContainerChanged hook is fixed.
+            // Temporary work around: certain MISC items break po3's outfit OnContainerChanged hook in SPID if they have kReferenceHandle extra data.
+            // TODO: Remove this once I can identify why only certain clutter items break po3's outfit OnContainerChanged hook.
             if (IsMiscClutterItem(a_invData->object)) {
                 SKSE::log::info("     Skipping transfer for {} [{}] because item is a MISC item",
                     itemName,
