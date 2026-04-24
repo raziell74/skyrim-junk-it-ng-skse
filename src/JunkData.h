@@ -67,7 +67,6 @@ namespace JunkIt {
     private:
         static std::string BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName);
         static std::string GetEnchantmentFormConfig(const RE::ExtraDataList* extraList);
-        static std::string GetUniqueIdField(const RE::ExtraDataList* extraList);
         static bool IsCanonicalIdentity(const std::string& identity);
         static std::string GetDisplayNameFromIdentity(const std::string& identity);
 

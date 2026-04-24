@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 #include "RE/E/ExtraEnchantment.h"
-#include "RE/E/ExtraUniqueID.h"
 
 namespace JunkIt {
     namespace {
@@ -15,7 +14,7 @@ namespace JunkIt {
         constexpr std::uint32_t kJunkRecordVersion = 3;
         constexpr auto kJsonJunkPath = "Data/SKSE/Plugins/JunkIt/junklist.json";
         const std::regex kCanonicalIdentityRegex(
-            R"(^(0x[0-9A-Fa-f]+(?:~[^|]+)?)\|([^|]+)\|((?:0x[0-9A-Fa-f]+(?:~[^|]+)?)|none)\|([0-9]+|none)$)");
+            R"(^(0x[0-9A-Fa-f]+(?:~[^|]+)?)\|([^|]+)\|((?:0x[0-9A-Fa-f]+(?:~[^|]+)?)|none)$)");
     }
 
     std::string JunkDataManager::GetEnchantmentFormConfig(const RE::ExtraDataList* extraList) {
@@ -30,19 +29,6 @@ namespace JunkIt {
 
         const auto configString = FormUtil::Form::GetFormConfigString(extraEnchantment->enchantment);
         return configString.empty() ? "none" : configString;
-    }
-
-    std::string JunkDataManager::GetUniqueIdField(const RE::ExtraDataList* extraList) {
-        if (!extraList) {
-            return "none";
-        }
-
-        const auto* unique = extraList->GetByType<RE::ExtraUniqueID>();
-        if (!unique || unique->uniqueID == 0) {
-            return "none";
-        }
-
-        return std::to_string(unique->uniqueID);
     }
 
     std::string JunkDataManager::BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) {
@@ -64,11 +50,10 @@ namespace JunkIt {
         }
 
         return fmt::format(
-            "{}|{}|{}|{}",
+            "{}|{}|{}",
             formConfig,
             uiDisplayName,
-            GetEnchantmentFormConfig(extraList),
-            GetUniqueIdField(extraList));
+            GetEnchantmentFormConfig(extraList));
     }
 
     bool JunkDataManager::IsCanonicalIdentity(const std::string& identity) {
