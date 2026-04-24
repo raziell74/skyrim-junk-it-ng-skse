@@ -114,8 +114,13 @@ namespace JunkIt {
                             continue;
                         }
 
-                        // No InventoryEntryData: cannot classify instance junk; avoid form-only checks (mislabels renamed/tempered items).
-                        constexpr bool isJunk = false;
+                        RE::GFxValue existingIsJunk;
+                        entryObject.GetMember("isJunk", &existingIsJunk);
+                        if (!existingIsJunk.IsBool()) {
+                            continue;
+                        }
+
+                        const bool isJunk = existingIsJunk.GetBool();
                         entryObject.SetMember("isJunk", isJunk);
                         entryObject.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
                         entryObject.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
