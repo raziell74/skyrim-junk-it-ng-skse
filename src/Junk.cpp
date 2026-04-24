@@ -145,25 +145,23 @@ namespace JunkIt {
             return {sellList, gfxObjMap};
         }
 
-        std::unordered_map<uint64_t, InventoryEntryData*> barterIndex;
+        std::unordered_map<std::string, InventoryEntryData*> barterIndex;
         std::unordered_map<InventoryEntryData*, RE::GFxValue> barterGfxMap;
         for (std::uint32_t i = 0, size = itemListMenu->items.size(); i < size; i++) {
             auto* item = itemListMenu->items[i];
             if (item && item->data.objDesc && item->data.objDesc->object) {
-                RE::FormID baseFormID = item->data.objDesc->object->GetFormID();
                 InventoryEntryData* objDesc = item->data.objDesc;
-                if (objDesc->extraLists && !objDesc->extraLists->empty()) {
+                if (objDesc->extraLists && !objDesc->extraLists->empty() && objDesc->object) {
                     for (auto* extraList : *objDesc->extraLists) {
                         if (!extraList) {
                             continue;
                         }
-                        const auto candidates = JunkDataManager::BuildPackedKeyCandidates(baseFormID, extraList);
-                        barterIndex[candidates[0]] = objDesc;
-                        barterIndex[candidates[1]] = objDesc;
-                        barterIndex[candidates[2]] = objDesc;
+                        const auto identity = JunkDataManager::BuildIdentityForEntry(objDesc, extraList);
+                        if (!identity.empty()) {
+                            barterIndex[identity] = objDesc;
+                        }
                     }
                 }
-                barterIndex[JunkItem::PackJunkKey(baseFormID, 0)] = objDesc;
                 barterGfxMap[objDesc] = item->obj;
             }
         }
@@ -172,8 +170,7 @@ namespace JunkIt {
 
         SKSE::log::info("Processing player junk inventory for sellable items");
         for (const auto& junkEntry : junkInventory) {
-            uint64_t packedKey = JunkItem::PackJunkKey(junkEntry.baseFormID, junkEntry.extraDataHash);
-            auto bIt = barterIndex.find(packedKey);
+            auto bIt = barterIndex.find(junkEntry.identity);
             if (bIt == barterIndex.end()) continue;
 
             InventoryEntryData* objDesc = bIt->second;
@@ -437,7 +434,6 @@ namespace JunkIt {
                     auto playerInvCounts = player->GetInventoryCounts();
                     auto pIt = playerInvCounts.find(entryData->object);
                     Count iCount = (pIt != playerInvCounts.end()) ? pIt->second : 0;
-                    Count iTotalCount = iCount;
                     totalPossibleTransferred += iCount;
 
                     if (iCount > 0) {
@@ -887,14 +883,18 @@ namespace JunkIt {
                             SKSE::log::info("User confirmed marking protected item as junk");
                             SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
                             auto& junkManager = JunkDataManager::GetSingleton();
-                            junkManager.AddJunkItem(inventoryEntry);
+                            const auto addedIdentity = junkManager.AddJunkItem(inventoryEntry);
 
                             ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
                             if (itemListMenu) {
                                 itemListMenu->Update();
                             }
 
-                            SKSE::log::info("Form: {} has been marked as junk", itemForm->GetName());
+                            if (addedIdentity) {
+                                SKSE::log::info("Form marked as junk: {}", *addedIdentity);
+                            } else {
+                                SKSE::log::warn("Failed to mark form as junk: {}", itemForm->GetName());
+                            }
                             if (Settings::GetNotifyOnMarkUnmark()) {
                                 std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
                                 DebugNotification(msg.c_str());
@@ -907,12 +907,13 @@ namespace JunkIt {
             }
         }
         
+        std::optional<std::string> junkIdentity;
         if (isJunk) {
             SKSE::log::info("Removing junk status from {} [{}]", itemName, hexFormId);
-            junkManager.RemoveJunkItem(inventoryEntry);
+            junkIdentity = junkManager.RemoveJunkItem(inventoryEntry);
         } else {
             SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
-            junkManager.AddJunkItem(inventoryEntry);
+            junkIdentity = junkManager.AddJunkItem(inventoryEntry);
         }
 
         bool isNowJunk = junkManager.IsJunk(inventoryEntry);
@@ -920,7 +921,11 @@ namespace JunkIt {
         itemListMenu->Update();
 
         if (isNowJunk) {
-            SKSE::log::info("Form: {} has been marked as junk", itemForm->GetName());
+            if (junkIdentity) {
+                SKSE::log::info("Form marked as junk: {}", *junkIdentity);
+            } else {
+                SKSE::log::warn("Form marked as junk but no identity was returned for {}", itemForm->GetName());
+            }
             if (Settings::GetNotifyOnMarkUnmark()) {
                 std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
                 DebugNotification(msg.c_str());
@@ -1082,6 +1087,8 @@ namespace JunkIt {
         using Count = std::int32_t;
 
         const std::string itemName = a_item ? a_item->GetName() : "(null)";
+        const char* entryDisplayName = a_invData ? a_invData->GetDisplayName() : nullptr;
+        const std::string identityDisplayName = (entryDisplayName && entryDisplayName[0] != '\0') ? entryDisplayName : itemName;
         const std::string itemFormId = a_item ? FormUtil::Form::GetFormConfigString(a_item) : "(null)";
         const std::string fromName = a_fromContainer ? a_fromContainer->GetName() : "(null)";
         const std::string toName = a_toContainer ? a_toContainer->GetName() : "(null)";
@@ -1111,15 +1118,7 @@ namespace JunkIt {
             return;
         }
 
-        const RE::FormID baseFormID = a_item ? a_item->GetFormID() :
-            ((a_invData && a_invData->object) ? a_invData->object->GetFormID() : static_cast<RE::FormID>(0));
-        if (baseFormID == 0) {
-            SKSE::log::warn("     abort: invalid base form while transferring {} [{}]", itemName, itemFormId);
-            return;
-        }
-
         auto& junkManager = JunkDataManager::GetSingleton();
-        const bool isBaseFormJunk = junkManager.IsJunk(baseFormID, 0u);
 
         Count remainingCount = budget;
 
@@ -1418,8 +1417,8 @@ namespace JunkIt {
 
         // Check if the invData is valid or not, if it's not just do a generic item move
         if (!a_invData || !a_invData->extraLists || a_invData->extraLists->empty()) {
-            if (!isBaseFormJunk) {
-                SKSE::log::info("     Skipping transfer for {} [{}] without ExtraDataList: base form is not marked junk",
+            if (!a_item || !junkManager.IsJunk(a_item, nullptr, identityDisplayName)) {
+                SKSE::log::info("     Skipping transfer for {} [{}] without ExtraDataList: identity is not marked junk",
                     itemName,
                     itemFormId);
                 return;
@@ -1451,7 +1450,7 @@ namespace JunkIt {
                 continue;
             }
 
-            if (!junkManager.IsJunk(baseFormID, dataList)) {
+            if (!junkManager.IsJunk(a_item, dataList, identityDisplayName)) {
                 SKSE::log::info("     Skipping non-junk ExtraDataList on {} [{}] idx={}",
                     itemName,
                     itemFormId,
@@ -1504,8 +1503,8 @@ namespace JunkIt {
 
         // Get any items missed by the ExtraDataLists
         if (remainingCount > 0) {
-            if (!isBaseFormJunk) {
-                SKSE::log::info("     Skipping fallback transfer of remaining {} {} [{}]: base form is not marked junk",
+            if (!a_item || !junkManager.IsJunk(a_item, nullptr, identityDisplayName)) {
+                SKSE::log::info("     Skipping fallback transfer of remaining {} {} [{}]: identity is not marked junk",
                     remainingCount,
                     itemName,
                     itemFormId);

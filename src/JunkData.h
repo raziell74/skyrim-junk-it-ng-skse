@@ -4,84 +4,43 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
-#include <array>
 #include <optional>
 
 namespace JunkIt {
 
     struct JunkItem {
-        RE::FormID baseFormID;
-        uint32_t extraDataHash;
+        std::string identity;
         std::string displayName;
 
-        JunkItem() : baseFormID(0), extraDataHash(0), displayName("") {}
-        JunkItem(RE::FormID formID, uint32_t hash, std::string name) 
-            : baseFormID(formID), extraDataHash(hash), displayName(std::move(name)) {}
-
-        uint64_t GetPackedKey() const {
-            return PackJunkKey(baseFormID, extraDataHash);
-        }
-
-        static uint64_t PackJunkKey(RE::FormID baseFormID, uint32_t instanceExtraHash) {
-            return (static_cast<uint64_t>(baseFormID) << 32) | static_cast<uint64_t>(instanceExtraHash);
-        }
-
-        static void UnpackJunkKey(uint64_t packed, RE::FormID& outForm, uint32_t& outHash) {
-            outForm = static_cast<RE::FormID>(packed >> 32);
-            outHash = static_cast<uint32_t>(packed & 0xFFFFFFFFu);
-        }
+        JunkItem() : identity(""), displayName("") {}
+        JunkItem(std::string itemIdentity, std::string name)
+            : identity(std::move(itemIdentity)), displayName(std::move(name)) {}
     };
 
     struct InventoryJunkEntry {
-        RE::FormID baseFormID;
-        uint32_t extraDataHash;
+        std::string identity;
         std::string displayName;
         int32_t count;
 
-        InventoryJunkEntry() : baseFormID(0), extraDataHash(0), displayName(""), count(0) {}
-        InventoryJunkEntry(RE::FormID formID, uint32_t hash, std::string name, int32_t itemCount)
-            : baseFormID(formID), extraDataHash(hash), displayName(std::move(name)), count(itemCount) {}
+        InventoryJunkEntry() : identity(""), displayName(""), count(0) {}
+        InventoryJunkEntry(std::string itemIdentity, std::string name, int32_t itemCount)
+            : identity(std::move(itemIdentity)), displayName(std::move(name)), count(itemCount) {}
     };
 
     class JunkDataManager {
     public:
-        struct MatchDiagnostics {
-            uint64_t matchedCanonical = 0;
-            uint64_t matchedCompatV2 = 0;
-            uint64_t matchedCompatLegacy = 0;
-            uint64_t normalizedCount = 0;
-            uint64_t unresolvedCount = 0;
-        };
-
-        enum class KeyScheme : std::uint8_t {
-            kCompatLegacy = 0,
-            kCompatV2 = 1,
-            kCanonicalV3Stable = 2,
-            kCanonicalUnique = 3
-        };
-
-        static uint32_t EncodeSchemeHash(KeyScheme scheme, uint32_t payload) noexcept;
-        static KeyScheme DecodeScheme(uint32_t encodedHash) noexcept;
-        static uint32_t DecodePayload(uint32_t encodedHash) noexcept;
-
         static JunkDataManager& GetSingleton() {
             static JunkDataManager instance;
             return instance;
         }
 
-        bool AddJunkItem(RE::InventoryEntryData* entry);
-        bool RemoveJunkItem(RE::InventoryEntryData* entry);
+        std::optional<std::string> AddJunkItem(RE::InventoryEntryData* entry);
+        std::optional<std::string> RemoveJunkItem(RE::InventoryEntryData* entry);
         bool IsJunk(RE::InventoryEntryData* entry) const;
-        bool IsJunk(RE::FormID baseFormID, uint32_t extraDataHash) const;
-
-        /** True iff (base form, extra hash 0) is in the junk set — legacy / FormList semantics (all "plain" stacks). */
-        bool IsBaseFormMarkedJunk(RE::TESForm* form) const;
-
-        /** @deprecated Prefer IsBaseFormMarkedJunk — same behavior: base form only, hash 0. */
-        bool IsJunk(RE::TESForm* form) const { return IsBaseFormMarkedJunk(form); }
-
-        [[nodiscard]] bool IsJunkKey(uint64_t packedKey) const;
-        [[nodiscard]] bool IsJunk(RE::FormID baseFormID, const RE::ExtraDataList* extraList) const;
+        bool IsAnyJunkForForm(RE::TESForm* form) const;
+        bool IsJunk(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) const;
+        bool IsJunk(const std::string& identity) const;
+        static std::string BuildIdentityForEntry(RE::InventoryEntryData* entry, const RE::ExtraDataList* extraList);
 
         void Clear();
         size_t Size() const;
@@ -91,17 +50,6 @@ namespace JunkIt {
         bool RemoveJunkItemAtIndex(int32_t index);
 
         std::vector<InventoryJunkEntry> GetPlayerJunkInventory() const;
-
-        /** Stable instance hash (v2) used for new junk entries and UI matching. */
-        static uint32_t ComputeExtraDataHash(RE::InventoryEntryData* entry);
-        static uint32_t ComputeExtraDataHash(RE::ExtraDataList* extraList);
-
-        /** Previous hash algorithm; co-saves and older JSON lists may still use these values. Runtime matching checks both v2 and legacy. */
-        static uint32_t ComputeLegacyExtraDataHash(RE::InventoryEntryData* entry);
-        static uint32_t ComputeLegacyExtraDataHash(RE::ExtraDataList* extraList);
-        static uint32_t ComputeStableV3ExtraDataHash(RE::InventoryEntryData* entry);
-        static uint32_t ComputeStableV3ExtraDataHash(RE::ExtraDataList* extraList);
-        static std::array<uint64_t, 4> BuildPackedKeyCandidates(RE::FormID baseFormID, const RE::ExtraDataList* extraList);
 
         bool SaveToFile();
         bool LoadFromFile(bool replace);
@@ -117,35 +65,18 @@ namespace JunkIt {
         void MigrateFromFormList(RE::BGSListForm* oldJunkList);
 
     private:
-        static constexpr uint32_t kKeySchemeMask = 0xC0000000u;
-        static constexpr uint32_t kKeyPayloadMask = 0x3FFFFFFFu;
-        static std::optional<uint32_t> BuildUniquePayload(const RE::ExtraDataList* extraList);
-        static std::array<uint64_t, 4> BuildCandidateKeysFromExtraList(RE::FormID baseFormID, const RE::ExtraDataList* extraList);
-        static std::vector<uint64_t> BuildCandidateKeysFromEntry(RE::InventoryEntryData* entry);
-        static uint64_t BuildCanonicalPackedKey(RE::InventoryEntryData* entry);
-        static uint64_t BuildCanonicalPackedKey(RE::FormID baseFormID, const RE::ExtraDataList* extraList);
-        [[nodiscard]] bool AnyCandidateInJunkSet(const std::vector<uint64_t>& keys) const;
-        [[nodiscard]] bool AnyCandidateInJunkSet(const std::array<uint64_t, 4>& keys) const;
-        [[nodiscard]] bool IsPackedKeyInJunkSet(uint64_t packedKey) const;
-        void ResetMatchDiagnosticsLocked();
-        void RecordMatchForPackedKeyLocked(uint64_t packedKey) const;
-        void RecordNormalizationLocked() const;
-        void RecordUnresolvedLocked() const;
-        void LogMatchSummaryLocked(const char* context) const;
+        static std::string BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName);
+        static std::string GetEnchantmentFormConfig(const RE::ExtraDataList* extraList);
+        static std::string GetUniqueIdField(const RE::ExtraDataList* extraList);
+        static bool IsCanonicalIdentity(const std::string& identity);
+        static std::string GetDisplayNameFromIdentity(const std::string& identity);
 
         JunkDataManager() = default;
         JunkDataManager(const JunkDataManager&) = delete;
         JunkDataManager& operator=(const JunkDataManager&) = delete;
 
-        static uint32_t HashExtraListLegacy(const RE::ExtraDataList* extraList);
-        static uint32_t HashEntryLegacy(const RE::InventoryEntryData* entry);
-        static uint32_t HashExtraListV3Stable(const RE::ExtraDataList* extraList);
-
-        std::unordered_set<uint64_t> junkSet;
+        std::unordered_set<std::string> junkSet;
         std::vector<JunkItem> junkItems;
         mutable std::mutex lock;
-        mutable MatchDiagnostics diagnostics;
-
-        void RebuildJunkItemsVector();
     };
 }
