@@ -49,6 +49,9 @@ namespace JunkIt {
             return "";
         }
 
+        // Sanitize pipe delimiter from the display name
+        std::replace(uiDisplayName.begin(), uiDisplayName.end(), '|', ':');
+
         return fmt::format(
             "{}|{}|{}",
             formConfig,
