@@ -1054,8 +1054,8 @@ namespace JunkIt {
         bool hasTransferableData = true;
         for (const RE::BSExtraData& node : *a_list) {
             switch (node.GetType()) {
-                case RE::ExtraDataType::kReferenceHandle:
-                    return false;
+                // case RE::ExtraDataType::kReferenceHandle:
+                //     return false;
                 case RE::ExtraDataType::kHealth:
                 case RE::ExtraDataType::kEnchantment:
                 case RE::ExtraDataType::kCharge:
@@ -1134,12 +1134,12 @@ namespace JunkIt {
 
             // Temporary work around: certain MISC items break po3's outfit OnContainerChanged hook in SPID if they have kReferenceHandle extra data.
             // TODO: Remove this once I can identify why only certain clutter items break po3's outfit OnContainerChanged hook.
-            if (IsMiscClutterItem(a_invData->object)) {
-                SKSE::log::info("     Skipping transfer for {} [{}] because item is a MISC item",
-                    itemName,
-                    itemFormId);
-                return;
-            }
+            // if (IsMiscClutterItem(a_invData->object)) {
+            //     SKSE::log::info("     Skipping transfer for {} [{}] because item is a MISC item",
+            //         itemName,
+            //         itemFormId);
+            //     return;
+            // }
 
             if (Settings::ProtectEquipped() && a_invData->IsWorn()) {
                 SKSE::log::info("     Skipping transfer for {} [{}] because item is actively worn",
