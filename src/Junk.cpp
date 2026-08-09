@@ -77,10 +77,10 @@ namespace JunkIt {
             }
 
             // check if item is a MISC clutter item and skip if it is
-            if (IsMiscClutterItem(entryItem->data.objDesc->object)) {
-                SKSE::log::info("MISC Clutter Item - Skipping {}", entryItem->data.objDesc->object->GetName());
-                continue;
-            }
+            // if (IsMiscClutterItem(entryItem->data.objDesc->object)) {
+            //     SKSE::log::info("MISC Clutter Item - Skipping {}", entryItem->data.objDesc->object->GetName());
+            //     continue;
+            // }
 
             sortFormData.push_back(entryItem->data.objDesc);
             sortGfxMap[entryItem->data.objDesc] = entryItem->obj;
@@ -491,37 +491,43 @@ namespace JunkIt {
 
         SKSE::log::info("---- Transfer Execution Complete ----");
 
-        for (auto* entryData : transferList) {
-            auto it = gfxObjMap.find(entryData);
-            if (it == gfxObjMap.end()) continue;
-            RE::GFxValue& obj = it->second;
-            RE::GFxValue currentFlag;
-            obj.GetMember("filterFlag", &currentFlag);
-            if (currentFlag.IsNumber()) {
-                auto flag = static_cast<std::uint32_t>(currentFlag.GetNumber());
-                std::uint32_t newFlag = (menuView == 0)
-                    ? (flag & 0xFFC00u) >> 10
-                    : (flag & 0x003FFu) << 10;
-                obj.SetMember("filterFlag", RE::GFxValue(static_cast<double>(newFlag)));
-            }
-        }
+        // Pre-emptively flip the filter flag to show the correct items in the list
+        // for (auto* entryData : transferList) {
+        //     auto it = gfxObjMap.find(entryData);
+        //     if (it == gfxObjMap.end()) continue;
+        //     RE::GFxValue& obj = it->second;
+        //     RE::GFxValue currentFlag;
+        //     obj.GetMember("filterFlag", &currentFlag);
+        //     if (currentFlag.IsNumber()) {
+        //         auto flag = static_cast<std::uint32_t>(currentFlag.GetNumber());
+        //         std::uint32_t newFlag = (menuView == 0)
+        //             ? (flag & 0xFFC00u) >> 10
+        //             : (flag & 0x003FFu) << 10;
+        //         obj.SetMember("filterFlag", RE::GFxValue(static_cast<double>(newFlag)));
+        //     }
+        // }
+        
         if (auto* movie = UIUtil::Menu::GetActiveMenuMovie()) {
             RE::GFxValue itemListObj;
             movie->GetVariable(&itemListObj, "_root.Menu_mc.inventoryLists.panelContainer.itemList");
             if (itemListObj.IsObject())
                 itemListObj.Invoke("requestUpdate", nullptr, nullptr, 0);
+            
+            movie->SetVisible(true);
         }
 
-        std::thread([]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-            auto* ti = SKSE::GetTaskInterface();
-            if (ti)
-                ti->AddUITask([]() { 
-                    UIUtil::ItemList::Refresh(); 
-                    if (auto* movie = UIUtil::Menu::GetActiveMenuMovie())
-                        movie->SetVisible(true);
-                });
-        }).detach();
+        UIUtil::ItemList::Refresh();
+
+        // std::thread([]() {
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        //     auto* ti = SKSE::GetTaskInterface();
+        //     if (ti)
+        //         ti->AddUITask([]() { AsA
+        //             UIUtil::ItemList::Refresh(); 
+        //             if (auto* movie = UIUtil::Menu::GetActiveMenuMovie())
+        //                 movie->SetVisible(true);
+        //         });
+        // }).detach();
     }
 
     void JunkHandler::SellJunk() {
@@ -1048,9 +1054,9 @@ namespace JunkIt {
 
     static bool HasTransferableExtraData(TESBoundObject* a_item, ExtraDataList* a_list)
     {
-        if (a_item && IsMiscClutterItem(a_item)) {
-            return false;
-        }
+        // if (a_item && IsMiscClutterItem(a_item)) {
+        //     return false;
+        // }
         bool hasTransferableData = true;
         for (const RE::BSExtraData& node : *a_list) {
             switch (node.GetType()) {
@@ -1117,6 +1123,67 @@ namespace JunkIt {
             SKSE::log::info("[JunkIt][Fix1] abort: no items available on source container for this form [{}] {}", itemFormId, itemName);
             return;
         }
+
+        const auto getSourceItemCount = [&]() -> Count {
+            if (!a_fromContainer || !a_item) {
+                return 0;
+            }
+            const auto invCounts = a_fromContainer->GetInventoryCounts();
+            const auto it = invCounts.find(a_item);
+            return it != invCounts.end() ? static_cast<Count>(it->second) : 0;
+        };
+
+        const auto removeItemWithDiagnostics = [&](const char* a_context, Count a_removeCount, ExtraDataList* a_extraList) {
+            const RE::NiPoint3* dropLoc = nullptr;
+            const RE::NiPoint3* rotate = nullptr;
+            const Count beforeCount = getSourceItemCount();
+            SKSE::log::info(
+                "[JunkIt][RemoveItemDiag] context={} item={} [{}] count={} reason={} from=0x{:X} to=0x{:X} extraList=0x{:X} dropLoc=0x{:X} rotate=0x{:X} beforeCount={}",
+                a_context,
+                itemName,
+                itemFormId,
+                a_removeCount,
+                static_cast<int>(a_reason),
+                reinterpret_cast<std::uintptr_t>(a_fromContainer),
+                reinterpret_cast<std::uintptr_t>(a_toContainer),
+                reinterpret_cast<std::uintptr_t>(a_extraList),
+                reinterpret_cast<std::uintptr_t>(dropLoc),
+                reinterpret_cast<std::uintptr_t>(rotate),
+                beforeCount);
+            a_fromContainer->RemoveItem(a_item, a_removeCount, a_reason, a_extraList, a_toContainer, dropLoc, rotate);
+            const Count afterCount = getSourceItemCount();
+            const Count observedDelta = std::max<Count>(0, beforeCount - afterCount);
+            if (observedDelta == 0) {
+                SKSE::log::warn(
+                    "[JunkIt][RemoveItemDiag] context={} no observed source-count change after RemoveItem; requested={} before={} after={} item={} [{}]",
+                    a_context,
+                    a_removeCount,
+                    beforeCount,
+                    afterCount,
+                    itemName,
+                    itemFormId);
+            } else if (observedDelta < a_removeCount) {
+                SKSE::log::warn(
+                    "[JunkIt][RemoveItemDiag] context={} partial source-count change after RemoveItem; requested={} observedDelta={} before={} after={} item={} [{}]",
+                    a_context,
+                    a_removeCount,
+                    observedDelta,
+                    beforeCount,
+                    afterCount,
+                    itemName,
+                    itemFormId);
+            } else {
+                SKSE::log::info(
+                    "[JunkIt][RemoveItemDiag] context={} success requested={} observedDelta={} before={} after={} item={} [{}]",
+                    a_context,
+                    a_removeCount,
+                    observedDelta,
+                    beforeCount,
+                    afterCount,
+                    itemName,
+                    itemFormId);
+            }
+        };
 
         auto& junkManager = JunkDataManager::GetSingleton();
 
@@ -1427,7 +1494,7 @@ namespace JunkIt {
                 budget,
                 itemName,
                 itemFormId);
-            a_fromContainer->RemoveItem(a_item, budget, a_reason, nullptr, a_toContainer);
+            removeItemWithDiagnostics("no-extra-list", budget, nullptr);
             return;
         }
 
@@ -1491,7 +1558,7 @@ namespace JunkIt {
                     itemName,
                     itemFormId,
                     reinterpret_cast<uintptr_t>(dataList));
-                a_fromContainer->RemoveItem(a_item, take, a_reason, dataList, a_toContainer);
+                removeItemWithDiagnostics("extra-list", take, dataList);
                 remainingCount -= take;
             }
 
@@ -1514,7 +1581,7 @@ namespace JunkIt {
                 remainingCount,
                 itemName,
                 itemFormId);
-            a_fromContainer->RemoveItem(a_item, remainingCount, a_reason, nullptr, a_toContainer);
+            removeItemWithDiagnostics("fallback-remaining", remainingCount, nullptr);
         }
     }
 }
