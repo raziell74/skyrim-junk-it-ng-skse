@@ -7,6 +7,10 @@
 #include "I4MovieHook.h"
 #include "I4Integration.h"
 
+namespace {
+	bool pendingAutoImport = false;
+}
+
 void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 	if (msg->type == DIII::kMessage_GetAPI) {
 		auto* api = static_cast<DIII::IAPI*>(msg->data);
@@ -48,9 +52,8 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 		case SKSE::MessagingInterface::kNewGame:
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			JunkIt::Settings::Load();
-			if (JunkIt::Settings::GetAutoImport()) {
-				JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true);
-			}
+			// Defer until RefreshDllSettings after MCM syncs AutoImport from ModSettings
+			pendingAutoImport = true;
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
 			if (JunkIt::Settings::GetAutoExport() && JunkIt::JunkDataManager::GetSingleton().Size() > 0) {
@@ -64,6 +67,18 @@ void RefreshDllSettings(RE::StaticFunctionTag*) {
 	SKSE::log::info(" ");
 	SKSE::log::info("RefreshDllSettings called");
 	JunkIt::Settings::Load();
+
+	if (pendingAutoImport) {
+		pendingAutoImport = false;
+		if (JunkIt::Settings::GetAutoImport()) {
+			SKSE::log::info("Pending auto-import: loading junk list from file");
+			if (JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true)) {
+				UIUtil::ItemList::Refresh();
+			} else {
+				SKSE::log::warn("Pending auto-import failed to load junk list from file");
+			}
+		}
+	}
 }
 
 void RefreshUIIcons(RE::StaticFunctionTag*) {
@@ -116,7 +131,11 @@ bool SaveJunkListToFile(RE::StaticFunctionTag*) {
 }
 
 bool LoadJunkListFromFile(RE::StaticFunctionTag*, bool replace) {
-	return JunkIt::JunkDataManager::GetSingleton().LoadFromFile(replace);
+	bool result = JunkIt::JunkDataManager::GetSingleton().LoadFromFile(replace);
+	if (result) {
+		UIUtil::ItemList::Refresh();
+	}
+	return result;
 }
 
 bool IsDIIIInstalled(RE::StaticFunctionTag*) {

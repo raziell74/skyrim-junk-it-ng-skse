@@ -305,6 +305,13 @@ namespace JunkIt {
         writerBuilder["indentation"] = "  ";
         std::unique_ptr<Json::StreamWriter> writer(writerBuilder.newStreamWriter());
         writer->write(root, &file);
+        file.flush();
+        if (!file) {
+            SKSE::log::error("Failed to write JSON junk list: {}", filePath.string());
+            return false;
+        }
+
+        SKSE::log::info("Exported {} junk item(s) to {}", junkItems.size(), filePath.string());
         return true;
     }
 
@@ -312,6 +319,7 @@ namespace JunkIt {
         const std::filesystem::path filePath(kJsonJunkPath);
         std::ifstream file(filePath, std::ios::binary);
         if (!file.is_open()) {
+            SKSE::log::error("Failed to open JSON junk list for reading: {}", filePath.string());
             return false;
         }
 
@@ -323,42 +331,73 @@ namespace JunkIt {
             return false;
         }
 
-        if (!root.isObject() || !root["items"].isArray()) {
-            SKSE::log::error("Invalid JSON junk list format");
+        if (!root.isObject() || !root.isMember("version") || !root["version"].isInt() ||
+            !root.isMember("items") || !root["items"].isArray()) {
+            SKSE::log::error(
+                "Invalid JSON junk list format (expected version + items array): {}",
+                filePath.string());
             return false;
         }
 
-        std::lock_guard<std::mutex> guard(lock);
-        if (replace) {
-            junkSet.clear();
-            junkItems.clear();
-        }
+        const auto& items = root["items"];
+        std::vector<JunkItem> loadedItems;
+        loadedItems.reserve(items.size());
+        std::size_t skipped = 0;
 
-        for (const auto& itemObj : root["items"]) {
-            if (!itemObj.isObject() || !itemObj.isMember("identity")) {
+        for (const auto& itemObj : items) {
+            if (!itemObj.isObject() || !itemObj.isMember("identity") || !itemObj["identity"].isString()) {
+                ++skipped;
                 continue;
             }
 
             const auto identity = itemObj["identity"].asString();
             if (!IsCanonicalIdentity(identity)) {
                 SKSE::log::warn("Skipping invalid identity from JSON load: {}", identity);
-                continue;
-            }
-
-            if (!junkSet.insert(identity).second) {
+                ++skipped;
                 continue;
             }
 
             std::string displayName = GetDisplayNameFromIdentity(identity);
-            if (itemObj.isMember("name")) {
+            if (itemObj.isMember("name") && itemObj["name"].isString()) {
                 const auto name = itemObj["name"].asString();
                 if (!name.empty()) {
                     displayName = name;
                 }
             }
-            junkItems.emplace_back(identity, displayName);
+            loadedItems.emplace_back(identity, displayName);
         }
 
+        if (loadedItems.empty()) {
+            SKSE::log::error(
+                "JSON junk list contained no valid identities (skipped {}): {}",
+                skipped,
+                filePath.string());
+            return false;
+        }
+
+        std::size_t added = 0;
+        std::lock_guard<std::mutex> guard(lock);
+        if (replace) {
+            junkSet.clear();
+            junkItems.clear();
+        }
+
+        for (const auto& item : loadedItems) {
+            if (!junkSet.insert(item.identity).second) {
+                ++skipped;
+                continue;
+            }
+            junkItems.push_back(item);
+            ++added;
+        }
+
+        SKSE::log::info(
+            "Imported {} junk item(s) from {} (valid {}, skipped {}, replace={})",
+            added,
+            filePath.string(),
+            loadedItems.size(),
+            skipped,
+            replace);
         return true;
     }
 

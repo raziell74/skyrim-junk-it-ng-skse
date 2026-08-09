@@ -178,6 +178,8 @@ Event OnPageSelect(String a_page)
     parent.OnPageSelect(a_page)
 
     SetModSettingString("sResetJunk:Utility", "$JunkIt_ResetJunk")
+    SetModSettingString("sSaveJunkListToFile:Utility", "$JunkIt_SaveJunkListToFile")
+    SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_LoadJunkListFromFile")
     
     ; Update DIII installed status for the hidden toggle
     If IsDIIIInstalled()
@@ -430,9 +432,8 @@ Function MigrateToMCMHelper()
     SetModSettingBool("bUpdateSubTypeDisplay:IntegrationSettings", UpdateSubTypeDisplay.GetValue() as Bool)
     SetModSettingBool("bUseDynamicInventoryIcon:IntegrationSettings", UseDynamicInventoryIcon.GetValue() as Bool)
 
-    ; Maintenance Settings
-    SetModSettingBool("bAutoLoadJunkListFromFile:Maintenance", AutoImport.GetValue() as Bool)
-    SetModSettingBool("bAutoSaveJunkListToFile:Maintenance", AutoExport.GetValue() as Bool)
+    ; Keep AutoImport/AutoExport from MCM ModSettings (not ESP globals) so new-game
+    ; migration does not wipe the player's cross-save auto export/import preference.
     SetModSettingBool("bReplaceJunkListOnLoad:Utility", False)
 
 EndFunction
@@ -605,6 +606,9 @@ Function TriggerLoadJunkListFromFile()
             SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_JunkLoaded")
             VerboseMessage("Junk list merged with imported list!", True)
         EndIf
+        _page = 0
+        _totalPages = (GetJunkListSize() / _itemsPerPage) + 1
+        JunkListPageUpdate()
     Else
         SetModSettingString("sLoadJunkListFromFile:Utility", "$JunkIt_LoadJunkListFromFile")
         VerboseMessage("Failed to import junk list", True)
@@ -626,6 +630,9 @@ Function ResetJunk()
     VerboseMessage("Junk List reset!", True)
     VerboseMessage("Junk List size after reset: 0")
 
+    _page = 0
+    _totalPages = (GetJunkListSize() / _itemsPerPage) + 1
+    JunkListPageUpdate()
     SetModSettingString("sResetJunk:Utility", "$JunkIt_JunkReset")
     RefreshMenu()
 EndFunction
