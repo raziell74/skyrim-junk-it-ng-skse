@@ -2,7 +2,6 @@
 #include "settings.h"
 #include <atomic>
 #include <functional>
-#include <unordered_map>
 using namespace RE;
 
 namespace JunkIt {
@@ -27,8 +26,6 @@ namespace JunkIt {
         unsigned int offset;
     };
 
-    using GFxObjMap = std::unordered_map<InventoryEntryData*, RE::GFxValue>;
-
     class JunkHandler {
         using Count = std::int32_t;
         using InventoryCountMap = std::map<TESBoundObject*, Count>;
@@ -38,8 +35,8 @@ namespace JunkIt {
         static TESForm* ToggleSelectedItemJunk();
         static void ToggleIsJunk();
 
-        static std::pair<std::vector<InventoryEntryData*>, GFxObjMap> BuildTransferList();
-        static std::pair<std::vector<std::pair<InventoryEntryData*, std::int32_t>>, GFxObjMap> BuildSellList();
+        static std::vector<InventoryEntryData*> BuildTransferList();
+        static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
         static std::int32_t GetMenuItemValue(TESForm* a_form);
 
         static TESObjectREFR* GetContainerMenuContainer();
@@ -49,8 +46,6 @@ namespace JunkIt {
 
         static void TransferJunk();
         static void SellJunk();
-
-        static void TransferItem(TESBoundObject* a_item, TESObjectREFR* a_fromContainer, TESObjectREFR* a_toContainer, ITEM_REMOVE_REASON a_reason, std::int32_t a_count, InventoryEntryData* a_invData);
 
         [[nodiscard]] static InventoryCountMap* GetContainerInventoryCountMap(TESObjectREFR* a_container) {
             if (cInventoryContainerId == a_container->GetFormID()) return &cInventoryCountMap;
@@ -83,8 +78,11 @@ namespace JunkIt {
             return (ceiling - number > 0.5f) ? static_cast<std::int32_t>(std::floor(number)) : static_cast<std::int32_t>(ceiling);
         }
 
-        static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, GFxObjMap gfxObjMap, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
-        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, GFxObjMap gfxObjMap, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay, float playerCarryWeight);
+        static Count GetItemCount(TESObjectREFR* a_container, TESBoundObject* a_item);
+        static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count);
+
+        static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
+        static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
     };
