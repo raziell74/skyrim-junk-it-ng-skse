@@ -1,7 +1,9 @@
 #include "junk.h"
 #include "JunkData.h"
 #include "SendUIMessage.h"
+#include <SKSE/API.h>
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 
 RE::MessageBoxData::~MessageBoxData() = default;
@@ -9,6 +11,151 @@ RE::MessageBoxData::~MessageBoxData() = default;
 namespace JunkIt {
 
     std::atomic<bool> JunkHandler::operationInProgress{ false };
+
+    namespace {
+        constexpr std::size_t kLargeUniqueTypes = 8;
+        constexpr std::int32_t kLargeTotalItems = 40;
+
+        RE::GFxMovieView* GetOpenInventoryMovie() {
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui) {
+                return nullptr;
+            }
+            if (auto containerMenu = ui->GetMenu<ContainerMenu>()) {
+                if (containerMenu->uiMovie) {
+                    return containerMenu->uiMovie.get();
+                }
+            }
+            if (auto barterMenu = ui->GetMenu<BarterMenu>()) {
+                if (barterMenu->uiMovie) {
+                    return barterMenu->uiMovie.get();
+                }
+            }
+            return nullptr;
+        }
+
+        TESObjectREFR* LookupRefr(FormID formId) {
+            if (formId == 0) {
+                return nullptr;
+            }
+            auto* form = RE::TESForm::LookupByID(formId);
+            return form ? form->As<TESObjectREFR>() : nullptr;
+        }
+
+        void SendInventoryUpdate(TESObjectREFR* ref) {
+            if (ref) {
+                RE::SendUIMessage::SendInventoryUpdateMessage(ref, nullptr);
+            }
+        }
+
+        void UpdateItemListOwner(ItemList* itemList, TESObjectREFR* owner) {
+            if (itemList && owner) {
+                itemList->Update(owner);
+            }
+        }
+
+        void InvalidateInventoryLists(RE::GFxMovieView* movie) {
+            if (!movie) {
+                return;
+            }
+            movie->Invoke("_root.Menu_mc.inventoryLists.InvalidateListData", nullptr, nullptr, 0);
+        }
+
+        void NudgeActiveSegment(RE::GFxMovieView* movie) {
+            if (!movie) {
+                return;
+            }
+
+            RE::GFxValue activeSegment;
+            if (!movie->GetVariable(&activeSegment, "_root.Menu_mc.inventoryLists.categoryList.activeSegment")) {
+                return;
+            }
+
+            const int original = static_cast<int>(activeSegment.GetNumber());
+            const int flipped = original == 0 ? 1 : 0;
+
+            RE::GFxValue flippedVal(static_cast<double>(flipped));
+            movie->SetVariable("_root.Menu_mc.inventoryLists.categoryList.activeSegment", flippedVal);
+
+            RE::GFxValue restoredVal(static_cast<double>(original));
+            movie->SetVariable("_root.Menu_mc.inventoryLists.categoryList.activeSegment", restoredVal);
+            movie->Invoke("_root.Menu_mc.inventoryLists.showItemsList", nullptr, nullptr, 0);
+        }
+    }
+
+    void JunkHandler::ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary, bool nudgeSegment) {
+        ItemList* itemList = UIUtil::ItemList::GetOpenList();
+        if (!itemList) {
+            return;
+        }
+
+        auto* movie = GetOpenInventoryMovie();
+
+        SendInventoryUpdate(primary);
+        if (secondary && secondary != primary) {
+            SendInventoryUpdate(secondary);
+        }
+
+        UpdateItemListOwner(itemList, primary);
+        if (secondary && secondary != primary) {
+            UpdateItemListOwner(itemList, secondary);
+        }
+
+        InvalidateInventoryLists(movie);
+
+        if (nudgeSegment) {
+            NudgeActiveSegment(movie);
+        }
+    }
+
+    void JunkHandler::ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, bool largeOp, int framesRemaining) {
+        auto* taskInterface = SKSE::GetTaskInterface();
+        if (!taskInterface) {
+            return;
+        }
+
+        taskInterface->AddUITask([primaryId, secondaryId, largeOp, framesRemaining]() {
+            if (framesRemaining > 0) {
+                ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, framesRemaining - 1);
+                return;
+            }
+
+            auto* primary = LookupRefr(primaryId);
+            auto* secondary = LookupRefr(secondaryId);
+            if (!primary && !secondary) {
+                return;
+            }
+
+            ApplyInventoryUIRefresh(primary, secondary, largeOp);
+        });
+    }
+
+    void JunkHandler::RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems) {
+        const bool largeOp = uniqueTypes >= kLargeUniqueTypes || totalItems >= kLargeTotalItems;
+        int deferredFrames = 1;
+        if (largeOp) {
+            deferredFrames = static_cast<int>(std::lround(2.0f * Settings::GetHeavyLoadDelayMultiplier()));
+            deferredFrames = std::clamp(deferredFrames, 1, 10);
+        }
+
+        SKSE::log::info(
+            "Bulk UI refresh | uniqueTypes={} totalItems={} large={} deferFrames={}",
+            uniqueTypes,
+            totalItems,
+            largeOp,
+            deferredFrames);
+
+        ApplyInventoryUIRefresh(primary, secondary, largeOp);
+
+        const FormID primaryId = primary ? primary->GetFormID() : 0;
+        const FormID secondaryId = secondary ? secondary->GetFormID() : 0;
+
+        ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, 0);
+
+        if (largeOp && deferredFrames > 1) {
+            ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, deferredFrames - 1);
+        }
+    }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
         auto messageBoxData = new RE::MessageBoxData();
@@ -449,7 +596,7 @@ namespace JunkIt {
         }
 
         SKSE::log::info("---- Transfer Execution Complete ----");
-        UIUtil::ItemList::Refresh();
+        RefreshMenusAfterBulk(player, transferContainer, transferList.size(), totalTransferred);
     }
 
     void JunkHandler::SellJunk() {
@@ -687,7 +834,13 @@ namespace JunkIt {
             }
         }
 
-        UIUtil::ItemList::Refresh();
+        RefreshMenusAfterBulk(player, vendorActorRef, itemsToSell.size(), totalToSell);
+        if (vendorContainer && vendorContainer != vendorActorRef) {
+            RE::SendUIMessage::SendInventoryUpdateMessage(vendorContainer, nullptr);
+            if (auto* itemList = UIUtil::ItemList::GetOpenList()) {
+                itemList->Update(vendorContainer);
+            }
+        }
         SKSE::log::info("---- Sale Execution Complete ----");
     }
 

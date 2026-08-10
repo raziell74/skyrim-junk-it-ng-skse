@@ -84,6 +84,10 @@ namespace JunkIt {
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
         static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay);
 
+        static void ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary, bool nudgeSegment);
+        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, bool largeOp, int framesRemaining);
+        static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
+
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
     };
 }
