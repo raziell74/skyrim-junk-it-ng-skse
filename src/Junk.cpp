@@ -4,7 +4,6 @@
 #include <SKSE/API.h>
 #include <algorithm>
 #include <cmath>
-#include <unordered_map>
 
 RE::MessageBoxData::~MessageBoxData() = default;
 
@@ -179,11 +178,117 @@ namespace JunkIt {
         return it != invCounts.end() ? it->second : 0;
     }
 
-    void JunkHandler::MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count) {
+    void JunkHandler::MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList) {
         if (!a_item || !a_from || !a_to || a_count <= 0) {
             return;
         }
-        a_from->RemoveItem(a_item, a_count, a_reason, nullptr, a_to);
+        a_from->RemoveItem(a_item, a_count, a_reason, a_extraList, a_to);
+    }
+
+    JunkHandler::Count JunkHandler::GetSellableJunkCount(InventoryEntryData* a_entry) {
+        if (!a_entry || !a_entry->object) {
+            return 0;
+        }
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+        if (!a_entry->extraLists || a_entry->extraLists->empty()) {
+            if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
+                return 0;
+            }
+            return a_entry->countDelta > 0 ? a_entry->countDelta : 0;
+        }
+
+        Count extrasTotal = 0;
+        Count junkExtras = 0;
+        for (auto* extraList : *a_entry->extraLists) {
+            if (!extraList) {
+                continue;
+            }
+            const Count extraCount = extraList->GetCount();
+            extrasTotal += extraCount;
+            if (junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
+                junkExtras += extraCount;
+            }
+        }
+
+        Count junkPlain = 0;
+        const Count plain = a_entry->countDelta - extrasTotal;
+        if (plain > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
+            junkPlain = plain;
+        }
+
+        const Count total = junkExtras + junkPlain;
+        return total > 0 ? total : 0;
+    }
+
+    bool JunkHandler::EntryIsFullyJunk(InventoryEntryData* a_entry) {
+        if (!a_entry || !a_entry->object) {
+            return false;
+        }
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+        if (!a_entry->extraLists || a_entry->extraLists->empty()) {
+            return junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr));
+        }
+
+        Count extrasTotal = 0;
+        for (auto* extraList : *a_entry->extraLists) {
+            if (!extraList) {
+                continue;
+            }
+            extrasTotal += extraList->GetCount();
+            if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
+                return false;
+            }
+        }
+
+        const Count plain = a_entry->countDelta - extrasTotal;
+        if (plain > 0) {
+            return junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr));
+        }
+        return extrasTotal > 0;
+    }
+
+    ExtraDataList* JunkHandler::FindJunkExtraList(InventoryEntryData* a_entry) {
+        if (!a_entry || !a_entry->extraLists || a_entry->extraLists->empty()) {
+            return nullptr;
+        }
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+        for (auto* extraList : *a_entry->extraLists) {
+            if (!extraList) {
+                continue;
+            }
+            if (junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
+                return extraList;
+            }
+        }
+        return nullptr;
+    }
+
+    void JunkHandler::SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count) {
+        if (!a_entry || !a_entry->object || !a_from || !a_to || a_count <= 0) {
+            return;
+        }
+
+        auto& junkManager = JunkDataManager::GetSingleton();
+        Count remaining = a_count;
+
+        while (remaining > 0) {
+            ExtraDataList* extraList = FindJunkExtraList(a_entry);
+            if (!extraList) {
+                break;
+            }
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, 1, extraList);
+            --remaining;
+        }
+
+        if (remaining > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
+            while (remaining > 0) {
+                MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, 1, nullptr);
+                --remaining;
+            }
+        }
     }
 
     std::vector<InventoryEntryData*> JunkHandler::BuildTransferList() {
@@ -266,10 +371,9 @@ namespace JunkIt {
 
         std::vector<std::pair<InventoryEntryData*, std::int32_t>> sellList;
 
-        auto& junkManager = JunkDataManager::GetSingleton();
-        auto junkInventory = junkManager.GetPlayerJunkInventory();
-        if (junkInventory.empty()) {
-            SKSE::log::info("No junk items in player inventory");
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player) {
+            SKSE::log::error("No player found");
             return sellList;
         }
 
@@ -281,34 +385,27 @@ namespace JunkIt {
             return sellList;
         }
 
-        std::unordered_map<std::string, InventoryEntryData*> barterIndex;
-        for (std::uint32_t i = 0, size = itemListMenu->items.size(); i < size; i++) {
-            auto* item = itemListMenu->items[i];
-            if (item && item->data.objDesc && item->data.objDesc->object) {
-                InventoryEntryData* objDesc = item->data.objDesc;
-                if (objDesc->extraLists && !objDesc->extraLists->empty() && objDesc->object) {
-                    for (auto* extraList : *objDesc->extraLists) {
-                        if (!extraList) {
-                            continue;
-                        }
-                        const auto identity = JunkDataManager::BuildIdentityForEntry(objDesc, extraList);
-                        if (!identity.empty()) {
-                            barterIndex[identity] = objDesc;
-                        }
-                    }
-                }
+        // ItemList holds both inventories; StandardItemData::owner distinguishes player vs vendor.
+        const auto playerHandle = player->GetHandle().native_handle();
+        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        std::vector<std::pair<InventoryEntryData*, Count>> sortData;
+
+        SKSE::log::info("Processing BarterMenu ItemList for player-owned sellable junk");
+
+        for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
+            ItemList::Item* entryItem = listItems[i];
+            if (!entryItem || !entryItem->data.objDesc) {
+                continue;
             }
-        }
 
-        std::vector<std::tuple<InventoryEntryData*, std::int32_t, float>> sortData;
+            if (entryItem->data.owner != playerHandle) {
+                continue;
+            }
 
-        SKSE::log::info("Processing player junk inventory for sellable items");
-        for (const auto& junkEntry : junkInventory) {
-            auto bIt = barterIndex.find(junkEntry.identity);
-            if (bIt == barterIndex.end()) continue;
-
-            InventoryEntryData* objDesc = bIt->second;
-            std::int32_t count = junkEntry.count;
+            InventoryEntryData* objDesc = entryItem->data.objDesc;
+            if (!objDesc->object) {
+                continue;
+            }
 
             if (Settings::ProtectEquipped() && objDesc->IsWorn()) {
                 SKSE::log::info("Junk Item Equipped - Skipping {}", objDesc->object->GetName());
@@ -323,47 +420,56 @@ namespace JunkIt {
                 continue;
             }
 
-            sortData.emplace_back(objDesc, count, 0.0f);
+            Count count = GetSellableJunkCount(objDesc);
+            if (EntryIsFullyJunk(objDesc)) {
+                const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
+                if (uiCount > count) {
+                    count = uiCount;
+                }
+            }
+            if (count <= 0) {
+                continue;
+            }
+
+            sortData.emplace_back(objDesc, count);
         }
 
         auto priority = Settings::GetSellPriority();
         if (priority == Settings::SortPriority::kWeightHighLow) {
             std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return std::get<0>(a)->GetWeight() > std::get<0>(b)->GetWeight();
+                return a.first->GetWeight() > b.first->GetWeight();
             });
         } else if (priority == Settings::SortPriority::kWeightLowHigh) {
             std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return std::get<0>(a)->GetWeight() < std::get<0>(b)->GetWeight();
+                return a.first->GetWeight() < b.first->GetWeight();
             });
         } else if (priority == Settings::SortPriority::kValueHighLow) {
             std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return std::get<0>(a)->GetValue() > std::get<0>(b)->GetValue();
+                return a.first->GetValue() > b.first->GetValue();
             });
         } else if (priority == Settings::SortPriority::kValueLowHigh) {
             std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return std::get<0>(a)->GetValue() < std::get<0>(b)->GetValue();
+                return a.first->GetValue() < b.first->GetValue();
             });
         } else if (priority == Settings::SortPriority::kValueWeightHighLow) {
             std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                auto* entryA = std::get<0>(a);
-                auto* entryB = std::get<0>(b);
-                float aVW = entryA->GetWeight() != 0 ? entryA->GetValue() / entryA->GetWeight() : 0;
-                float bVW = entryB->GetWeight() != 0 ? entryB->GetValue() / entryB->GetWeight() : 0;
+                float aVW = a.first->GetWeight() != 0 ? a.first->GetValue() / a.first->GetWeight() : 0;
+                float bVW = b.first->GetWeight() != 0 ? b.first->GetValue() / b.first->GetWeight() : 0;
                 return aVW > bVW;
             });
         } else if (priority == Settings::SortPriority::kValueWeightLowHigh) {
             std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                auto* entryA = std::get<0>(a);
-                auto* entryB = std::get<0>(b);
-                float aVW = entryA->GetWeight() != 0 ? entryA->GetValue() / entryA->GetWeight() : 0;
-                float bVW = entryB->GetWeight() != 0 ? entryB->GetValue() / entryB->GetWeight() : 0;
+                float aVW = a.first->GetWeight() != 0 ? a.first->GetValue() / a.first->GetWeight() : 0;
+                float bVW = b.first->GetWeight() != 0 ? b.first->GetValue() / b.first->GetWeight() : 0;
                 return aVW < bVW;
             });
         }
 
         SKSE::log::info("Finalized SellList:");
-        for (auto& [objDesc, count, _] : sortData) {
-            if (!objDesc->object) continue;
+        for (auto& [objDesc, count] : sortData) {
+            if (!objDesc->object) {
+                continue;
+            }
             sellList.push_back({objDesc, count});
             SKSE::log::info("     {} x{} [{}]", objDesc->object->GetName(), count,
                 FormUtil::Form::GetFormConfigString(objDesc->object->As<TESForm>()));
@@ -687,27 +793,28 @@ namespace JunkIt {
         std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
         for (auto& [entryData, itemCount] : sellList) {
-            if (!entryData || !entryData->object || itemCount <= 0) continue;
-
-            Count iCount = GetItemCount(player, entryData->object);
-            if (iCount <= 0) continue;
-            if (iCount > itemCount) {
-                iCount = itemCount;
+            if (!entryData || !entryData->object || itemCount <= 0) {
+                continue;
             }
 
-            Count iTotalCount = iCount;
-            totalPossibleToSell += iTotalCount;
+            Count iCount = itemCount;
+            totalPossibleToSell += iCount;
 
-            SKSE::log::info("Calculating Sell Item: {} -- player has {} of this item", entryData->object->GetName(), iCount);
+            SKSE::log::info("Calculating Sell Item: {} x{}", entryData->object->GetName(), iCount);
 
-            Count menuValue = GetMenuItemValue(entryData->object->As<TESForm>());
+            Count menuValue = GetMenuItemValue(entryData);
             float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entryData->GetValue());
             float sellValue = itemGoldValue * sellMult;
-            float goldDifferential = calculatedVendorGold - (sellValue * static_cast<float>(iCount));
 
-            while (RoundNumber(goldDifferential) <= 0 && iCount > 0) {
+            if (sellValue <= 0.0f) {
+                totalToSell += iCount;
+                itemsToSell.push_back({entryData, iCount});
+                SKSE::log::info("Sell {} {} for 0 gold (zero-value item)", iCount, entryData->object->GetName());
+                continue;
+            }
+
+            while (iCount > 0 && RoundNumber(sellValue * static_cast<float>(iCount)) > RoundNumber(calculatedVendorGold)) {
                 iCount -= 1;
-                goldDifferential = calculatedVendorGold - (sellValue * static_cast<float>(iCount));
             }
 
             if (iCount > 0) {
@@ -813,7 +920,7 @@ namespace JunkIt {
         for (const auto& [entryData, count] : itemsToSell) {
             if (count > 0 && entryData && entryData->object) {
                 SKSE::log::info("Selling {} x{}", entryData->object->GetName(), count);
-                MoveItems(entryData->object, player, vendorContainer, ITEM_REMOVE_REASON::kRemove, count);
+                SellEntryUnits(entryData, player, vendorContainer, count);
                 SKSE::log::info("Transaction for {} {} complete", count, entryData->object->GetName());
             }
         }
@@ -1056,8 +1163,38 @@ namespace JunkIt {
         return mode;
     }
 
+    std::int32_t JunkHandler::GetMenuItemValue(InventoryEntryData* a_entry) {
+        if (!a_entry || !a_entry->object) {
+            return -1;
+        }
+
+        ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
+        if (!itemListMenu) {
+            SKSE::log::error("No ItemListMenu found");
+            return -1;
+        }
+
+        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
+            ItemList::Item* entryItem = listItems[i];
+            if (!entryItem || !entryItem->data.objDesc) {
+                continue;
+            }
+            if (entryItem->data.objDesc == a_entry) {
+                const std::int32_t goldValue = a_entry->GetValue();
+                SKSE::log::info("          Value Per Item = {} gold", goldValue);
+                return goldValue;
+            }
+        }
+
+        return GetMenuItemValue(a_entry->object->As<TESForm>());
+    }
+
     std::int32_t JunkHandler::GetMenuItemValue(TESForm* a_form) {
         std::int32_t goldValue = -1;
+        if (!a_form) {
+            return goldValue;
+        }
 
         ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
         if (!itemListMenu) {
@@ -1065,23 +1202,41 @@ namespace JunkIt {
             return goldValue;
         }
 
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        const auto playerHandle = player ? player->GetHandle().native_handle() : 0;
+
         BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        InventoryEntryData* formFallback = nullptr;
 
         for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
             ItemList::Item* entryItem = listItems[i];
-            if (!entryItem) continue;
+            if (!entryItem) {
+                continue;
+            }
 
             InventoryEntryData* entryData = entryItem->data.objDesc;
-            if (!entryData) continue;
+            if (!entryData || !entryData->object) {
+                continue;
+            }
 
-            TESBoundObject* entryObject = entryData->object;
-            if (!entryObject) continue;
+            if (entryData->object->GetFormID() != a_form->GetFormID()) {
+                continue;
+            }
 
-            if (entryObject->GetFormID() == a_form->GetFormID()) {
+            if (player && entryItem->data.owner == playerHandle) {
                 goldValue = entryData->GetValue();
                 SKSE::log::info("          Value Per Item = {} gold", goldValue);
-                break;
+                return goldValue;
             }
+
+            if (!formFallback) {
+                formFallback = entryData;
+            }
+        }
+
+        if (formFallback) {
+            goldValue = formFallback->GetValue();
+            SKSE::log::info("          Value Per Item = {} gold", goldValue);
         }
 
         return goldValue;

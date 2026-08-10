@@ -38,6 +38,7 @@ namespace JunkIt {
         static std::vector<InventoryEntryData*> BuildTransferList();
         static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
         static std::int32_t GetMenuItemValue(TESForm* a_form);
+        static std::int32_t GetMenuItemValue(InventoryEntryData* a_entry);
 
         static TESObjectREFR* GetContainerMenuContainer();
         static TESObjectREFR* GetBarterMenuContainer();
@@ -79,7 +80,11 @@ namespace JunkIt {
         }
 
         static Count GetItemCount(TESObjectREFR* a_container, TESBoundObject* a_item);
-        static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count);
+        static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList = nullptr);
+        static Count GetSellableJunkCount(InventoryEntryData* a_entry);
+        static bool EntryIsFullyJunk(InventoryEntryData* a_entry);
+        static ExtraDataList* FindJunkExtraList(InventoryEntryData* a_entry);
+        static void SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count);
 
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
         static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay);
