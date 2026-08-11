@@ -37,8 +37,8 @@ namespace JunkIt {
 
         static std::vector<InventoryEntryData*> BuildTransferList();
         static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
-        static std::int32_t GetMenuItemValue(TESForm* a_form);
-        static std::int32_t GetMenuItemValue(InventoryEntryData* a_entry);
+        static std::int32_t GetMenuItemValue(TESForm* a_form, float a_sellMult = -1.0f);
+        static std::int32_t GetMenuItemValue(InventoryEntryData* a_entry, float a_sellMult = -1.0f);
 
         static TESObjectREFR* GetContainerMenuContainer();
         static TESObjectREFR* GetBarterMenuContainer();
@@ -78,6 +78,10 @@ namespace JunkIt {
             float ceiling = std::ceil(number);
             return (ceiling - number > 0.5f) ? static_cast<std::int32_t>(std::floor(number)) : static_cast<std::int32_t>(ceiling);
         }
+
+        static float ReadBarterSellMult(RE::GFxMovieView* a_movie);
+        static Count FallbackUnitSellPrice(InventoryEntryData* a_entry, float a_sellMult);
+        static bool TryReadInfoValue(const RE::GFxValue& a_obj, Count& a_outValue);
 
         static Count GetItemCount(TESObjectREFR* a_container, TESBoundObject* a_item);
         static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList = nullptr);

@@ -763,32 +763,19 @@ namespace JunkIt {
             return;
         }
 
-        RE::GFxValue gfxVendorGold, gfxSellMult;
+        RE::GFxValue gfxVendorGold;
         menu->uiMovie->GetVariable(&gfxVendorGold, "_root.Menu_mc._vendorGold");
-        menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc._sellMult");
 
         float vendorGoldDisplay = static_cast<float>(gfxVendorGold.GetNumber());
-        float sellMult = static_cast<float>(gfxSellMult.GetNumber());
-
-        if (sellMult <= 0.0f) {
-            SKSE::log::warn("Vendor sell multiplier from _sellMult is invalid ({}), trying fSellMult...", sellMult);
-            menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc.fSellMult");
-            sellMult = static_cast<float>(gfxSellMult.GetNumber());
-            if (sellMult > 0.0f) {
-                SKSE::log::info("Successfully read fSellMult: {}", sellMult);
-            } else {
-                SKSE::log::error("Both _sellMult and fSellMult failed, using fallback 0.5");
-                sellMult = 0.5f;
-            }
-        }
+        float sellMult = ReadBarterSellMult(menu->uiMovie.get());
 
         SKSE::log::info("Vendor Gold: {}", vendorGoldDisplay);
         SKSE::log::info("Vendor Sell Mult: {}", sellMult);
 
         Count totalToSell = 0;
         Count totalPossibleToSell = 0;
-        float calculatedVendorGold = vendorGoldDisplay;
-        float totalSellValue = 0.0f;
+        Count calculatedVendorGold = RoundNumber(vendorGoldDisplay);
+        Count totalSellValue = 0;
 
         std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
 
@@ -802,27 +789,26 @@ namespace JunkIt {
 
             SKSE::log::info("Calculating Sell Item: {} x{}", entryData->object->GetName(), iCount);
 
-            Count menuValue = GetMenuItemValue(entryData);
-            float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entryData->GetValue());
-            float sellValue = itemGoldValue * sellMult;
+            const Count unitSellPrice = GetMenuItemValue(entryData, sellMult);
 
-            if (sellValue <= 0.0f) {
+            if (unitSellPrice <= 0) {
                 totalToSell += iCount;
                 itemsToSell.push_back({entryData, iCount});
                 SKSE::log::info("Sell {} {} for 0 gold (zero-value item)", iCount, entryData->object->GetName());
                 continue;
             }
 
-            while (iCount > 0 && RoundNumber(sellValue * static_cast<float>(iCount)) > RoundNumber(calculatedVendorGold)) {
+            while (iCount > 0 && unitSellPrice * iCount > calculatedVendorGold) {
                 iCount -= 1;
             }
 
             if (iCount > 0) {
-                calculatedVendorGold -= sellValue * static_cast<float>(iCount);
-                totalSellValue += sellValue * static_cast<float>(iCount);
+                const Count stackTotal = unitSellPrice * iCount;
+                calculatedVendorGold -= stackTotal;
+                totalSellValue += stackTotal;
                 totalToSell += iCount;
                 itemsToSell.push_back({entryData, iCount});
-                SKSE::log::info("Sell {} {} for {} gold ({} gold per item)", iCount, entryData->object->GetName(), RoundNumber(sellValue * static_cast<float>(iCount)), RoundNumber(sellValue));
+                SKSE::log::info("Sell {} {} for {} gold ({} gold per item)", iCount, entryData->object->GetName(), stackTotal, unitSellPrice);
             }
         }
 
@@ -838,17 +824,16 @@ namespace JunkIt {
             return;
         }
 
-        Count roundedSellValue = RoundNumber(totalSellValue);
-        SKSE::log::info("Sale Summary: Selling {} items for {} gold (Vendor will have {} gold remaining)", totalToSell, roundedSellValue, RoundNumber(calculatedVendorGold));
+        SKSE::log::info("Sale Summary: Selling {} items for {} gold (Vendor will have {} gold remaining)", totalToSell, totalSellValue, calculatedVendorGold);
 
         if (Settings::ConfirmSell()) {
             SKSE::log::info("Showing confirmation dialog for sale");
-            std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, roundedSellValue);
+            std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, totalSellValue);
             ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
-                [itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay](unsigned int choice) {
+                [itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay](unsigned int choice) {
                     if (choice == 0) {
                         SKSE::log::info("User confirmed sale");
-                        ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
+                        ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
                     } else {
                         SKSE::log::info("User cancelled sale");
                     }
@@ -856,7 +841,7 @@ namespace JunkIt {
                 });
         } else {
             SKSE::log::info("Confirmation disabled, proceeding with sale");
-            ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
+            ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
             operationInProgress.store(false);
         }
         SKSE::log::info("==== Junk Sell Operation Complete ====");
@@ -1163,15 +1148,75 @@ namespace JunkIt {
         return mode;
     }
 
-    std::int32_t JunkHandler::GetMenuItemValue(InventoryEntryData* a_entry) {
+    float JunkHandler::ReadBarterSellMult(RE::GFxMovieView* a_movie) {
+        float sellMult = 0.0f;
+        if (a_movie) {
+            RE::GFxValue gfxSellMult;
+            a_movie->GetVariable(&gfxSellMult, "_root.Menu_mc._sellMult");
+            sellMult = static_cast<float>(gfxSellMult.GetNumber());
+
+            if (sellMult <= 0.0f) {
+                SKSE::log::warn("Vendor sell multiplier from _sellMult is invalid ({}), trying fSellMult...", sellMult);
+                a_movie->GetVariable(&gfxSellMult, "_root.Menu_mc.fSellMult");
+                sellMult = static_cast<float>(gfxSellMult.GetNumber());
+                if (sellMult > 0.0f) {
+                    SKSE::log::info("Successfully read fSellMult: {}", sellMult);
+                }
+            }
+        }
+
+        if (sellMult <= 0.0f) {
+            SKSE::log::error("Both _sellMult and fSellMult failed, using fallback 0.5");
+            sellMult = 0.5f;
+        }
+        return sellMult;
+    }
+
+    JunkHandler::Count JunkHandler::FallbackUnitSellPrice(InventoryEntryData* a_entry, float a_sellMult) {
+        if (!a_entry) {
+            return 0;
+        }
+
+        float sellMult = a_sellMult;
+        if (sellMult <= 0.0f) {
+            const auto ui = RE::UI::GetSingleton();
+            const auto menu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
+            sellMult = ReadBarterSellMult(menu && menu->uiMovie ? menu->uiMovie.get() : nullptr);
+        }
+
+        const Count unitPrice = static_cast<Count>(std::floor(static_cast<float>(a_entry->GetValue()) * sellMult + 0.5f));
+        SKSE::log::info("          Fallback Unit Sell Price = {} gold", unitPrice);
+        return unitPrice > 0 ? unitPrice : 0;
+    }
+
+    bool JunkHandler::TryReadInfoValue(const RE::GFxValue& a_obj, Count& a_outValue) {
+        if (!a_obj.IsObject()) {
+            return false;
+        }
+
+        RE::GFxValue infoValue;
+        if (!a_obj.GetMember("infoValue", &infoValue) || infoValue.IsUndefined() || infoValue.IsNull()) {
+            a_outValue = 0;
+            return true;
+        }
+
+        if (!infoValue.IsNumber()) {
+            return false;
+        }
+
+        a_outValue = static_cast<Count>(std::floor(infoValue.GetNumber() + 0.5));
+        return true;
+    }
+
+    std::int32_t JunkHandler::GetMenuItemValue(InventoryEntryData* a_entry, float a_sellMult) {
         if (!a_entry || !a_entry->object) {
-            return -1;
+            return 0;
         }
 
         ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
         if (!itemListMenu) {
             SKSE::log::error("No ItemListMenu found");
-            return -1;
+            return FallbackUnitSellPrice(a_entry, a_sellMult);
         }
 
         BSTArray<ItemList::Item*> listItems = itemListMenu->items;
@@ -1180,33 +1225,39 @@ namespace JunkIt {
             if (!entryItem || !entryItem->data.objDesc) {
                 continue;
             }
-            if (entryItem->data.objDesc == a_entry) {
-                const std::int32_t goldValue = a_entry->GetValue();
-                SKSE::log::info("          Value Per Item = {} gold", goldValue);
-                return goldValue;
+            if (entryItem->data.objDesc != a_entry) {
+                continue;
             }
+
+            Count unitPrice = 0;
+            if (TryReadInfoValue(entryItem->obj, unitPrice)) {
+                SKSE::log::info("          Unit Sell Price = {} gold (infoValue)", unitPrice);
+                return unitPrice;
+            }
+
+            return FallbackUnitSellPrice(a_entry, a_sellMult);
         }
 
-        return GetMenuItemValue(a_entry->object->As<TESForm>());
+        return GetMenuItemValue(a_entry->object->As<TESForm>(), a_sellMult);
     }
 
-    std::int32_t JunkHandler::GetMenuItemValue(TESForm* a_form) {
-        std::int32_t goldValue = -1;
+    std::int32_t JunkHandler::GetMenuItemValue(TESForm* a_form, float a_sellMult) {
         if (!a_form) {
-            return goldValue;
+            return 0;
         }
 
         ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
         if (!itemListMenu) {
             SKSE::log::error("No ItemListMenu found");
-            return goldValue;
+            return 0;
         }
 
         auto* player = RE::PlayerCharacter::GetSingleton();
         const auto playerHandle = player ? player->GetHandle().native_handle() : 0;
 
         BSTArray<ItemList::Item*> listItems = itemListMenu->items;
-        InventoryEntryData* formFallback = nullptr;
+        ItemList::Item* formFallbackItem = nullptr;
+        InventoryEntryData* formFallbackEntry = nullptr;
 
         for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
             ItemList::Item* entryItem = listItems[i];
@@ -1224,21 +1275,29 @@ namespace JunkIt {
             }
 
             if (player && entryItem->data.owner == playerHandle) {
-                goldValue = entryData->GetValue();
-                SKSE::log::info("          Value Per Item = {} gold", goldValue);
-                return goldValue;
+                Count unitPrice = 0;
+                if (TryReadInfoValue(entryItem->obj, unitPrice)) {
+                    SKSE::log::info("          Unit Sell Price = {} gold (infoValue)", unitPrice);
+                    return unitPrice;
+                }
+                return FallbackUnitSellPrice(entryData, a_sellMult);
             }
 
-            if (!formFallback) {
-                formFallback = entryData;
+            if (!formFallbackItem) {
+                formFallbackItem = entryItem;
+                formFallbackEntry = entryData;
             }
         }
 
-        if (formFallback) {
-            goldValue = formFallback->GetValue();
-            SKSE::log::info("          Value Per Item = {} gold", goldValue);
+        if (formFallbackItem && formFallbackEntry) {
+            Count unitPrice = 0;
+            if (TryReadInfoValue(formFallbackItem->obj, unitPrice)) {
+                SKSE::log::info("          Unit Sell Price = {} gold (infoValue)", unitPrice);
+                return unitPrice;
+            }
+            return FallbackUnitSellPrice(formFallbackEntry, a_sellMult);
         }
 
-        return goldValue;
+        return 0;
     }
 }
