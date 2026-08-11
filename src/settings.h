@@ -4,10 +4,8 @@
 #include <list>
 #include <string>
 #include <fstream>
-#include <nlohmann/json.hpp>
 
 using namespace RE;
-using nlohmann::json;
 
 namespace JunkIt {
     class Settings {
@@ -26,13 +24,11 @@ namespace JunkIt {
             struct JunkTransfer {
                 bool ConfirmTransfer = true;
                 SortPriority TransferPriority = SortPriority::kChaos;
-                BGSListForm* TransferList;
             };
 
             struct JunkSell {
                 bool ConfirmSell = true;
                 SortPriority SellPriority = SortPriority::kChaos;
-                BGSListForm* SellList;
             };
 
             struct JunkProtection {
@@ -45,23 +41,50 @@ namespace JunkIt {
                 SKSE::log::info(" ");
                 SKSE::log::info("Updating Settings...");
 
+                DIIIInstalled = (GetModuleHandleA("DynamicInventoryIconInjector.dll") != nullptr);
+                SKSE::log::info("DIII Detection | DynamicInventoryIconInjector.dll loaded: {}", DIIIInstalled);
+
+                auto getForm = [](const char* formDesc, uint32_t formId) -> TESForm* {
+                    TESForm* form = FormUtil::Form::GetFormFromMod("JunkIt.esp", formId);
+                    if (!form) {
+                        SKSE::log::error("Failed to load {} (0x{:X}) from JunkIt.esp", formDesc, formId);
+                    }
+                    return form;
+                };
+
+                auto getGlobalValue = [&](const char* formDesc, uint32_t formId, float fallback) -> float {
+                    TESForm* form = getForm(formDesc, formId);
+                    TESGlobal* global = form ? form->As<TESGlobal>() : nullptr;
+                    if (!global) {
+                        SKSE::log::error("Failed to cast {} (0x{:X}) to TESGlobal, using default {}", formDesc, formId, fallback);
+                        return fallback;
+                    }
+                    return global->value;
+                };
+
+                auto getGlobalBool = [&](const char* formDesc, uint32_t formId, bool fallback) -> bool {
+                    TESForm* form = getForm(formDesc, formId);
+                    TESGlobal* global = form ? form->As<TESGlobal>() : nullptr;
+                    if (!global) {
+                        SKSE::log::error("Failed to cast {} (0x{:X}) to TESGlobal, using default {}", formDesc, formId, fallback);
+                        return fallback;
+                    }
+                    return global->value != 0;
+                };
+
                 std::string priorityString = "";
-                JunkList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x804)->As<BGSListForm>();
-                UnjunkedList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80E)->As<BGSListForm>();
-                IsJunkKYWD = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x802)->As<BGSKeyword>();
 
-                MarkJunkKey = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x817)->As<TESGlobal>()->value;
-                TransferJunkKey = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x818)->As<TESGlobal>()->value;
+                // Keep old FormList references for migration only
+                if (auto* form = getForm("JunkList", 0x804)) JunkList = form->As<BGSListForm>();
 
-                TESGlobal* ConfirmTransfer = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x808)->As<TESGlobal>();
-                TESGlobal* TransferPriority = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80A)->As<TESGlobal>();
-                BGSListForm* TransferList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80C)->As<BGSListForm>();
+                MarkJunkKey = getGlobalValue("MarkJunkKey", 0x817, MarkJunkKey);
+                TransferJunkKey = getGlobalValue("TransferJunkKey", 0x818, TransferJunkKey);
+                GamepadJunkKey = getGlobalValue("GamepadJunkKey", 0x81C, GamepadJunkKey);
+                GamepadTransferHoldTime = getGlobalValue("GamepadTransferHoldTime", 0x81D, GamepadTransferHoldTime);
 
-                JunkTransfer.ConfirmTransfer = ConfirmTransfer->value != 0;
-                JunkTransfer.TransferPriority = static_cast<SortPriority>(TransferPriority->value);
-                JunkTransfer.TransferList = TransferList;
+                JunkTransfer.ConfirmTransfer = getGlobalBool("ConfirmTransfer", 0x808, JunkTransfer.ConfirmTransfer);
+                JunkTransfer.TransferPriority = static_cast<SortPriority>(getGlobalValue("TransferPriority", 0x80A, static_cast<float>(JunkTransfer.TransferPriority)));
 
-                // Translate the SortPriority to a string for log
                 switch (JunkTransfer.TransferPriority) {
                     case SortPriority::kWeightHighLow:
                         priorityString = "Weight [High > Low]";
@@ -92,15 +115,9 @@ namespace JunkIt {
                     priorityString
                 );
 
-                TESGlobal* ConfirmSell = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x809)->As<TESGlobal>();
-                TESGlobal* SellPriority = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80B)->As<TESGlobal>();
-                BGSListForm* SellList = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x80D)->As<BGSListForm>();
+                JunkSell.ConfirmSell = getGlobalBool("ConfirmSell", 0x809, JunkSell.ConfirmSell);
+                JunkSell.SellPriority = static_cast<SortPriority>(getGlobalValue("SellPriority", 0x80B, static_cast<float>(JunkSell.SellPriority)));
 
-                JunkSell.ConfirmSell = ConfirmSell->value != 0;
-                JunkSell.SellPriority = static_cast<SortPriority>(SellPriority->value);
-                JunkSell.SellList = SellList;
-
-                // Translate the SortPriority to a string for log
                 switch (JunkSell.SellPriority) {
                     case SortPriority::kWeightHighLow:
                         priorityString = "Weight [High > Low]";
@@ -131,13 +148,9 @@ namespace JunkIt {
                     priorityString
                 );
 
-                TESGlobal* ProtectEquipped = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x810)->As<TESGlobal>();
-                TESGlobal* ProtectFavorites = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x811)->As<TESGlobal>();
-                TESGlobal* ProtectEnchanted = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x813)->As<TESGlobal>();
-
-                JunkProtection.ProtectEquipped = ProtectEquipped->value != 0;
-                JunkProtection.ProtectFavorites = ProtectFavorites->value != 0;
-                JunkProtection.ProtectEnchanted = ProtectEnchanted->value != 0;
+                JunkProtection.ProtectEquipped = getGlobalBool("ProtectEquipped", 0x810, JunkProtection.ProtectEquipped);
+                JunkProtection.ProtectFavorites = getGlobalBool("ProtectFavorites", 0x811, JunkProtection.ProtectFavorites);
+                JunkProtection.ProtectEnchanted = getGlobalBool("ProtectEnchanted", 0x813, JunkProtection.ProtectEnchanted);
 
                 SKSE::log::info(
                     "Protection Settings | ProtectEquipped: {} | ProtectFavorites: {} | ProtectEnchanted: {}",
@@ -146,144 +159,76 @@ namespace JunkIt {
                     JunkProtection.ProtectEnchanted
                 );
 
-                TESGlobal* AutoLoadJunkListFromFileGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81A)->As<TESGlobal>();
-                AutoLoadJunkListFromFile = AutoLoadJunkListFromFileGlobal->value != 0;
+                NotifyOnMarkUnmark = getGlobalBool("NotifyOnMarkUnmark", 0x814, NotifyOnMarkUnmark);
+                NotifyOnJunkTransfer = getGlobalBool("NotifyOnJunkTransfer", 0x815, NotifyOnJunkTransfer);
+                NotifyOnJunkSell = getGlobalBool("NotifyOnJunkSell", 0x816, NotifyOnJunkSell);
 
-                TESGlobal* AutoSaveJunkListToFileGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81B)->As<TESGlobal>();
-                AutoSaveJunkListToFile = AutoSaveJunkListToFileGlobal->value != 0;
+                AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
+                HeavyLoadDelayMultiplier = getGlobalValue("HeavyLoadDelayMultiplier", 0x828, HeavyLoadDelayMultiplier);
 
-                TESGlobal* ReplaceJunkListOnLoadGlobal = FormUtil::Form::GetFormFromMod("JunkIt.esp", 0x81E)->As<TESGlobal>();
-                ReplaceJunkListOnLoad = ReplaceJunkListOnLoadGlobal->value != 0;
+                AutoExport = getGlobalBool("AutoExport", 0x826, AutoExport);
+                AutoImport = getGlobalBool("AutoImport", 0x827, AutoImport);
+
+                UpdateSubTypeDisplay = getGlobalBool("UpdateSubTypeDisplay", 0x823, UpdateSubTypeDisplay);
+                UpdateItemIcon = getGlobalBool("UpdateItemIcon", 0x824, UpdateItemIcon);
+                UseDynamicInventoryIcon = getGlobalBool("UseDynamicInventoryIcon", 0x825, UseDynamicInventoryIcon);
+
+                if (!DIIIInstalled && UseDynamicInventoryIcon) {
+                    SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
+                    UseDynamicInventoryIcon = false;
+                }
+
+                if (auto* form = getForm("TransferConfirmationMsg", 0x805)) TransferConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("RetrievalConfirmationMsg", 0x806)) RetrievalConfirmationMsg = form->As<BGSMessage>();
+                if (auto* form = getForm("SellConfirmationMsg", 0x807)) SellConfirmationMsg = form->As<BGSMessage>();
+
+                auto* goldForm = RE::TESForm::LookupByID(0xF);
+                if (goldForm) {
+                    Gold001 = goldForm->As<TESObjectMISC>();
+                } else {
+                    SKSE::log::error("Failed to lookup Gold001 (0xF)");
+                }
 
                 SKSE::log::info(
-                    "Auto Load/Save Settings | AutoLoadJunkListFromFile: {} | AutoSaveJunkListToFile: {} | ReplaceJunkListOnLoad: {}",
-                    AutoLoadJunkListFromFile,
-                    AutoSaveJunkListToFile,
-                    ReplaceJunkListOnLoad
+                    "Notification Settings | NotifyOnMarkUnmark: {} | NotifyOnJunkTransfer: {} | NotifyOnJunkSell: {}",
+                    NotifyOnMarkUnmark,
+                    NotifyOnJunkTransfer,
+                    NotifyOnJunkSell
+                );
+
+                SKSE::log::info(
+                    "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {}",
+                    MarkJunkKey,
+                    TransferJunkKey,
+                    GamepadJunkKey,
+                    GamepadTransferHoldTime
+                );
+
+                SKSE::log::info(
+                    "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f}",
+                    AggressiveRefresh,
+                    AutoExport,
+                    AutoImport,
+                    HeavyLoadDelayMultiplier
+                );
+
+                SKSE::log::info(
+                    "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {}",
+                    UpdateItemIcon,
+                    UpdateSubTypeDisplay,
+                    UseDynamicInventoryIcon
                 );
 
                 SKSE::log::info(" ");
             }
 
-            struct JsonJunkListItem {
-                std::string name;
-                std::string editorId;
-                std::string type;
-                std::string source;
-            };
-
-            static void SaveJunkListToFile() {
-                SKSE::log::info(" ");
-                SKSE::log::info("Saving JunkList to file...");
-
-                // create an empty structure (null)
-                json junkListJson;
-                std::vector<JsonJunkListItem> jsonJunkListItems = {};
-
-                // Convert the JunkList to a string array of Editor Ids
-                BSTArray<TESForm*> forms = JunkList->forms;
-                std::int32_t count = forms.size();
-
-                // Don't save if no item has ever been marked as junk - Typically happens on a new game
-                if (count <= 0 && UnjunkedList->forms.size() <= 0) {
-                    SKSE::log::error("JunkList is empty. Nothing to save.");
-                    RE::DebugNotification("JunkList is empty. Nothing to save.");
-                    return;
-                }
-
-                for (std::int32_t i = 0; i < count; i++) {
-                    TESForm* itemForm = forms[i];
-
-                    if (!itemForm) {
-                        SKSE::log::error("Form is null for index: {}", i);
-                        continue;
-                    }
-                    
-                    std::string formConfigString = fmt::format("0x{:X}~{}", itemForm->GetLocalFormID(), itemForm->GetFile(0)->GetFilename());
-                    // SKSE::log::info("Adding {} - {} to save list", itemForm->GetName(), formConfigString);
-                    JsonJunkListItem junkListItem = {};
-                    junkListItem.name = itemForm->GetName();
-                    junkListItem.editorId = itemForm->GetFormEditorID(); // This does not work, @todo find a workaround to get the editor id
-                    junkListItem.type = std::to_string(itemForm->GetFormType());
-                    junkListItem.source = formConfigString;
-
-                    jsonJunkListItems.push_back(junkListItem);
-                }
-
-                // Convert the vector to a JSON array
-                json jsonJunkList = json::array();
-                for (const auto& item : jsonJunkListItems) {
-                    json jsonItem = {
-                        {"name", item.name},
-                        {"type", item.type},
-                        {"source", item.source}
-                    };
-                    jsonJunkList.push_back(jsonItem);
-                }
-
-                // Assign the JSON array to junkListJson["Junk"]
-                junkListJson["Count"] = count;
-                junkListJson["Junk"] = jsonJunkList;
-
-                // Write the JSON to a file
-                std::ofstream file(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
-                file << junkListJson.dump(4) << "\n\n"; 
-                file.close();
-
-                SKSE::log::info("JunkList saved to file 'Data/SKSE/Plugins/JunkIt/JunkList.json'.");
-                // SKSE::log::info("{}", junkListJson.dump());
-            }
-
-            static RE::BGSListForm* LoadJunkListFromFile() {
-                SKSE::log::info(" ");
-                SKSE::log::info("Loading JunkList From file 'Data/SKSE/Plugins/JunkIt/JunkList.json'...");
-
-                // We don't want to create a new local variable for the new list so we'll repurpose the existing transfer list to save memory
-                BGSListForm* NewJunkList = JunkTransfer.TransferList;
-                NewJunkList->ClearData();
-
-                std::ifstream f(L"Data/SKSE/Plugins/JunkIt/JunkList.json");
-                // exit if file not found
-                if (!f.good()) {
-                    SKSE::log::error("JunkList file not found.");
-                    return NewJunkList;
-                }
-
-                // Parse the JSON file and get the JunkList array
-                json junkListJson = json::parse(f);
-                json jsonJunkListItems = junkListJson["Junk"];
-
-                // Loop through the string array of Editor Ids and then add each form to the JunkList
-                for (std::int32_t i = 0; i < jsonJunkListItems.size(); i++) {
-                    json junkItem = jsonJunkListItems[i];
-                    auto junkItemConfigString = junkItem["source"];
-                    // SKSE::log::info("Looking Up Form Config String: {}", junkItemConfigString);
-
-                    TESForm* form = FormUtil::Form::GetFormFromConfigString(junkItemConfigString);
-                    if (!form) {
-                        SKSE::log::error("Form not found for Config String: {}", junkItemConfigString);
-                        continue;
-                    }
-                    
-                    NewJunkList->AddForm(form);
-                    SKSE::log::info("Adding form to JunkList: {} [{}]", form->GetName(), junkItemConfigString);
-                }
-
-                SKSE::log::info("JunkList loaded from file.");
-                return NewJunkList;
-            }
-
             [[nodiscard]] static BGSListForm* GetJunkList() { return JunkList; }
-            [[nodiscard]] static BGSListForm* GetUnjunkedList() { return UnjunkedList; }
-            [[nodiscard]] static BGSKeyword* GetIsJunkKYWD() { return IsJunkKYWD; }
 
             [[nodiscard]] static bool ConfirmTransfer() { return JunkTransfer.ConfirmTransfer; }
             [[nodiscard]] static SortPriority GetTransferPriority() { return JunkTransfer.TransferPriority; }
-            [[nodiscard]] static BGSListForm* GetTransferList() { return JunkTransfer.TransferList; }
 
             [[nodiscard]] static bool ConfirmSell() { return JunkSell.ConfirmSell; }
             [[nodiscard]] static SortPriority GetSellPriority() { return JunkSell.SellPriority; }
-            [[nodiscard]] static BGSListForm* GetSellList() { return JunkSell.SellList; }
 
             [[nodiscard]] static bool ProtectEquipped() { return JunkProtection.ProtectEquipped; }
             [[nodiscard]] static bool ProtectFavorites() { return JunkProtection.ProtectFavorites; }
@@ -291,24 +236,66 @@ namespace JunkIt {
 
             [[nodiscard]] static float GetMarkJunkKey() { return MarkJunkKey; }
             [[nodiscard]] static float GetTransferJunkKey() { return TransferJunkKey; }
+            [[nodiscard]] static float GetGamepadJunkKey() { return GamepadJunkKey; }
+            [[nodiscard]] static float GetGamepadTransferHoldTime() { return GamepadTransferHoldTime; }
 
-            [[nodiscard]] static bool GetAutoSaveJunkListToFile() { return AutoSaveJunkListToFile; }
-            [[nodiscard]] static bool GetAutoLoadJunkListFromFile() { return AutoLoadJunkListFromFile; }
+            [[nodiscard]] static bool GetNotifyOnMarkUnmark() { return NotifyOnMarkUnmark; }
+            [[nodiscard]] static bool GetNotifyOnJunkTransfer() { return NotifyOnJunkTransfer; }
+            [[nodiscard]] static bool GetNotifyOnJunkSell() { return NotifyOnJunkSell; }
+            [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
+            [[nodiscard]] static float GetHeavyLoadDelayMultiplier() { return HeavyLoadDelayMultiplier; }
+
+            [[nodiscard]] static bool GetAutoExport() { return AutoExport; }
+            [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
+
+            [[nodiscard]] static bool GetUpdateItemIcon() { 
+                // if (DIIIInstalled && UseDynamicInventoryIcon) {
+                //     return false;
+                // }
+                return UpdateItemIcon;
+            }
+            [[nodiscard]] static bool GetUpdateSubTypeDisplay() { return UpdateSubTypeDisplay; }
+            [[nodiscard]] static bool GetUseDynamicInventoryIcon() { return UseDynamicInventoryIcon; }
+
+            [[nodiscard]] static bool IsDIIIInstalled() { return DIIIInstalled; }
+
+            [[nodiscard]] static BGSMessage* GetTransferConfirmationMsg() { return TransferConfirmationMsg; }
+            [[nodiscard]] static BGSMessage* GetRetrievalConfirmationMsg() { return RetrievalConfirmationMsg; }
+            [[nodiscard]] static BGSMessage* GetSellConfirmationMsg() { return SellConfirmationMsg; }
+
+            [[nodiscard]] static TESObjectMISC* GetGold001() { return Gold001; }
 
         private: 
 
             static inline float MarkJunkKey = 0x32;
             static inline float TransferJunkKey = 0x49;
-            
-            static inline bool AutoSaveJunkListToFile = false;
-            static inline bool AutoLoadJunkListFromFile = false;
-            static inline bool ReplaceJunkListOnLoad = false;
+            static inline float GamepadJunkKey = 270.0f;
+            static inline float GamepadTransferHoldTime = 2.0f;
 
-            static inline BGSKeyword* IsJunkKYWD;
-            static inline BGSListForm* JunkList;
-            static inline BGSListForm* UnjunkedList;
+            static inline bool NotifyOnMarkUnmark = true;
+            static inline bool NotifyOnJunkTransfer = true;
+            static inline bool NotifyOnJunkSell = true;
+            static inline bool AggressiveRefresh = false;
+            static inline float HeavyLoadDelayMultiplier = 1.0f;
+
+            static inline bool AutoExport = false;
+            static inline bool AutoImport = false;
+
+            static inline bool UpdateSubTypeDisplay = true;
+            static inline bool UpdateItemIcon = true;
+            static inline bool UseDynamicInventoryIcon = true;
+
+            static inline bool DIIIInstalled = false;
+
+            static inline BGSListForm* JunkList;  // Only for migration
             static inline JunkTransfer JunkTransfer;
             static inline JunkSell JunkSell;
             static inline JunkProtection JunkProtection;
+
+            static inline BGSMessage* TransferConfirmationMsg = nullptr;
+            static inline BGSMessage* RetrievalConfirmationMsg = nullptr;
+            static inline BGSMessage* SellConfirmationMsg = nullptr;
+
+            static inline TESObjectMISC* Gold001 = nullptr;
     };   
 }

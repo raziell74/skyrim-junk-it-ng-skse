@@ -1,9 +1,9 @@
 {
     "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
     "name": "junk-it",
-    "version-string": "1.2.0",
+    "version-string": "2.0.0",
     "dependencies": [
-        "commonlibsse-ng",
-        "nlohmann-json"
+        "commonlibsse-ng-fork",
+        "jsoncpp"
     ]
 }

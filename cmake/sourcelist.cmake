@@ -3,4 +3,8 @@ set(sources ${sources}
     src/hook.cpp
     src/event.cpp
     src/junk.cpp
+    src/JunkData.cpp
+    src/SendUIMessage.cpp
+    src/I4Integration.cpp
+    src/I4MovieHook.cpp
 )

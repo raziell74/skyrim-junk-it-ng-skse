@@ -1,0 +1,11 @@
+{
+    "rules": [
+        {
+            "icon": { "source": "JunkIt/icons.swf", "label": "TrashItemIcon", "color": "#717171" },
+            "match": {
+                "isJunk": true,
+                "isEquipped": false
+            }
+        }
+    ]
+}

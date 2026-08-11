@@ -6,4 +6,10 @@ set(headers ${headers}
     src/settings.h
     src/event.h
     src/junk.h
+    src/JunkData.h
+    src/SendUIMessage.h
+    src/DIII_API.h
+    src/DIIIIntegration.h
+    src/I4Integration.h
+    src/I4MovieHook.h
 )

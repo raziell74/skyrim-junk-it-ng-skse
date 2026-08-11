@@ -1,30 +1,118 @@
-
 #include "event.h"
+#include "junk.h"
 
 namespace JunkIt {
-    // RE::BSEventNotifyControl ButtonEventHandler::ProcessEvent(const ButtonEvent *a_event, RE::BSTEventSource<ButtonEvent> *a_eventSource) {
-    //     using Result = RE::BSEventNotifyControl;
 
-    //     JUNKIT_EVENT_TYPE eventType = JUNKIT_EVENT_TYPE::kNone;
+    InputEventHandler::ActiveMenuType InputEventHandler::GetActiveMenu() {
+        const auto ui = RE::UI::GetSingleton();
+        if (!ui) return ActiveMenuType::kNone;
 
-    //     if (a_event->value == Settings::GetMarkJunkKey() && a_event->IsUp()) {
-    //         SKSE::log::info("Mark Junk Key Down");
-    //         eventType = JUNKIT_EVENT_TYPE::kMark;
-    //     } else if (a_event->value == Settings::GetTransferJunkKey() && a_event->IsUp()) {
-    //         SKSE::log::info("Transfer Junk Key Down");
-    //         eventType = JUNKIT_EVENT_TYPE::kTransfer;
-    //     } else {
-    //         return Result::kContinue;
-    //     }
+        if (ui->IsMenuOpen("ContainerMenu")) return ActiveMenuType::kContainer;
+        if (ui->IsMenuOpen("BarterMenu")) return ActiveMenuType::kBarter;
+        if (ui->IsMenuOpen("InventoryMenu")) return ActiveMenuType::kInventory;
 
-    //     if (eventType == JUNKIT_EVENT_TYPE::kMark) {
-    //         SKSE::log::info("Marking Junk");
-    //         // JunkHandler::MarkJunk(itemListMenu);
-    //     } else if (eventType == JUNKIT_EVENT_TYPE::kTransfer) {
-    //         SKSE::log::info("Transferring Junk");
-    //         // JunkHandler::TransferJunk(itemListMenu);
-    //     }
+        return ActiveMenuType::kNone;
+    }
 
-    //     return Result::kContinue; 
-    // }
+    void InputEventHandler::HandleKeyDown(uint32_t keyCode, ActiveMenuType activeMenu) {
+        uint32_t markKey = static_cast<uint32_t>(Settings::GetMarkJunkKey());
+        uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
+
+        if (keyCode == markKey) {
+            SKSE::log::info("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", keyCode);
+            JunkHandler::ToggleIsJunk();
+        } else if (keyCode == transferKey) {
+            if (activeMenu == ActiveMenuType::kContainer) {
+                SKSE::log::info("Transfer Junk key pressed (KeyCode: 0x{:X}) in Container menu", keyCode);
+                JunkHandler::TransferJunk();
+            } else if (activeMenu == ActiveMenuType::kBarter) {
+                SKSE::log::info("Sell Junk key pressed (KeyCode: 0x{:X}) in Barter menu", keyCode);
+                JunkHandler::SellJunk();
+            }
+        }
+    }
+
+    void InputEventHandler::HandleGamepadKeyUp(float holdTime, ActiveMenuType activeMenu) {
+        float holdThreshold = Settings::GetGamepadTransferHoldTime() - 1.0f;
+
+        if (holdTime < holdThreshold) {
+            SKSE::log::info("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
+            JunkHandler::ToggleIsJunk();
+        } else {
+            if (activeMenu == ActiveMenuType::kContainer) {
+                SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
+                JunkHandler::TransferJunk();
+            } else if (activeMenu == ActiveMenuType::kBarter) {
+                SKSE::log::info("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
+                JunkHandler::SellJunk();
+            }
+        }
+    }
+
+    RE::BSEventNotifyControl InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*) {
+        using Result = RE::BSEventNotifyControl;
+
+        if (!a_event) return Result::kContinue;
+
+        const auto ui = RE::UI::GetSingleton();
+        if (!ui) return Result::kContinue;
+
+        ActiveMenuType activeMenu = GetActiveMenu();
+        if (activeMenu == ActiveMenuType::kNone) return Result::kContinue;
+
+        auto controlMap = RE::ControlMap::GetSingleton();
+        if (controlMap && controlMap->GetRuntimeData().textEntryCount > 0) return Result::kContinue;
+
+        uint32_t markKey = static_cast<uint32_t>(Settings::GetMarkJunkKey());
+        uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
+        uint32_t gamepadKey = static_cast<uint32_t>(Settings::GetGamepadJunkKey());
+
+        for (auto event = *a_event; event; event = event->next) {
+            auto buttonEvent = event->AsButtonEvent();
+            if (!buttonEvent) continue;
+
+            uint32_t keyCode = buttonEvent->GetIDCode();
+
+            if (buttonEvent->GetDevice() == RE::INPUT_DEVICE::kGamepad) {
+                keyCode = KeyUtil::Interpreter::GamepadMaskToKeycode(keyCode);
+            }
+
+            if (keyCode == gamepadKey) {
+                if (buttonEvent->IsUp()) {
+                    ActiveMenuType currentMenu = GetActiveMenu();
+                    if (currentMenu == ActiveMenuType::kNone) continue;
+
+                    AtomicGuard guard(busy);
+                    if (!guard) continue;
+
+                    if (Settings::GetAggressiveRefresh()) {
+                        UIUtil::ItemList::Refresh();
+                    }
+
+                    HandleGamepadKeyUp(buttonEvent->HeldDuration(), currentMenu);
+
+                    if (Settings::GetAggressiveRefresh()) {
+                        UIUtil::ItemList::Refresh();
+                    }
+                }
+            } else if (keyCode == markKey || keyCode == transferKey) {
+                if (buttonEvent->IsDown()) {
+                    AtomicGuard guard(busy);
+                    if (!guard) continue;
+
+                    if (Settings::GetAggressiveRefresh()) {
+                        UIUtil::ItemList::Refresh();
+                    }
+
+                    HandleKeyDown(keyCode, activeMenu);
+
+                    if (Settings::GetAggressiveRefresh()) {
+                        UIUtil::ItemList::Refresh();
+                    }
+                }
+            }
+        }
+
+        return Result::kContinue;
+    }
 }

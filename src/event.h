@@ -1,28 +1,70 @@
-#pragma once 
-#include "junk.h"
+#pragma once
 #include "settings.h"
+#include <atomic>
 
-using namespace RE; 
+using namespace RE;
 namespace JunkIt {
 
     enum class JUNKIT_EVENT_TYPE {
-		kNone = 0,
+        kNone = 0,
         kMark = 1,
-		kTransfer = 2,
-		kSell = 3
-	};
+        kTransfer = 2,
+        kSell = 3
+    };
 
-    class ButtonEventHandler : public RE::BSTEventSink<RE::ButtonEvent> {
-        // public: 
-        //     static void Install() {
-        //         ScriptEventSourceHolder::GetSingleton()->GetEventSource<ButtonEvent>()->AddEventSink(GetSingleton()); 
-        //         SKSE::log::info("Registered {}", typeid(RE::ButtonEvent).name()); 
-        //     }
-        //     static ButtonEventHandler* GetSingleton() {
-        //         static ButtonEventHandler singleton; 
-        //         return &singleton; 
-        //     }
+    struct AtomicGuard {
+        std::atomic<bool>& flag;
+        bool acquired;
 
-        //     virtual RE::BSEventNotifyControl ProcessEvent(const ButtonEvent *a_event, RE::BSTEventSource<ButtonEvent> *a_eventSource) override;
+        AtomicGuard(std::atomic<bool>& a_flag) : flag(a_flag), acquired(false) {
+            bool expected = false;
+            acquired = flag.compare_exchange_strong(expected, true);
+        }
+
+        ~AtomicGuard() {
+            if (acquired) {
+                flag.store(false);
+            }
+        }
+
+        explicit operator bool() const { return acquired; }
+
+        AtomicGuard(const AtomicGuard&) = delete;
+        AtomicGuard& operator=(const AtomicGuard&) = delete;
+    };
+
+    class InputEventHandler : public RE::BSTEventSink<RE::InputEvent*> {
+    public:
+        static InputEventHandler* GetSingleton() {
+            static InputEventHandler singleton;
+            return &singleton;
+        }
+
+        static void Install() {
+            RE::BSInputDeviceManager::GetSingleton()->AddEventSink(GetSingleton());
+            SKSE::log::info("Registered InputEventHandler");
+        }
+
+        RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_eventSource) override;
+
+    private:
+        InputEventHandler() = default;
+        InputEventHandler(const InputEventHandler&) = delete;
+        InputEventHandler(InputEventHandler&&) = delete;
+        InputEventHandler& operator=(const InputEventHandler&) = delete;
+        InputEventHandler& operator=(InputEventHandler&&) = delete;
+
+        std::atomic<bool> busy{ false };
+
+        enum class ActiveMenuType {
+            kNone = 0,
+            kInventory = 1,
+            kContainer = 2,
+            kBarter = 3
+        };
+
+        ActiveMenuType GetActiveMenu();
+        void HandleKeyDown(uint32_t keyCode, ActiveMenuType activeMenu);
+        void HandleGamepadKeyUp(float holdTime, ActiveMenuType activeMenu);
     };
 }

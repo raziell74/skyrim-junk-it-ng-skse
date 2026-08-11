@@ -695,5 +695,17 @@ namespace UIUtil { // Sourced from JunkIt
 
             return merchantContainer;
         }
+
+        static RE::GFxMovieView* GetActiveMenuMovie() {
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui) return nullptr;
+            auto containerMenu = ui->GetMenu<ContainerMenu>();
+            if (containerMenu && containerMenu->uiMovie)
+                return containerMenu->uiMovie.get();
+            auto barterMenu = ui->GetMenu<BarterMenu>();
+            if (barterMenu && barterMenu->uiMovie)
+                return barterMenu->uiMovie.get();
+            return nullptr;
+        }
     };
 }
