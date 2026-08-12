@@ -317,6 +317,11 @@ namespace JunkIt {
 
             if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
 
+            if (entryItem->data.objDesc->IsQuestObject()) {
+                SKSE::log::info("Junk Item is Quest Item - Skipping {}", entryItem->data.objDesc->object->GetName());
+                continue;
+            }
+            
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
                 SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
                 continue;
@@ -404,6 +409,11 @@ namespace JunkIt {
 
             InventoryEntryData* objDesc = entryItem->data.objDesc;
             if (!objDesc->object) {
+                continue;
+            }
+
+            if (objDesc->IsQuestObject()) {
+                SKSE::log::info("Junk Item is Quest Item - Skipping {}", objDesc->object->GetName());
                 continue;
             }
 
