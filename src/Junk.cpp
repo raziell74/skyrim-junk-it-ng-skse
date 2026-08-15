@@ -173,9 +173,21 @@ namespace JunkIt {
         if (!a_container || !a_item) {
             return 0;
         }
-        const auto invCounts = a_container->GetInventoryCounts();
-        const auto it = invCounts.find(a_item);
-        return it != invCounts.end() ? it->second : 0;
+
+        Count count = 0;
+        if (auto* tesContainer = a_container->GetContainer()) {
+            count += tesContainer->CountObjectsInContainer(a_item);
+        }
+
+        if (auto* changes = a_container->GetInventoryChanges(); changes && changes->entryList) {
+            for (const auto& entry : *changes->entryList) {
+                if (entry && entry->object == a_item) {
+                    count += entry->countDelta;
+                }
+            }
+        }
+
+        return count > 0 ? count : 0;
     }
 
     void JunkHandler::MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList) {
