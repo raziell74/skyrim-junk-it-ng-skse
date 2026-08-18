@@ -212,6 +212,34 @@
                     }
                 },
                 {
+                    "id": "iLargeUniqueTypes:MiscSettings",
+                    "type": "slider",
+                    "text": "$JunkIt_LargeUniqueTypes",
+                    "help": "$JunkIt_LargeUniqueTypes_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt",
+                        "min": 1,
+                        "max": 500,
+                        "step": 1,
+                        "defaultValue": 150,
+                        "formatString": "{0} types"
+                    }
+                },
+                {
+                    "id": "iLargeTotalItems:MiscSettings",
+                    "type": "slider",
+                    "text": "$JunkIt_LargeTotalItems",
+                    "help": "$JunkIt_LargeTotalItems_Help",
+                    "valueOptions": {
+                        "sourceType": "ModSettingInt",
+                        "min": 1,
+                        "max": 1000,
+                        "step": 1,
+                        "defaultValue": 150,
+                        "formatString": "{0} items"
+                    }
+                },
+                {
                     "type": "header",
                     "text": "$JunkIt_I4IntegrationHeader"
                 },

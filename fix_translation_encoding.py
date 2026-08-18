@@ -20,23 +20,47 @@ BOM_UTF16_BE = b'\xfe\xff'
 BOM_UTF8 = b'\xef\xbb\xbf'
 
 
+def _looks_like_utf16_le(raw: bytes) -> bool:
+    """True when odd bytes are mostly NUL, the usual UTF-16 LE ASCII pattern."""
+    if len(raw) < 4 or len(raw) % 2 != 0:
+        return False
+    sample = raw[: min(400, len(raw))]
+    odd_zeros = sum(1 for i in range(1, len(sample), 2) if sample[i] == 0)
+    return odd_zeros >= (len(sample) // 2) * 0.6
+
+
+def _heal_double_encoded_utf16(text: str) -> str:
+    """Undo UTF-16 that was mis-decoded as UTF-8/latin-1 and encoded as UTF-16 again."""
+    if '\x00' not in text[:20]:
+        return text
+    try:
+        healed = text.encode('latin-1').decode('utf-16-le')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return text
+    if healed.startswith('$JunkIt') and healed.count('\x00') < text.count('\x00'):
+        return healed
+    return text
+
+
 def _decode_translation_bytes(raw: bytes) -> str:
     """Decode translation file bytes from common source encodings."""
     # Use "utf-16" when a BOM is present: "utf-16-le"/"utf-16-be" do not strip FF FE /
     # FE FF and would decode them as U+FEFF, duplicating the BOM on re-encode.
     if raw.startswith(BOM_UTF16_LE) or raw.startswith(BOM_UTF16_BE):
-        return raw.decode('utf-16')
-    if raw.startswith(BOM_UTF8):
-        return raw.decode('utf-8-sig')
-    try:
-        return raw.decode('utf-8')
-    except UnicodeDecodeError:
-        pass
-    try:
-        return raw.decode('cp1252')
-    except UnicodeDecodeError:
-        pass
-    return raw.decode('latin-1')
+        text = raw.decode('utf-16')
+    elif _looks_like_utf16_le(raw):
+        text = raw.decode('utf-16-le')
+    elif raw.startswith(BOM_UTF8):
+        text = raw.decode('utf-8-sig')
+    else:
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                text = raw.decode('cp1252')
+            except UnicodeDecodeError:
+                text = raw.decode('latin-1')
+    return _heal_double_encoded_utf16(text)
 
 
 def _encode_utf16_le_with_bom(text: str) -> bytes:

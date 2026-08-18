@@ -12,9 +12,6 @@ namespace JunkIt {
     std::atomic<bool> JunkHandler::operationInProgress{ false };
 
     namespace {
-        constexpr std::size_t kLargeUniqueTypes = 8;
-        constexpr std::int32_t kLargeTotalItems = 40;
-
         RE::GFxMovieView* GetOpenInventoryMovie() {
             const auto ui = RE::UI::GetSingleton();
             if (!ui) {
@@ -130,7 +127,7 @@ namespace JunkIt {
     }
 
     void JunkHandler::RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems) {
-        const bool largeOp = uniqueTypes >= kLargeUniqueTypes || totalItems >= kLargeTotalItems;
+        const bool largeOp = uniqueTypes >= Settings::GetLargeUniqueTypes() || totalItems >= Settings::GetLargeTotalItems();
         int deferredFrames = 1;
         if (largeOp) {
             deferredFrames = static_cast<int>(std::lround(2.0f * Settings::GetHeavyLoadDelayMultiplier()));

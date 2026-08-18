@@ -205,11 +205,13 @@ namespace JunkIt {
                 );
 
                 SKSE::log::info(
-                    "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f}",
+                    "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {}",
                     AggressiveRefresh,
                     AutoExport,
                     AutoImport,
-                    HeavyLoadDelayMultiplier
+                    HeavyLoadDelayMultiplier,
+                    LargeUniqueTypes,
+                    LargeTotalItems
                 );
 
                 SKSE::log::info(
@@ -244,6 +246,13 @@ namespace JunkIt {
             [[nodiscard]] static bool GetNotifyOnJunkSell() { return NotifyOnJunkSell; }
             [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
             [[nodiscard]] static float GetHeavyLoadDelayMultiplier() { return HeavyLoadDelayMultiplier; }
+            [[nodiscard]] static std::size_t GetLargeUniqueTypes() { return LargeUniqueTypes; }
+            [[nodiscard]] static std::int32_t GetLargeTotalItems() { return LargeTotalItems; }
+
+            static void SetHeavyLoadThresholds(std::int32_t uniqueTypes, std::int32_t totalItems) {
+                LargeUniqueTypes = uniqueTypes < 1 ? 1 : static_cast<std::size_t>(uniqueTypes);
+                LargeTotalItems = totalItems < 1 ? 1 : totalItems;
+            }
 
             [[nodiscard]] static bool GetAutoExport() { return AutoExport; }
             [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
@@ -277,6 +286,8 @@ namespace JunkIt {
             static inline bool NotifyOnJunkSell = true;
             static inline bool AggressiveRefresh = false;
             static inline float HeavyLoadDelayMultiplier = 1.0f;
+            static inline std::size_t LargeUniqueTypes = 150;
+            static inline std::int32_t LargeTotalItems = 150;
 
             static inline bool AutoExport = false;
             static inline bool AutoImport = false;

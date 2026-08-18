@@ -75,6 +75,7 @@ Bool Function SaveJunkListToFile() global native
 Bool Function LoadJunkListFromFile(Bool replace) global native
 
 Bool Function IsDIIIInstalled() global native
+Function SetHeavyLoadThresholds(Int uniqueTypes, Int totalItems) global native
 
 ; --- MCM Helper Functions ----------------------------------------------------------
 
@@ -249,6 +250,8 @@ Event OnSettingChange(String a_ID)
         NotifyOnJunkSell.SetValue(GetModSettingBool(a_ID) as Float)
     ElseIf a_ID == "fHeavyLoadDelayMultiplier:MiscSettings"
         HeavyLoadDelayMultiplier.SetValue(GetModSettingFloat(a_ID))
+    ElseIf a_ID == "iLargeUniqueTypes:MiscSettings" || a_ID == "iLargeTotalItems:MiscSettings"
+        SetHeavyLoadThresholds(GetModSettingInt("iLargeUniqueTypes:MiscSettings"), GetModSettingInt("iLargeTotalItems:MiscSettings"))
     ElseIf a_ID == "bAggressiveRefresh:Utility"
         bAggressiveRefresh = GetModSettingBool(a_ID)
     ElseIf a_ID == "iAggressiveRefreshMaxInterval:Utility"
@@ -306,6 +309,8 @@ Function Default()
     SetModSettingBool("bNotifyOnJunkTransfer:MiscSettings", True)
     SetModSettingBool("bNotifyOnJunkSell:MiscSettings", True)
     SetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings", 1.0)
+    SetModSettingInt("iLargeUniqueTypes:MiscSettings", 150)
+    SetModSettingInt("iLargeTotalItems:MiscSettings", 150)
     SetModSettingBool("bAggressiveRefresh:Utility", False)
     SetModSettingInt("iAggressiveRefreshMaxInterval:Utility", 10)
 
@@ -365,6 +370,7 @@ Function Load()
     NotifyOnJunkTransfer.SetValue(GetModSettingBool("bNotifyOnJunkTransfer:MiscSettings") as Float)
     NotifyOnJunkSell.SetValue(GetModSettingBool("bNotifyOnJunkSell:MiscSettings") as Float)
     HeavyLoadDelayMultiplier.SetValue(GetModSettingFloat("fHeavyLoadDelayMultiplier:MiscSettings"))
+    SetHeavyLoadThresholds(GetModSettingInt("iLargeUniqueTypes:MiscSettings"), GetModSettingInt("iLargeTotalItems:MiscSettings"))
     bAggressiveRefresh = GetModSettingBool("bAggressiveRefresh:Utility")
     iAggressiveRefreshMaxInterval = GetModSettingInt("iAggressiveRefreshMaxInterval:Utility")
     

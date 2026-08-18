@@ -142,6 +142,13 @@ bool IsDIIIInstalled(RE::StaticFunctionTag*) {
 	return JunkIt::Settings::IsDIIIInstalled();
 }
 
+void SetHeavyLoadThresholds(RE::StaticFunctionTag*, std::int32_t uniqueTypes, std::int32_t totalItems) {
+	JunkIt::Settings::SetHeavyLoadThresholds(uniqueTypes, totalItems);
+	SKSE::log::info("Heavy load thresholds set | uniqueTypes={} totalItems={}",
+		JunkIt::Settings::GetLargeUniqueTypes(),
+		JunkIt::Settings::GetLargeTotalItems());
+}
+
 bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
 	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
@@ -160,6 +167,7 @@ bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
 	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
 	
 	vm->RegisterFunction("IsDIIIInstalled", "JunkIt_MCM", IsDIIIInstalled);
+	vm->RegisterFunction("SetHeavyLoadThresholds", "JunkIt_MCM", SetHeavyLoadThresholds);
 	
 	SKSE::log::info("Registered JunkIt Native Functions");
     return true;
