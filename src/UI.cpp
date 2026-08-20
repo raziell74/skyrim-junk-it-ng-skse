@@ -175,15 +175,21 @@ namespace JunkIt {
             ImGui::PopID();
         }
 
-        void SaveIfChanged(bool changed) {
-            if (changed) {
-                Settings::SaveToIni();
-            }
-        }
-
         void SetStatus(std::string_view key, bool success) {
             g_status = Translation::Get(key);
             g_statusKind = success ? StatusKind::kSuccess : StatusKind::kFailure;
+        }
+
+        void SaveSettings() {
+            if (!Settings::SaveToIni()) {
+                SetStatus("$JunkIt_SettingsSaveFailed", false);
+            }
+        }
+
+        void SaveIfChanged(bool changed) {
+            if (changed) {
+                SaveSettings();
+            }
         }
 
         void RenderStatus() {
@@ -290,17 +296,19 @@ namespace JunkIt {
         bool SliderIntRow(const char* labelKey, const char* helpKey, std::int32_t& value, int minValue, int maxValue) {
             SettingLabel(labelKey, helpKey);
             ImGui::PushID(labelKey);
-            const bool changed = ImGui::SliderInt("##v", &value, minValue, maxValue);
+            ImGui::SliderInt("##v", &value, minValue, maxValue);
+            const bool committed = ImGui::IsItemDeactivatedAfterEdit();
             ImGui::PopID();
-            return changed;
+            return committed;
         }
 
         bool SliderFloatRow(const char* labelKey, const char* helpKey, float& value, float minValue, float maxValue, const char* format) {
             SettingLabel(labelKey, helpKey);
             ImGui::PushID(labelKey);
-            const bool changed = ImGui::SliderFloat("##v", &value, minValue, maxValue, format);
+            ImGui::SliderFloat("##v", &value, minValue, maxValue, format);
+            const bool committed = ImGui::IsItemDeactivatedAfterEdit();
             ImGui::PopID();
-            return changed;
+            return committed;
         }
 
         bool KeyBindRow(const char* labelKey, const char* helpKey, std::uint32_t& value, CaptureSlot slot) {
@@ -399,6 +407,7 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
+            RenderStatus();
             PopBrandColors();
         }
 
@@ -425,6 +434,7 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
+            RenderStatus();
             PopBrandColors();
         }
 
@@ -438,7 +448,7 @@ namespace JunkIt {
                 bool typeChanged = CheckboxRow("$JunkIt_UpdateSubTypeDisplay", "$JunkIt_UpdateSubTypeDisplay_Help", Settings::UpdateSubTypeDisplayValue());
                 ImGui::EndTable();
                 if (iconChanged || typeChanged) {
-                    Settings::SaveToIni();
+                    SaveSettings();
                     UIUtil::ItemList::Refresh();
                 }
             }
@@ -457,11 +467,12 @@ namespace JunkIt {
                 }
                 if (diiiChanged) {
                     Settings::ApplyIntegrationGuards();
-                    Settings::SaveToIni();
+                    SaveSettings();
                     UIUtil::ItemList::Refresh();
                 }
             }
 
+            RenderStatus();
             PopBrandColors();
         }
 
@@ -626,8 +637,11 @@ namespace JunkIt {
 
             if (ConfirmPopup("ResetSettings", "$ResetSettings", "$JunkIt_ResetSettingsConfirm")) {
                 Settings::ResetToDefaults();
-                Settings::SaveToIni();
-                SetStatus("$JunkIt_SettingsReset", true);
+                if (Settings::SaveToIni()) {
+                    SetStatus("$JunkIt_SettingsReset", true);
+                } else {
+                    SetStatus("$JunkIt_SettingsSaveFailed", false);
+                }
             }
 
             RenderStatus();
@@ -680,7 +694,7 @@ namespace JunkIt {
                 break;
         }
 
-        Settings::SaveToIni();
+        SaveSettings();
         g_capture = CaptureSlot::kNone;
         return true;
     }

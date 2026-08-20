@@ -5,6 +5,7 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <system_error>
 
 namespace JunkIt {
     namespace {
@@ -242,6 +243,15 @@ namespace JunkIt {
         void DetectDIII() {
             g_values.diiiInstalled = GetModuleHandleA("DynamicInventoryIconInjector.dll") != nullptr;
         }
+
+        std::filesystem::path AbsolutePath(const char* relativePath) {
+            std::error_code ec;
+            auto path = std::filesystem::absolute(relativePath, ec);
+            if (ec) {
+                return std::filesystem::path(relativePath);
+            }
+            return path;
+        }
     }
 
     void Settings::ClampValues() {
@@ -265,22 +275,22 @@ namespace JunkIt {
     void Settings::LoadFromIni() {
         DetectDIII();
 
-        const std::filesystem::path iniPath(kIniPath);
-        const std::filesystem::path mcmPath(kMcmIniPath);
+        const auto iniPath = AbsolutePath(kIniPath);
+        const auto mcmPath = AbsolutePath(kMcmIniPath);
 
         if (std::filesystem::exists(iniPath)) {
             ApplyIni(ParseIni(iniPath));
-            SKSE::log::info("Loaded settings from {}", kIniPath);
+            SKSE::log::info("Loaded settings from {}", iniPath.string());
         } else if (std::filesystem::exists(mcmPath)) {
             ApplyIni(ParseIni(mcmPath));
-            SKSE::log::info("Migrated settings from {}", kMcmIniPath);
+            SKSE::log::info("Migrated settings from {}", mcmPath.string());
             ClampValues();
             ApplyIntegrationGuards();
             SaveToIni();
             LogSettings();
             return;
         } else {
-            SKSE::log::info("No settings INI found, writing defaults to {}", kIniPath);
+            SKSE::log::info("No settings INI found, writing defaults to {}", iniPath.string());
             ResetToDefaults();
             SaveToIni();
             LogSettings();
@@ -292,60 +302,91 @@ namespace JunkIt {
         LogSettings();
     }
 
-    void Settings::SaveToIni() {
+    bool Settings::SaveToIni() {
         ClampValues();
         ApplyIntegrationGuards();
 
-        const std::filesystem::path iniPath(kIniPath);
+        const auto iniPath = AbsolutePath(kIniPath);
+        auto tmpPath = iniPath;
+        tmpPath += ".tmp";
+
         std::error_code ec;
         std::filesystem::create_directories(iniPath.parent_path(), ec);
-
-        std::ofstream out(iniPath, std::ios::trunc);
-        if (!out) {
-            SKSE::log::error("Failed to write {}", kIniPath);
-            return;
+        if (ec) {
+            SKSE::log::error("Failed to create {}: {}", iniPath.parent_path().string(), ec.message());
+            return false;
         }
 
-        out << "[Hotkey]\n";
-        out << "iJunkKey=" << g_values.markJunkKey << "\n";
-        out << "iTransferJunkKey=" << g_values.transferJunkKey << "\n";
-        out << "iGamepadJunkKey=" << g_values.gamepadJunkKey << "\n";
-        out << "iGamepadTransferHoldTime=" << g_values.gamepadTransferHoldTime << "\n\n";
+        {
+            std::ofstream out(tmpPath, std::ios::trunc);
+            if (!out) {
+                SKSE::log::error("Failed to write {}", tmpPath.string());
+                return false;
+            }
 
-        out << "[Confirmation]\n";
-        out << "bConfirmTransfer=" << (g_values.confirmTransfer ? 1 : 0) << "\n";
-        out << "bConfirmSell=" << (g_values.confirmSell ? 1 : 0) << "\n\n";
+            out << "[Hotkey]\n";
+            out << "iJunkKey=" << g_values.markJunkKey << "\n";
+            out << "iTransferJunkKey=" << g_values.transferJunkKey << "\n";
+            out << "iGamepadJunkKey=" << g_values.gamepadJunkKey << "\n";
+            out << "iGamepadTransferHoldTime=" << g_values.gamepadTransferHoldTime << "\n\n";
 
-        out << "[Priority]\n";
-        out << "iTransferPriority=" << g_values.transferPriority << "\n";
-        out << "iSellPriority=" << g_values.sellPriority << "\n\n";
+            out << "[Confirmation]\n";
+            out << "bConfirmTransfer=" << (g_values.confirmTransfer ? 1 : 0) << "\n";
+            out << "bConfirmSell=" << (g_values.confirmSell ? 1 : 0) << "\n\n";
 
-        out << "[Protection]\n";
-        out << "bProtectEquipped=" << (g_values.protectEquipped ? 1 : 0) << "\n";
-        out << "bProtectFavorites=" << (g_values.protectFavorites ? 1 : 0) << "\n";
-        out << "bProtectEnchanted=" << (g_values.protectEnchanted ? 1 : 0) << "\n\n";
+            out << "[Priority]\n";
+            out << "iTransferPriority=" << g_values.transferPriority << "\n";
+            out << "iSellPriority=" << g_values.sellPriority << "\n\n";
 
-        out << "[Misc]\n";
-        out << "bNotifyOnMarkUnmark=" << (g_values.notifyOnMarkUnmark ? 1 : 0) << "\n";
-        out << "bNotifyOnJunkTransfer=" << (g_values.notifyOnJunkTransfer ? 1 : 0) << "\n";
-        out << "bNotifyOnJunkSell=" << (g_values.notifyOnJunkSell ? 1 : 0) << "\n";
-        out << "fHeavyLoadDelayMultiplier=" << g_values.heavyLoadDelayMultiplier << "\n";
-        out << "iLargeUniqueTypes=" << g_values.largeUniqueTypes << "\n";
-        out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n\n";
+            out << "[Protection]\n";
+            out << "bProtectEquipped=" << (g_values.protectEquipped ? 1 : 0) << "\n";
+            out << "bProtectFavorites=" << (g_values.protectFavorites ? 1 : 0) << "\n";
+            out << "bProtectEnchanted=" << (g_values.protectEnchanted ? 1 : 0) << "\n\n";
 
-        out << "[Integration]\n";
-        out << "bUpdateItemIcon=" << (g_values.updateItemIcon ? 1 : 0) << "\n";
-        out << "bUpdateSubTypeDisplay=" << (g_values.updateSubTypeDisplay ? 1 : 0) << "\n";
-        out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n\n";
+            out << "[Misc]\n";
+            out << "bNotifyOnMarkUnmark=" << (g_values.notifyOnMarkUnmark ? 1 : 0) << "\n";
+            out << "bNotifyOnJunkTransfer=" << (g_values.notifyOnJunkTransfer ? 1 : 0) << "\n";
+            out << "bNotifyOnJunkSell=" << (g_values.notifyOnJunkSell ? 1 : 0) << "\n";
+            out << "fHeavyLoadDelayMultiplier=" << g_values.heavyLoadDelayMultiplier << "\n";
+            out << "iLargeUniqueTypes=" << g_values.largeUniqueTypes << "\n";
+            out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n\n";
 
-        out << "[Utility]\n";
-        out << "bReplaceJunkListOnLoad=" << (g_values.replaceJunkListOnLoad ? 1 : 0) << "\n";
-        out << "bAggressiveRefresh=" << (g_values.aggressiveRefresh ? 1 : 0) << "\n";
-        out << "iAggressiveRefreshMaxInterval=" << g_values.aggressiveRefreshMaxInterval << "\n\n";
+            out << "[Integration]\n";
+            out << "bUpdateItemIcon=" << (g_values.updateItemIcon ? 1 : 0) << "\n";
+            out << "bUpdateSubTypeDisplay=" << (g_values.updateSubTypeDisplay ? 1 : 0) << "\n";
+            out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n\n";
 
-        out << "[Maintenance]\n";
-        out << "bAutoSaveJunkListToFile=" << (g_values.autoExport ? 1 : 0) << "\n";
-        out << "bAutoLoadJunkListFromFile=" << (g_values.autoImport ? 1 : 0) << "\n";
+            out << "[Utility]\n";
+            out << "bReplaceJunkListOnLoad=" << (g_values.replaceJunkListOnLoad ? 1 : 0) << "\n";
+            out << "bAggressiveRefresh=" << (g_values.aggressiveRefresh ? 1 : 0) << "\n";
+            out << "iAggressiveRefreshMaxInterval=" << g_values.aggressiveRefreshMaxInterval << "\n\n";
+
+            out << "[Maintenance]\n";
+            out << "bAutoSaveJunkListToFile=" << (g_values.autoExport ? 1 : 0) << "\n";
+            out << "bAutoLoadJunkListFromFile=" << (g_values.autoImport ? 1 : 0) << "\n";
+
+            out.flush();
+            if (!out) {
+                SKSE::log::error("Failed to write {}", tmpPath.string());
+                out.close();
+                std::filesystem::remove(tmpPath, ec);
+                return false;
+            }
+        }
+
+        std::filesystem::remove(iniPath, ec);
+        std::filesystem::rename(tmpPath, iniPath, ec);
+        if (ec) {
+            SKSE::log::error("Failed to replace {}: {}", iniPath.string(), ec.message());
+            return false;
+        }
+
+        static bool loggedSuccess = false;
+        if (!loggedSuccess) {
+            SKSE::log::info("Saved settings to {}", iniPath.string());
+            loggedSuccess = true;
+        }
+        return true;
     }
 
     void Settings::ResetToDefaults() {

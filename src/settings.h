@@ -16,7 +16,7 @@ namespace JunkIt {
             };
 
             static void LoadFromIni();
-            static void SaveToIni();
+            static bool SaveToIni();
             static void ResetToDefaults();
             static void LoadGameForms();
 

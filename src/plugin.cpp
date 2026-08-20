@@ -63,6 +63,9 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     SKSE::Init(skse);
 	SetupLog();
 
+	const auto* plugin = SKSE::PluginDeclaration::GetSingleton();
+	SKSE::log::info("{} loaded (game {})", plugin->GetName(), skse->RuntimeVersion().string("."));
+
 	SKSE::AllocTrampoline(14);
 
 	JunkIt::Settings::LoadFromIni();
