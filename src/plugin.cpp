@@ -6,10 +6,8 @@
 #include "DIIIIntegration.h"
 #include "I4MovieHook.h"
 #include "I4Integration.h"
-
-namespace {
-	bool pendingAutoImport = false;
-}
+#include "Translation.h"
+#include "UI.h"
 
 void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 	if (msg->type == DIII::kMessage_GetAPI) {
@@ -28,32 +26,30 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::I4MovieHook::Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
+		case SKSE::MessagingInterface::kPostLoad:
+			break;
 		case SKSE::MessagingInterface::kDataLoaded:
+			JunkIt::Settings::LoadGameForms();
+			JunkIt::Translation::Load();
+			JunkIt::UI::Register();
 			JunkIt::InputEventHandler::Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
-		case SKSE::MessagingInterface::kPostLoad:
-			break;
-		case SKSE::MessagingInterface::kPreLoadGame:
-			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			JunkIt::I4JunkConfig::GetSingleton().Load();
-			JunkIt::Settings::Load();
-			
-			// Migration: if co-save is empty but old FormList has data, migrate
-			if (JunkIt::JunkDataManager::GetSingleton().Size() == 0) {
-				auto* oldJunkList = JunkIt::Settings::GetJunkList();
-				if (oldJunkList && oldJunkList->forms.size() > 0) {
-					SKSE::log::info("Migrating from old FormList to JunkDataManager...");
-					JunkIt::JunkDataManager::GetSingleton().MigrateFromFormList(oldJunkList);
-				}
-			}
+			JunkIt::Settings::LoadGameForms();
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 			JunkIt::I4JunkConfig::GetSingleton().Load();
-			JunkIt::Settings::Load();
-			// Defer until RefreshDllSettings after MCM syncs AutoImport from ModSettings
-			pendingAutoImport = true;
+			JunkIt::Settings::LoadGameForms();
+			if (JunkIt::Settings::GetAutoImport()) {
+				SKSE::log::info("Auto-import: loading junk list from file");
+				if (JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true)) {
+					UIUtil::ItemList::Refresh();
+				} else {
+					SKSE::log::warn("Auto-import failed to load junk list from file");
+				}
+			}
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
 			if (JunkIt::Settings::GetAutoExport() && JunkIt::JunkDataManager::GetSingleton().Size() > 0) {
@@ -63,121 +59,14 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 	}
 }
 
-void RefreshDllSettings(RE::StaticFunctionTag*) {
-	SKSE::log::info(" ");
-	SKSE::log::info("RefreshDllSettings called");
-	JunkIt::Settings::Load();
-
-	if (pendingAutoImport) {
-		pendingAutoImport = false;
-		if (JunkIt::Settings::GetAutoImport()) {
-			SKSE::log::info("Pending auto-import: loading junk list from file");
-			if (JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true)) {
-				UIUtil::ItemList::Refresh();
-			} else {
-				SKSE::log::warn("Pending auto-import failed to load junk list from file");
-			}
-		}
-	}
-}
-
-void RefreshUIIcons(RE::StaticFunctionTag*) {
-	UIUtil::ItemList::Refresh();
-}
-
-RE::TESForm* ToggleSelectedAsJunk(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::ToggleSelectedItemJunk();
-}
-
-bool IsItemJunk(RE::StaticFunctionTag*, RE::TESForm* a_form) {
-	if (!a_form) {
-		return false;
-	}
-	return JunkIt::JunkDataManager::GetSingleton().IsAnyJunkForForm(a_form);
-}
-
-std::int32_t GetJunkListSize(RE::StaticFunctionTag*) {
-	return static_cast<std::int32_t>(JunkIt::JunkDataManager::GetSingleton().Size());
-}
-
-RE::BSFixedString GetJunkItemNameAt(RE::StaticFunctionTag*, std::int32_t index) {
-	auto item = JunkIt::JunkDataManager::GetSingleton().GetJunkItemAt(index);
-	return RE::BSFixedString(item.displayName.c_str());
-}
-
-bool RemoveJunkItemAtIndex(RE::StaticFunctionTag*, std::int32_t index) {
-	bool result = JunkIt::JunkDataManager::GetSingleton().RemoveJunkItemAtIndex(index);
-	if (result) {
-		UIUtil::ItemList::Refresh();
-	}
-	return result;
-}
-
-void ClearAllJunk(RE::StaticFunctionTag*) {
-	JunkIt::JunkDataManager::GetSingleton().Clear();
-	UIUtil::ItemList::Refresh();
-}
-
-RE::ContainerMenu::ContainerMode GetContainerMode(RE::StaticFunctionTag*) {
-	return JunkIt::JunkHandler::GetContainerMode();
-}
-
-std::int32_t GetMenuItemValue(RE::StaticFunctionTag*, RE::TESForm* a_form) {
-	return JunkIt::JunkHandler::GetMenuItemValue(a_form);
-}
-
-bool SaveJunkListToFile(RE::StaticFunctionTag*) {
-	return JunkIt::JunkDataManager::GetSingleton().SaveToFile();
-}
-
-bool LoadJunkListFromFile(RE::StaticFunctionTag*, bool replace) {
-	bool result = JunkIt::JunkDataManager::GetSingleton().LoadFromFile(replace);
-	if (result) {
-		UIUtil::ItemList::Refresh();
-	}
-	return result;
-}
-
-bool IsDIIIInstalled(RE::StaticFunctionTag*) {
-	return JunkIt::Settings::IsDIIIInstalled();
-}
-
-void SetHeavyLoadThresholds(RE::StaticFunctionTag*, std::int32_t uniqueTypes, std::int32_t totalItems) {
-	JunkIt::Settings::SetHeavyLoadThresholds(uniqueTypes, totalItems);
-	SKSE::log::info("Heavy load thresholds set | uniqueTypes={} totalItems={}",
-		JunkIt::Settings::GetLargeUniqueTypes(),
-		JunkIt::Settings::GetLargeTotalItems());
-}
-
-bool BindPapyrusFunctions(RE::BSScript::IVirtualMachine* vm) {
-	vm->RegisterFunction("RefreshUIIcons", "JunkIt_MCM", RefreshUIIcons);
-	vm->RegisterFunction("ToggleSelectedAsJunk", "JunkIt_MCM", ToggleSelectedAsJunk);
-	
-	vm->RegisterFunction("IsItemJunk", "JunkIt_MCM", IsItemJunk);
-	vm->RegisterFunction("GetJunkListSize", "JunkIt_MCM", GetJunkListSize);
-	vm->RegisterFunction("GetJunkItemNameAt", "JunkIt_MCM", GetJunkItemNameAt);
-	vm->RegisterFunction("RemoveJunkItemAtIndex", "JunkIt_MCM", RemoveJunkItemAtIndex);
-	vm->RegisterFunction("ClearAllJunk", "JunkIt_MCM", ClearAllJunk);
-	
-	vm->RegisterFunction("GetContainerMode", "JunkIt_MCM", GetContainerMode);
-	vm->RegisterFunction("GetMenuItemValue", "JunkIt_MCM", GetMenuItemValue);
-	vm->RegisterFunction("RefreshDllSettings", "JunkIt_MCM", RefreshDllSettings);
-	
-	vm->RegisterFunction("SaveJunkListToFile", "JunkIt_MCM", SaveJunkListToFile);
-	vm->RegisterFunction("LoadJunkListFromFile", "JunkIt_MCM", LoadJunkListFromFile);
-	
-	vm->RegisterFunction("IsDIIIInstalled", "JunkIt_MCM", IsDIIIInstalled);
-	vm->RegisterFunction("SetHeavyLoadThresholds", "JunkIt_MCM", SetHeavyLoadThresholds);
-	
-	SKSE::log::info("Registered JunkIt Native Functions");
-    return true;
-}
-
 SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     SKSE::Init(skse);
 	SetupLog();
 
 	SKSE::AllocTrampoline(14);
+
+	JunkIt::Settings::LoadFromIni();
+	JunkIt::Translation::Load();
 
 	DIII::ListenForRegistration(&DIIIMessageHandler);
 
@@ -197,8 +86,6 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 		SKSE::log::error("Failed to get SerializationInterface");
 		return false;
 	}
-
-	SKSE::GetPapyrusInterface()->Register(BindPapyrusFunctions);
 
 	SKSE::log::info("Setup Complete");
 	

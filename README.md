@@ -15,6 +15,8 @@ Hook IDs and offsets must still be found manually for each version.
     - Name: `VCPKG_ROOT`  
       Value: `C:\path\to\wherever\your\vcpkg\folder\is`
   - The latest version of vcpkg needs a default repository defined in the json. If you're using an older version of vcpkg, simply delete the default repository definition in `vcpkg-configuration.json`
+- [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) at runtime, for the in-game settings pages in the Mod Control Panel
+- Settings live in `Data/SKSE/Plugins/JunkIt.ini`. If that file is missing, Junk It will migrate values from `Data/MCM/Settings/JunkIt.ini` once, then write the new INI. SkyUI / MCM Helper is no longer used.
 
 ## Opening the project
 

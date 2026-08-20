@@ -530,27 +530,4 @@ namespace JunkIt {
     void JunkDataManager::OnRevert(SKSE::SerializationInterface* intfc) {
         GetSingleton().Revert(intfc);
     }
-
-    void JunkDataManager::MigrateFromFormList(RE::BGSListForm* oldJunkList) {
-        if (!oldJunkList) {
-            return;
-        }
-
-        std::lock_guard<std::mutex> guard(lock);
-        for (auto* form : oldJunkList->forms) {
-            auto* object = form ? form->As<RE::TESBoundObject>() : nullptr;
-            if (!object) {
-                continue;
-            }
-
-            const auto identity = BuildIdentity(object, nullptr, object->GetName());
-            if (!IsCanonicalIdentity(identity)) {
-                continue;
-            }
-            if (!junkSet.insert(identity).second) {
-                continue;
-            }
-            junkItems.emplace_back(identity, object->GetName());
-        }
-    }
 }

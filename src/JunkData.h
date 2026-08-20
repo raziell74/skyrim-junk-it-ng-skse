@@ -62,8 +62,6 @@ namespace JunkIt {
         static void OnLoad(SKSE::SerializationInterface* intfc);
         static void OnRevert(SKSE::SerializationInterface* intfc);
 
-        void MigrateFromFormList(RE::BGSListForm* oldJunkList);
-
     private:
         static std::string BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName);
         static std::string GetEnchantmentFormConfig(const RE::ExtraDataList* extraList);

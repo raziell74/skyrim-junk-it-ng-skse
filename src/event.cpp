@@ -1,5 +1,6 @@
 #include "event.h"
 #include "junk.h"
+#include "UI.h"
 
 namespace JunkIt {
 
@@ -57,11 +58,29 @@ namespace JunkIt {
         const auto ui = RE::UI::GetSingleton();
         if (!ui) return Result::kContinue;
 
+        auto controlMap = RE::ControlMap::GetSingleton();
+        const bool textEntry = controlMap && controlMap->GetRuntimeData().textEntryCount > 0;
+
+        for (auto event = *a_event; event; event = event->next) {
+            auto buttonEvent = event->AsButtonEvent();
+            if (!buttonEvent || !buttonEvent->IsDown()) {
+                continue;
+            }
+
+            uint32_t keyCode = buttonEvent->GetIDCode();
+            if (buttonEvent->GetDevice() == RE::INPUT_DEVICE::kGamepad) {
+                keyCode = KeyUtil::Interpreter::GamepadMaskToKeycode(keyCode);
+            }
+
+            if (UI::ConsumeKeyCapture(keyCode)) {
+                return Result::kContinue;
+            }
+        }
+
         ActiveMenuType activeMenu = GetActiveMenu();
         if (activeMenu == ActiveMenuType::kNone) return Result::kContinue;
 
-        auto controlMap = RE::ControlMap::GetSingleton();
-        if (controlMap && controlMap->GetRuntimeData().textEntryCount > 0) return Result::kContinue;
+        if (textEntry) return Result::kContinue;
 
         uint32_t markKey = static_cast<uint32_t>(Settings::GetMarkJunkKey());
         uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
@@ -87,12 +106,14 @@ namespace JunkIt {
 
                     if (Settings::GetAggressiveRefresh()) {
                         UIUtil::ItemList::Refresh();
+                        JunkHandler::StartAggressiveRefresh();
                     }
 
                     HandleGamepadKeyUp(buttonEvent->HeldDuration(), currentMenu);
 
                     if (Settings::GetAggressiveRefresh()) {
                         UIUtil::ItemList::Refresh();
+                        JunkHandler::StartAggressiveRefresh();
                     }
                 }
             } else if (keyCode == markKey || keyCode == transferKey) {
@@ -102,12 +123,14 @@ namespace JunkIt {
 
                     if (Settings::GetAggressiveRefresh()) {
                         UIUtil::ItemList::Refresh();
+                        JunkHandler::StartAggressiveRefresh();
                     }
 
                     HandleKeyDown(keyCode, activeMenu);
 
                     if (Settings::GetAggressiveRefresh()) {
                         UIUtil::ItemList::Refresh();
+                        JunkHandler::StartAggressiveRefresh();
                     }
                 }
             }

@@ -34,6 +34,7 @@ namespace JunkIt {
     public: 
         static TESForm* ToggleSelectedItemJunk();
         static void ToggleIsJunk();
+        static void StartAggressiveRefresh();
 
         static std::vector<InventoryEntryData*> BuildTransferList();
         static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
