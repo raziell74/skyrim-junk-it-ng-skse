@@ -13,8 +13,8 @@ namespace JunkIt {
         JunkItMessageBoxCallback(CallbackFunc a_callback, unsigned int a_offset = 0)
             : callback(std::move(a_callback)), offset(a_offset) {}
 
-        void Run(RE::IMessageBoxCallback::Message a_msg) override {
-            unsigned int rawVal = static_cast<unsigned int>(a_msg);
+        void Run(std::uint8_t a_button) override {
+            unsigned int rawVal = static_cast<unsigned int>(a_button);
             unsigned int adjusted = (rawVal >= offset) ? rawVal - offset : rawVal;
             if (callback) {
                 callback(adjusted);

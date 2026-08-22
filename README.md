@@ -1,7 +1,6 @@
-
 # CommonLibSSE NG
 
-Because this uses [CommonLibSSE NG](https://github.com/CharmedBaryon/CommonLibSSE-NG), it supports Skyrim SE, AE, GOG, and VR. 
+Because this uses [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG), it supports Skyrim SE, AE, GOG, and VR.
 
 Hook IDs and offsets must still be found manually for each version.
 
@@ -11,8 +10,10 @@ Hook IDs and offsets must still be found manually for each version.
 
 SKSE plugins are version-checked **before** they load. A loader abort that says the DLL is not supported means SKSE rejected the plugin metadata, or a *different* DLL in the same dialog.
 
-- Match **SKSE** to the game executable. Steam Skyrim AE **1.6.1170** needs **SKSE 2.2.6** (`skse64_2_02_06`).
-- Install [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444), Anniversary Edition all-in-one, so `Data/SKSE/Plugins/versionlib-1-6-1170-0.bin` is present. Junk It declares Address Library compatibility; without that database the plugin can fail after SKSE accepts it.
+- Match **SKSE** to the game executable:
+  - Steam Skyrim AE **1.7.99** needs **SKSE 2.3.0**.
+  - Steam Skyrim AE **1.6.1170** needs **SKSE 2.2.6** (`skse64_2_02_06`).
+- Install [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444), Anniversary Edition all-in-one, so the database for your game version is present (`Data/SKSE/Plugins/versionlib-1-7-99-0.bin` or `versionlib-1-6-1170-0.bin`). Junk It declares Address Library compatibility; without that database the plugin can fail after SKSE accepts it.
 - If the loader still aborts, open `Documents\My Games\Skyrim Special Edition\SKSE\skse64.log` and confirm the incompatible line names **JunkIt.dll**. If it names another plugin (Address Library, SKSE Menu Framework, Engine Fixes), that other DLL is the one SKSE is rejecting.
 - [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) is required at runtime for the in-game settings pages in the Mod Control Panel.
 - Settings live in `Data/SKSE/Plugins/JunkIt.ini`. If that file is missing, Junk It will migrate values from `Data/MCM/Settings/JunkIt.ini` once, then write the new INI. SkyUI / MCM Helper is no longer used.
@@ -35,7 +36,7 @@ Once you have Visual Studio 2022 installed, you can open this folder in basicall
 
 You may need to click `OK` on a few windows, but the project should automatically run CMake!
 
-It will _automatically_ download [CommonLibSSE NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) and everything you need to get started making your new plugin!
+It will _automatically_ download [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) (via the local vcpkg overlay port) and everything you need to get started making your new plugin!
 
 # Project setup
 
@@ -54,5 +55,3 @@ into your "`mods`" folder:
 - Set the `SKYRIM_MODS_FOLDER` environment variable to the path of your mods folder:  
   e.g. `C:\Users\<user>\AppData\Local\ModOrganizer\Skyrim Special Edition\mods`  
   e.g. `C:\Users\<user>\AppData\Roaming\Vortex\skyrimse\mods`
-
-

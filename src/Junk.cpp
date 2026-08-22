@@ -193,11 +193,11 @@ namespace JunkIt {
         for (const auto& button : buttons) {
             messageBoxData->buttonText.push_back(button.c_str());
         }
-        messageBoxData->optionIndexOffset = 4;
-        messageBoxData->type = 10;
+        messageBoxData->buttonPressOffset = 4;
+        messageBoxData->warningType = 10;
         messageBoxData->menuDepth = 10;
-        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback), messageBoxData->optionIndexOffset));
-        messageBoxData->QueueMessage();
+        messageBoxData->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new JunkItMessageBoxCallback(std::move(callback), messageBoxData->buttonPressOffset));
+        RE::MessageBoxMenu::QueueMessage(messageBoxData);
     }
 
     JunkHandler::Count JunkHandler::GetItemCount(TESObjectREFR* a_container, TESBoundObject* a_item) {
@@ -207,7 +207,7 @@ namespace JunkIt {
 
         Count count = 0;
         if (auto* tesContainer = a_container->GetContainer()) {
-            count += tesContainer->CountObjectsInContainer(a_item);
+            count += tesContainer->GetObjectCount(a_item);
         }
 
         if (auto* changes = a_container->GetInventoryChanges(); changes && changes->entryList) {
@@ -666,7 +666,7 @@ namespace JunkIt {
         if (menuView == 0) {
             SKSE::log::info("Retrieving items from container...");
             if (Settings::GetNotifyOnJunkTransfer()) {
-                DebugNotification("JunkIt - Processing Retrieval...");
+                SendHUDMessage::ShowHUDMessage("JunkIt - Processing Retrieval...");
             }
 
             for (auto* entryData : transferList) {
@@ -683,12 +683,12 @@ namespace JunkIt {
             SKSE::log::info("Junk Retrieved! Total items: {}", totalTransferred);
             if (Settings::GetNotifyOnJunkTransfer()) {
                 std::string msg = fmt::format("JunkIt - {} Junk Items Retrieved!", totalTransferred);
-                DebugNotification(msg.c_str());
+                SendHUDMessage::ShowHUDMessage(msg.c_str());
             }
         } else {
             SKSE::log::info("Transferring items to container...");
             if (Settings::GetNotifyOnJunkTransfer()) {
-                DebugNotification("JunkIt - Processing Transfer...");
+                SendHUDMessage::ShowHUDMessage("JunkIt - Processing Transfer...");
             }
 
             if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
@@ -731,11 +731,11 @@ namespace JunkIt {
                     if (totalTransferred >= totalPossibleTransferred) {
                         SKSE::log::info("[NPC Mode] Transferred all {} junk items successfully", totalTransferred);
                         std::string msg = fmt::format("JunkIt - Transferred All {} Junk Items!", totalTransferred);
-                        DebugNotification(msg.c_str());
+                        SendHUDMessage::ShowHUDMessage(msg.c_str());
                     } else {
                         SKSE::log::info("[NPC Mode] Transferred {} of {} possible junk items (NPC weight limit reached)", totalTransferred, totalPossibleTransferred);
                         std::string msg = fmt::format("JunkIt - Transferred {} Junk Items!", totalTransferred);
-                        DebugNotification(msg.c_str());
+                        SendHUDMessage::ShowHUDMessage(msg.c_str());
                     }
                 }
             } else {
@@ -754,7 +754,7 @@ namespace JunkIt {
                 SKSE::log::info("[Container Mode] Transferred {} junk items successfully", totalTransferred);
                 if (Settings::GetNotifyOnJunkTransfer()) {
                     std::string msg = fmt::format("JunkIt - Transferred {} Junk Items!", totalTransferred);
-                    DebugNotification(msg.c_str());
+                    SendHUDMessage::ShowHUDMessage(msg.c_str());
                 }
             }
         }
@@ -928,7 +928,7 @@ namespace JunkIt {
         const auto ui = RE::UI::GetSingleton();
 
         if (Settings::GetNotifyOnJunkSell()) {
-            DebugNotification("JunkIt - Processing Sale...");
+            SendHUDMessage::ShowHUDMessage("JunkIt - Processing Sale...");
         }
 
         TESObjectMISC* gold001 = Settings::GetGold001();
@@ -990,13 +990,13 @@ namespace JunkIt {
         if (totalToSell >= totalPossibleToSell) {
             SKSE::log::info("Sold ALL {} Junk Items for {} Gold", totalToSell, totalSellValue);
             if (Settings::GetNotifyOnJunkSell()) {
-                DebugNotification("JunkIt - Sold All Junk Items!");
+                SendHUDMessage::ShowHUDMessage("JunkIt - Sold All Junk Items!");
             }
         } else {
             SKSE::log::info("Sold {} of {} Junk Items for {} Gold (vendor gold limit reached)", totalToSell, totalPossibleToSell, totalSellValue);
             if (Settings::GetNotifyOnJunkSell()) {
                 std::string msg = fmt::format("JunkIt - Sold {} Junk Items!", totalToSell);
-                DebugNotification(msg.c_str());
+                SendHUDMessage::ShowHUDMessage(msg.c_str());
             }
         }
 
@@ -1014,7 +1014,7 @@ namespace JunkIt {
         ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
         if (!itemListMenu) {
             SKSE::log::error("No ItemListMenu found");
-            DebugNotification("JunkIt - No item selected!");
+            SendHUDMessage::ShowHUDMessage("JunkIt - No item selected!");
             return nullptr;
         }
 
@@ -1026,7 +1026,7 @@ namespace JunkIt {
             selectedItem = itemListMenu->GetSelectedItem();
             if (!selectedItem) {
                 SKSE::log::error("No item selected in ItemListMenu");
-                DebugNotification("JunkIt - No item selected!");
+                SendHUDMessage::ShowHUDMessage("JunkIt - No item selected!");
                 return nullptr;
             }
         }
@@ -1034,21 +1034,21 @@ namespace JunkIt {
         InventoryEntryData* inventoryEntry = selectedItem->data.objDesc;
         if (!inventoryEntry) {
             SKSE::log::error("Error getting InventoryEntryData for {}", selectedItem->data.objDesc->GetDisplayName());
-            DebugNotification("JunkIt - Failed to mark item as junk!");
+            SendHUDMessage::ShowHUDMessage("JunkIt - Failed to mark item as junk!");
             return nullptr;
         }
 
         TESBoundObject* itemObject = inventoryEntry->object;
         if (!itemObject) {
             SKSE::log::error("Error getting item as object for {}", inventoryEntry->GetDisplayName());
-            DebugNotification("JunkIt - Failed to mark item as junk!");
+            SendHUDMessage::ShowHUDMessage("JunkIt - Failed to mark item as junk!");
             return nullptr;
         }
 
         TESForm* itemForm = itemObject->As<TESForm>();
         if (!itemForm) {
             SKSE::log::error("Error getting item as form for {}", inventoryEntry->GetDisplayName());
-            DebugNotification("JunkIt - Failed to mark item as junk!");
+            SendHUDMessage::ShowHUDMessage("JunkIt - Failed to mark item as junk!");
             return nullptr;
         }
 
@@ -1059,7 +1059,7 @@ namespace JunkIt {
             SKSE::log::info("Cannot mark quest item {} [{}] as junk", itemName, hexFormId);
             auto& junkManager = JunkDataManager::GetSingleton();
             if (!junkManager.IsJunk(inventoryEntry)) {
-                DebugNotification("JunkIt - Quest Items cannot be marked as Junk");
+                SendHUDMessage::ShowHUDMessage("JunkIt - Quest Items cannot be marked as Junk");
                 return nullptr;
             }
         }
@@ -1105,7 +1105,7 @@ namespace JunkIt {
                             }
                             if (Settings::GetNotifyOnMarkUnmark()) {
                                 std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
-                                DebugNotification(msg.c_str());
+                                SendHUDMessage::ShowHUDMessage(msg.c_str());
                             }
                         } else {
                             SKSE::log::info("User cancelled marking protected item as junk");
@@ -1136,13 +1136,13 @@ namespace JunkIt {
             }
             if (Settings::GetNotifyOnMarkUnmark()) {
                 std::string msg = fmt::format("JunkIt - {} has been marked as junk", itemForm->GetName());
-                DebugNotification(msg.c_str());
+                SendHUDMessage::ShowHUDMessage(msg.c_str());
             }
         } else {
             SKSE::log::info("Form: {} is no longer marked as junk", itemForm->GetName());
             if (Settings::GetNotifyOnMarkUnmark()) {
                 std::string msg = fmt::format("JunkIt - {} is no longer marked as junk", itemForm->GetName());
-                DebugNotification(msg.c_str());
+                SendHUDMessage::ShowHUDMessage(msg.c_str());
             }
         }
 

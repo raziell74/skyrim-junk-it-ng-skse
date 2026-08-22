@@ -66,7 +66,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 	const auto* plugin = SKSE::PluginDeclaration::GetSingleton();
 	SKSE::log::info("{} loaded (game {})", plugin->GetName(), skse->RuntimeVersion().string("."));
 
-	SKSE::AllocTrampoline(14);
+	SKSE::AllocTrampoline(64);
 
 	JunkIt::Settings::LoadFromIni();
 	JunkIt::Translation::Load();

@@ -481,19 +481,13 @@ namespace NifUtil
     {
         static bool ToggleMeshCollision(RE::NiAVObject* root,RE::bhkWorld* world, bool collisionState)
         {
-            constexpr auto no_collision_flag = static_cast<std::uint32_t>(RE::CFilter::Flag::kNoCollision);
 					if (root && world) {
 						
 							RE::BSWriteLockGuard locker(world->worldLock);
 
 							RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_col) -> RE::BSVisit::BSVisitControl {
 								if (auto hkpBody = a_col->body ? static_cast<RE::hkpWorldObject*>(a_col->body->referencedObject.get()) : nullptr; hkpBody) {
-									auto& filter = hkpBody->collidable.broadPhaseHandle.collisionFilterInfo;
-									if (!collisionState) {
-										filter |= no_collision_flag;
-									} else {
-										filter &= ~no_collision_flag;
-									}
+									hkpBody->collidable.broadPhaseHandle.collisionFilterInfo.SetNoCollision(!collisionState);
 								}
 								return RE::BSVisit::BSVisitControl::kContinue;
 							});
@@ -506,19 +500,13 @@ namespace NifUtil
         }
          static bool RemoveMeshCollision(RE::NiAVObject* root,RE::bhkWorld* world, bool collisionState)
         {
-            constexpr auto no_collision_flag = static_cast<std::uint32_t>(RE::CFilter::Flag::kNoCollision);
 					if (root && world) {
 						
 							RE::BSWriteLockGuard locker(world->worldLock);
 
 							RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_col) -> RE::BSVisit::BSVisitControl {
 								if (auto hkpBody = a_col->body ? static_cast<RE::hkpWorldObject*>(a_col->body->referencedObject.get()) : nullptr; hkpBody) {
-									auto& filter = hkpBody->collidable.broadPhaseHandle.collisionFilterInfo;
-									if (!collisionState) {
-										filter |= no_collision_flag;
-									} else {
-										filter &= ~no_collision_flag;
-									}
+									hkpBody->collidable.broadPhaseHandle.collisionFilterInfo.SetNoCollision(!collisionState);
 								}
 								return RE::BSVisit::BSVisitControl::kContinue;
 							});
@@ -597,7 +585,7 @@ namespace UIUtil { // Sourced from JunkIt
             const auto menu = UI ? UI->GetMenu<BarterMenu>() : nullptr;
             if (!menu) return nullptr;
 
-            const auto refHandle = menu->GetTargetRefHandle();
+            auto refHandle = menu->GetTargetRefHandle();
             TESObjectREFRPtr refr;
 
             // Invalid refHandle, this is the Player Reference's handle
