@@ -59,6 +59,7 @@ namespace JunkIt {
 
         static MenuKind GetActiveMenu();
         static std::optional<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> ToSkyPromptButton(std::uint32_t keyCode);
+        static bool HasSelectedItem();
         static bool SelectedItemIsJunk();
         static const char* MarkPromptText();
         std::string FormatTransferPrompt();

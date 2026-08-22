@@ -126,7 +126,7 @@ namespace JunkIt {
     RE::BSEventNotifyControl SkyPromptIntegration::ProcessEvent(
         const RE::TESContainerChangedEvent* a_event,
         RE::BSTEventSource<RE::TESContainerChangedEvent>*) {
-        if (!a_event || !showing_ || GetActiveMenu() == MenuKind::kNone) {
+        if (!a_event || GetActiveMenu() == MenuKind::kNone) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
@@ -168,7 +168,7 @@ namespace JunkIt {
 
         tasks->AddUITask([]() {
             auto& self = SkyPromptIntegration::GetSingleton();
-            if (self.showing_ && GetActiveMenu() != MenuKind::kNone) {
+            if (GetActiveMenu() != MenuKind::kNone) {
                 self.SyncPromptLabels();
             }
         });
@@ -225,6 +225,16 @@ namespace JunkIt {
         return std::nullopt;
     }
 
+    bool SkyPromptIntegration::HasSelectedItem() {
+        auto* itemList = UIUtil::ItemList::GetOpenList();
+        if (!itemList) {
+            return false;
+        }
+
+        auto* selectedItem = itemList->GetSelectedItem();
+        return selectedItem && selectedItem->data.objDesc;
+    }
+
     bool SkyPromptIntegration::SelectedItemIsJunk() {
         auto* itemList = UIUtil::ItemList::GetOpenList();
         if (!itemList) {
@@ -240,6 +250,10 @@ namespace JunkIt {
     }
 
     const char* SkyPromptIntegration::MarkPromptText() {
+        if (!HasSelectedItem()) {
+            return nullptr;
+        }
+
         return SelectedItemIsJunk() ? "$JunkIt_Prompt_Unmark" : "$JunkIt_Prompt_Mark";
     }
 
@@ -273,7 +287,7 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::SyncPromptLabels() {
-        if (clientID_ == 0 || !showing_ || prompts_.empty()) {
+        if (clientID_ == 0) {
             return;
         }
 
@@ -286,16 +300,20 @@ namespace JunkIt {
         const auto transferAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer);
         const auto sellAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell);
 
+        bool hasMark = false;
         bool hasTransfer = false;
         bool hasSell = false;
         for (const auto& prompt : prompts_) {
-            if (prompt.actionID == transferAction) {
+            if (prompt.actionID == markAction) {
+                hasMark = true;
+            } else if (prompt.actionID == transferAction) {
                 hasTransfer = true;
             } else if (prompt.actionID == sellAction) {
                 hasSell = true;
             }
         }
 
+        const char* wantedMark = MarkPromptText();
         std::string wantedTransfer;
         if (menu == MenuKind::kContainer) {
             wantedTransfer = FormatTransferPrompt();
@@ -304,12 +322,16 @@ namespace JunkIt {
         if (menu == MenuKind::kBarter) {
             wantedSell = FormatSellPrompt();
         }
-        if (hasTransfer != !wantedTransfer.empty() || hasSell != !wantedSell.empty()) {
+        if (hasMark != (wantedMark != nullptr) ||
+            hasTransfer != !wantedTransfer.empty() ||
+            hasSell != !wantedSell.empty()) {
             RefreshPrompts();
             return;
         }
 
-        const char* wantedMark = MarkPromptText();
+        if (prompts_.empty()) {
+            return;
+        }
 
         bool changed = false;
         for (auto& prompt : prompts_) {
@@ -345,13 +367,15 @@ namespace JunkIt {
         }
 
         if (!markKeys_.empty()) {
-            prompts_.emplace_back(
-                MarkPromptText(),
-                static_cast<SkyPromptAPI::EventID>(PromptEventID::kMark),
-                static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark),
-                SkyPromptAPI::PromptType::kSinglePress,
-                0,
-                markKeys_);
+            if (const char* markText = MarkPromptText()) {
+                prompts_.emplace_back(
+                    markText,
+                    static_cast<SkyPromptAPI::EventID>(PromptEventID::kMark),
+                    static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark),
+                    SkyPromptAPI::PromptType::kSinglePress,
+                    0,
+                    markKeys_);
+            }
         }
 
         if (menu == MenuKind::kInventory || transferKeys_.empty()) {

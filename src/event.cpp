@@ -147,10 +147,8 @@ namespace JunkIt {
             }
         }
 
-        if (skyPromptShowing) {
-            SkyPromptIntegration::GetSingleton().SyncPromptLabels();
-            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
-        }
+        SkyPromptIntegration::GetSingleton().SyncPromptLabels();
+        SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
 
         return Result::kContinue;
     }
