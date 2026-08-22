@@ -292,45 +292,46 @@ namespace JunkIt {
         return extrasTotal > 0;
     }
 
-    ExtraDataList* JunkHandler::FindJunkExtraList(InventoryEntryData* a_entry) {
-        if (!a_entry || !a_entry->extraLists || a_entry->extraLists->empty()) {
-            return nullptr;
-        }
-
-        auto& junkManager = JunkDataManager::GetSingleton();
-        for (auto* extraList : *a_entry->extraLists) {
-            if (!extraList) {
-                continue;
-            }
-            if (junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
-                return extraList;
-            }
-        }
-        return nullptr;
-    }
-
     void JunkHandler::SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count) {
         if (!a_entry || !a_entry->object || !a_from || !a_to || a_count <= 0) {
+            return;
+        }
+
+        if (EntryIsFullyJunk(a_entry)) {
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, a_count, nullptr);
             return;
         }
 
         auto& junkManager = JunkDataManager::GetSingleton();
         Count remaining = a_count;
 
-        while (remaining > 0) {
-            ExtraDataList* extraList = FindJunkExtraList(a_entry);
-            if (!extraList) {
+        std::vector<std::pair<ExtraDataList*, Count>> junkStacks;
+        if (a_entry->extraLists) {
+            for (auto* extraList : *a_entry->extraLists) {
+                if (!extraList) {
+                    continue;
+                }
+                if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
+                    continue;
+                }
+                const Count extraCount = extraList->GetCount();
+                if (extraCount > 0) {
+                    junkStacks.emplace_back(extraList, extraCount);
+                }
+            }
+        }
+
+        for (const auto& [extraList, extraCount] : junkStacks) {
+            if (remaining <= 0) {
                 break;
             }
-            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, 1, extraList);
-            --remaining;
+            const Count toSell = std::min(remaining, extraCount);
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, toSell, extraList);
+            remaining -= toSell;
         }
 
         if (remaining > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
-            while (remaining > 0) {
-                MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, 1, nullptr);
-                --remaining;
-            }
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, remaining, nullptr);
         }
     }
 

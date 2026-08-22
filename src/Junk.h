@@ -84,7 +84,6 @@ namespace JunkIt {
         static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList = nullptr);
         static Count GetSellableJunkCount(InventoryEntryData* a_entry);
         static bool EntryIsFullyJunk(InventoryEntryData* a_entry);
-        static ExtraDataList* FindJunkExtraList(InventoryEntryData* a_entry);
         static void SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count);
 
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
