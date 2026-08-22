@@ -2,6 +2,7 @@
 #include "settings.h"
 #include <atomic>
 #include <functional>
+#include <optional>
 using namespace RE;
 
 namespace JunkIt {
@@ -48,6 +49,8 @@ namespace JunkIt {
 
         static void TransferJunk();
         static void SellJunk();
+        [[nodiscard]] static std::int32_t PreviewTransferCount();
+        [[nodiscard]] static std::optional<std::int32_t> PreviewSellGold();
 
         [[nodiscard]] static InventoryCountMap* GetContainerInventoryCountMap(TESObjectREFR* a_container) {
             if (cInventoryContainerId == a_container->GetFormID()) return &cInventoryCountMap;
@@ -85,6 +88,19 @@ namespace JunkIt {
         static Count GetSellableJunkCount(InventoryEntryData* a_entry);
         static bool EntryIsFullyJunk(InventoryEntryData* a_entry);
         static void SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count);
+
+        struct SellTotals {
+            std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
+            Count totalToSell = 0;
+            Count totalPossibleToSell = 0;
+            Count roundedSellValue = 0;
+        };
+
+        static bool TryReadBarterPrices(float& vendorGold, float& sellMult);
+        static SellTotals ComputeSellTotals(
+            const std::vector<std::pair<InventoryEntryData*, Count>>& sellList,
+            float vendorGold,
+            float sellMult);
 
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
         static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay);

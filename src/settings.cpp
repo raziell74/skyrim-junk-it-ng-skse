@@ -45,6 +45,7 @@ namespace JunkIt {
             std::int32_t aggressiveRefreshMaxInterval = 10;
 
             bool diiiInstalled = false;
+            bool skyPromptInstalled = false;
             RE::TESObjectMISC* gold001 = nullptr;
         };
 
@@ -244,6 +245,10 @@ namespace JunkIt {
             g_values.diiiInstalled = GetModuleHandleA("DynamicInventoryIconInjector.dll") != nullptr;
         }
 
+        void DetectSkyPrompt() {
+            g_values.skyPromptInstalled = GetModuleHandleW(L"SkyPrompt") != nullptr;
+        }
+
         std::filesystem::path AbsolutePath(const char* relativePath) {
             std::error_code ec;
             auto path = std::filesystem::absolute(relativePath, ec);
@@ -266,6 +271,7 @@ namespace JunkIt {
 
     void Settings::ApplyIntegrationGuards() {
         DetectDIII();
+        DetectSkyPrompt();
         if (!g_values.diiiInstalled && g_values.useDynamicInventoryIcon) {
             SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
             g_values.useDynamicInventoryIcon = false;
@@ -443,6 +449,7 @@ namespace JunkIt {
     bool Settings::GetUseDynamicInventoryIcon() { return g_values.useDynamicInventoryIcon; }
 
     bool Settings::IsDIIIInstalled() { return g_values.diiiInstalled; }
+    bool Settings::IsSkyPromptInstalled() { return g_values.skyPromptInstalled; }
     RE::TESObjectMISC* Settings::GetGold001() { return g_values.gold001; }
 
     std::uint32_t& Settings::MarkJunkKeyValue() { return g_values.markJunkKey; }

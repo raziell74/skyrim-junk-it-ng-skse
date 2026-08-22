@@ -8,6 +8,7 @@
 #include "I4Integration.h"
 #include "Translation.h"
 #include "UI.h"
+#include "SkyPromptIntegration.h"
 
 void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 	if (msg->type == DIII::kMessage_GetAPI) {
@@ -33,6 +34,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::Translation::Load();
 			JunkIt::UI::Register();
 			JunkIt::InputEventHandler::Install();
+			JunkIt::SkyPromptIntegration::GetSingleton().Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:

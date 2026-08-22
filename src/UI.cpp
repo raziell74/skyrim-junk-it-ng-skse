@@ -1,6 +1,7 @@
 #include "UI.h"
 
 #include "JunkData.h"
+#include "SkyPromptIntegration.h"
 #include "Translation.h"
 #include "settings.h"
 #include "util.h"
@@ -472,6 +473,11 @@ namespace JunkIt {
                 }
             }
 
+            ImGui::SeparatorText(Translation::Get("$JunkIt_SkyPromptIntegrationHeader").c_str());
+            ImGui::TextWrapped("%s", Translation::Get(
+                Settings::IsSkyPromptInstalled() ? "$JunkIt_SkyPromptInstalled" : "$JunkIt_SkyPromptNotInstalled"
+            ).c_str());
+
             RenderStatus();
             PopBrandColors();
         }
@@ -696,6 +702,7 @@ namespace JunkIt {
 
         SaveSettings();
         g_capture = CaptureSlot::kNone;
+        SkyPromptIntegration::GetSingleton().RefreshPrompts();
         return true;
     }
 }

@@ -1,0 +1,9 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+    "name": "skyprompt-api",
+    "version-string": "2.0.3",
+    "homepage": "https://github.com/QTR-Modding/SkyPromptAPI",
+    "license": "MIT",
+    "description": "Header-only SkyPrompt API for SKSE plugins",
+    "dependencies": []
+}
