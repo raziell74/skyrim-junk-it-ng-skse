@@ -1,8 +1,10 @@
 #include "junk.h"
 #include "JunkData.h"
 #include "SendUIMessage.h"
+#include "Translation.h"
 #include <SKSE/API.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 RE::MessageBoxData::~MessageBoxData() = default;
@@ -126,6 +128,36 @@ namespace JunkIt {
         });
     }
 
+    namespace {
+        void ScheduleAggressiveRefresh(std::chrono::steady_clock::time_point deadline, int framesRemaining) {
+            auto* taskInterface = SKSE::GetTaskInterface();
+            if (!taskInterface) {
+                return;
+            }
+
+            taskInterface->AddUITask([deadline, framesRemaining]() {
+                if (std::chrono::steady_clock::now() >= deadline) {
+                    return;
+                }
+                if (framesRemaining > 0) {
+                    ScheduleAggressiveRefresh(deadline, framesRemaining - 1);
+                    return;
+                }
+                UIUtil::ItemList::Refresh();
+                ScheduleAggressiveRefresh(deadline, 300);
+            });
+        }
+    }
+
+    void JunkHandler::StartAggressiveRefresh() {
+        if (!Settings::GetAggressiveRefresh()) {
+            return;
+        }
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::seconds(Settings::GetAggressiveRefreshMaxInterval());
+        ScheduleAggressiveRefresh(deadline, 0);
+    }
+
     void JunkHandler::RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems) {
         const bool largeOp = uniqueTypes >= Settings::GetLargeUniqueTypes() || totalItems >= Settings::GetLargeTotalItems();
         int deferredFrames = 1;
@@ -151,6 +183,8 @@ namespace JunkIt {
         if (largeOp && deferredFrames > 1) {
             ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, deferredFrames - 1);
         }
+
+        StartAggressiveRefresh();
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
@@ -258,45 +292,46 @@ namespace JunkIt {
         return extrasTotal > 0;
     }
 
-    ExtraDataList* JunkHandler::FindJunkExtraList(InventoryEntryData* a_entry) {
-        if (!a_entry || !a_entry->extraLists || a_entry->extraLists->empty()) {
-            return nullptr;
-        }
-
-        auto& junkManager = JunkDataManager::GetSingleton();
-        for (auto* extraList : *a_entry->extraLists) {
-            if (!extraList) {
-                continue;
-            }
-            if (junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
-                return extraList;
-            }
-        }
-        return nullptr;
-    }
-
     void JunkHandler::SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count) {
         if (!a_entry || !a_entry->object || !a_from || !a_to || a_count <= 0) {
+            return;
+        }
+
+        if (EntryIsFullyJunk(a_entry)) {
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, a_count, nullptr);
             return;
         }
 
         auto& junkManager = JunkDataManager::GetSingleton();
         Count remaining = a_count;
 
-        while (remaining > 0) {
-            ExtraDataList* extraList = FindJunkExtraList(a_entry);
-            if (!extraList) {
+        std::vector<std::pair<ExtraDataList*, Count>> junkStacks;
+        if (a_entry->extraLists) {
+            for (auto* extraList : *a_entry->extraLists) {
+                if (!extraList) {
+                    continue;
+                }
+                if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
+                    continue;
+                }
+                const Count extraCount = extraList->GetCount();
+                if (extraCount > 0) {
+                    junkStacks.emplace_back(extraList, extraCount);
+                }
+            }
+        }
+
+        for (const auto& [extraList, extraCount] : junkStacks) {
+            if (remaining <= 0) {
                 break;
             }
-            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, 1, extraList);
-            --remaining;
+            const Count toSell = std::min(remaining, extraCount);
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, toSell, extraList);
+            remaining -= toSell;
         }
 
         if (remaining > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
-            while (remaining > 0) {
-                MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, 1, nullptr);
-                --remaining;
-            }
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, remaining, nullptr);
         }
     }
 
@@ -564,7 +599,9 @@ namespace JunkIt {
 
             if (Settings::ConfirmTransfer()) {
                 SKSE::log::info("Showing confirmation dialog for retrieval");
-                ShowConfirmationMessageBox("Retrieve all junk items from this container?", {"Yes", "No"},
+                ShowConfirmationMessageBox(
+                    Translation::Get("$JunkIt_RetrievalConfirmation").c_str(),
+                    { Translation::Get("$JunkIt_RetrieveConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
                     [transferList, transferContainer, containerMode, menuView](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed retrieval");
@@ -590,7 +627,9 @@ namespace JunkIt {
 
             if (Settings::ConfirmTransfer()) {
                 SKSE::log::info("Showing confirmation dialog for transfer");
-                ShowConfirmationMessageBox("Transfer all junk items to this container?", {"Yes", "No"},
+                ShowConfirmationMessageBox(
+                    Translation::Get("$JunkIt_TransferConfirmation").c_str(),
+                    { Translation::Get("$JunkIt_TransferConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
                     [transferList, transferContainer, containerMode, menuView](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed transfer");
@@ -862,8 +901,9 @@ namespace JunkIt {
 
         if (Settings::ConfirmSell()) {
             SKSE::log::info("Showing confirmation dialog for sale");
-            std::string confirmText = fmt::format("Sell {} junk items for {} gold?", totalToSell, roundedSellValue);
-            ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
+            std::string confirmText = Translation::Format("$JunkIt_SellConfirmationCount", totalToSell, roundedSellValue);
+            ShowConfirmationMessageBox(confirmText.c_str(),
+                { Translation::Get("$JunkIt_SellConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
                 [itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay](unsigned int choice) {
                     if (choice == 0) {
                         SKSE::log::info("User confirmed sale");
@@ -1043,8 +1083,9 @@ namespace JunkIt {
 
             if (needsConfirmation) {
                 SKSE::log::info("Showing confirmation dialog for protected item");
-                std::string confirmText = fmt::format("Mark this {} item as junk?", protectionReason);
-                ShowConfirmationMessageBox(confirmText.c_str(), {"Yes", "No"},
+                std::string confirmText = Translation::Format("$JunkIt_MarkProtectedConfirm", protectionReason);
+                ShowConfirmationMessageBox(confirmText.c_str(),
+                    { Translation::Get("$JunkIt_Yes"), Translation::Get("$JunkIt_ConfirmNo") },
                     [inventoryEntry, itemForm, itemName, hexFormId](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed marking protected item as junk");

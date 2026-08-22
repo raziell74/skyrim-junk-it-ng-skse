@@ -2,7 +2,6 @@ set(headers ${headers}
 	src/PCH.h 
     src/log.h
     src/util.h
-    src/hook.h 
     src/settings.h
     src/event.h
     src/junk.h
@@ -12,4 +11,6 @@ set(headers ${headers}
     src/DIIIIntegration.h
     src/I4Integration.h
     src/I4MovieHook.h
+    src/Translation.h
+    src/UI.h
 )

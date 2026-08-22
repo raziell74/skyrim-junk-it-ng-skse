@@ -1,16 +1,10 @@
 #pragma once
 
 #include "util.h"
-#include <list>
-#include <string>
-#include <fstream>
-
-using namespace RE;
 
 namespace JunkIt {
     class Settings {
         public:
-
             enum class SortPriority {
                 kWeightHighLow = 0,
                 kWeightLowHigh = 1,
@@ -21,292 +15,79 @@ namespace JunkIt {
                 kChaos = 6
             };
 
-            struct JunkTransfer {
-                bool ConfirmTransfer = true;
-                SortPriority TransferPriority = SortPriority::kChaos;
-            };
+            static void LoadFromIni();
+            static bool SaveToIni();
+            static void ResetToDefaults();
+            static void LoadGameForms();
 
-            struct JunkSell {
-                bool ConfirmSell = true;
-                SortPriority SellPriority = SortPriority::kChaos;
-            };
+            [[nodiscard]] static bool ConfirmTransfer();
+            [[nodiscard]] static SortPriority GetTransferPriority();
 
-            struct JunkProtection {
-                bool ProtectEquipped = true;
-                bool ProtectFavorites = true;
-                bool ProtectEnchanted = false;
-            };
+            [[nodiscard]] static bool ConfirmSell();
+            [[nodiscard]] static SortPriority GetSellPriority();
 
-            static void Load() {
-                SKSE::log::info(" ");
-                SKSE::log::info("Updating Settings...");
+            [[nodiscard]] static bool ProtectEquipped();
+            [[nodiscard]] static bool ProtectFavorites();
+            [[nodiscard]] static bool ProtectEnchanted();
 
-                DIIIInstalled = (GetModuleHandleA("DynamicInventoryIconInjector.dll") != nullptr);
-                SKSE::log::info("DIII Detection | DynamicInventoryIconInjector.dll loaded: {}", DIIIInstalled);
+            [[nodiscard]] static float GetMarkJunkKey();
+            [[nodiscard]] static float GetTransferJunkKey();
+            [[nodiscard]] static float GetGamepadJunkKey();
+            [[nodiscard]] static float GetGamepadTransferHoldTime();
 
-                auto getForm = [](const char* formDesc, uint32_t formId) -> TESForm* {
-                    TESForm* form = FormUtil::Form::GetFormFromMod("JunkIt.esp", formId);
-                    if (!form) {
-                        SKSE::log::error("Failed to load {} (0x{:X}) from JunkIt.esp", formDesc, formId);
-                    }
-                    return form;
-                };
+            [[nodiscard]] static bool GetNotifyOnMarkUnmark();
+            [[nodiscard]] static bool GetNotifyOnJunkTransfer();
+            [[nodiscard]] static bool GetNotifyOnJunkSell();
+            [[nodiscard]] static bool GetAggressiveRefresh();
+            [[nodiscard]] static std::int32_t GetAggressiveRefreshMaxInterval();
+            [[nodiscard]] static float GetHeavyLoadDelayMultiplier();
+            [[nodiscard]] static std::size_t GetLargeUniqueTypes();
+            [[nodiscard]] static std::int32_t GetLargeTotalItems();
 
-                auto getGlobalValue = [&](const char* formDesc, uint32_t formId, float fallback) -> float {
-                    TESForm* form = getForm(formDesc, formId);
-                    TESGlobal* global = form ? form->As<TESGlobal>() : nullptr;
-                    if (!global) {
-                        SKSE::log::error("Failed to cast {} (0x{:X}) to TESGlobal, using default {}", formDesc, formId, fallback);
-                        return fallback;
-                    }
-                    return global->value;
-                };
+            [[nodiscard]] static bool GetAutoExport();
+            [[nodiscard]] static bool GetAutoImport();
+            [[nodiscard]] static bool GetReplaceJunkListOnLoad();
 
-                auto getGlobalBool = [&](const char* formDesc, uint32_t formId, bool fallback) -> bool {
-                    TESForm* form = getForm(formDesc, formId);
-                    TESGlobal* global = form ? form->As<TESGlobal>() : nullptr;
-                    if (!global) {
-                        SKSE::log::error("Failed to cast {} (0x{:X}) to TESGlobal, using default {}", formDesc, formId, fallback);
-                        return fallback;
-                    }
-                    return global->value != 0;
-                };
+            [[nodiscard]] static bool GetUpdateItemIcon();
+            [[nodiscard]] static bool GetUpdateSubTypeDisplay();
+            [[nodiscard]] static bool GetUseDynamicInventoryIcon();
 
-                std::string priorityString = "";
+            [[nodiscard]] static bool IsDIIIInstalled();
+            [[nodiscard]] static RE::TESObjectMISC* GetGold001();
 
-                // Keep old FormList references for migration only
-                if (auto* form = getForm("JunkList", 0x804)) JunkList = form->As<BGSListForm>();
+            static std::uint32_t& MarkJunkKeyValue();
+            static std::uint32_t& TransferJunkKeyValue();
+            static std::uint32_t& GamepadJunkKeyValue();
+            static std::int32_t& GamepadTransferHoldTimeValue();
 
-                MarkJunkKey = getGlobalValue("MarkJunkKey", 0x817, MarkJunkKey);
-                TransferJunkKey = getGlobalValue("TransferJunkKey", 0x818, TransferJunkKey);
-                GamepadJunkKey = getGlobalValue("GamepadJunkKey", 0x81C, GamepadJunkKey);
-                GamepadTransferHoldTime = getGlobalValue("GamepadTransferHoldTime", 0x81D, GamepadTransferHoldTime);
+            static bool& ConfirmTransferValue();
+            static bool& ConfirmSellValue();
+            static std::int32_t& TransferPriorityValue();
+            static std::int32_t& SellPriorityValue();
 
-                JunkTransfer.ConfirmTransfer = getGlobalBool("ConfirmTransfer", 0x808, JunkTransfer.ConfirmTransfer);
-                JunkTransfer.TransferPriority = static_cast<SortPriority>(getGlobalValue("TransferPriority", 0x80A, static_cast<float>(JunkTransfer.TransferPriority)));
+            static bool& ProtectEquippedValue();
+            static bool& ProtectFavoritesValue();
+            static bool& ProtectEnchantedValue();
 
-                switch (JunkTransfer.TransferPriority) {
-                    case SortPriority::kWeightHighLow:
-                        priorityString = "Weight [High > Low]";
-                        break;
-                    case SortPriority::kWeightLowHigh:
-                        priorityString = "Weight [Low > High]";
-                        break;
-                    case SortPriority::kValueHighLow:
-                        priorityString = "Value [High > Low]";
-                        break;
-                    case SortPriority::kValueLowHigh:
-                        priorityString = "Value [Low > High]";
-                        break;
-                    case SortPriority::kValueWeightHighLow:
-                        priorityString = "Value/Weight [High > Low]";
-                        break;
-                    case SortPriority::kValueWeightLowHigh:
-                        priorityString = "Value/Weight [Low > High]";
-                        break;
-                    case SortPriority::kChaos:
-                        priorityString = "Chaos";
-                        break;
-                }
+            static bool& NotifyOnMarkUnmarkValue();
+            static bool& NotifyOnJunkTransferValue();
+            static bool& NotifyOnJunkSellValue();
+            static float& HeavyLoadDelayMultiplierValue();
+            static std::int32_t& LargeUniqueTypesValue();
+            static std::int32_t& LargeTotalItemsValue();
 
-                SKSE::log::info(
-                    "Transfer Option Settings | ConfirmTransfer: {} | TransferPriority: {}", 
-                    JunkTransfer.ConfirmTransfer,
-                    priorityString
-                );
+            static bool& UpdateItemIconValue();
+            static bool& UpdateSubTypeDisplayValue();
+            static bool& UseDynamicInventoryIconValue();
 
-                JunkSell.ConfirmSell = getGlobalBool("ConfirmSell", 0x809, JunkSell.ConfirmSell);
-                JunkSell.SellPriority = static_cast<SortPriority>(getGlobalValue("SellPriority", 0x80B, static_cast<float>(JunkSell.SellPriority)));
+            static bool& AutoExportValue();
+            static bool& AutoImportValue();
+            static bool& ReplaceJunkListOnLoadValue();
+            static bool& AggressiveRefreshValue();
+            static std::int32_t& AggressiveRefreshMaxIntervalValue();
 
-                switch (JunkSell.SellPriority) {
-                    case SortPriority::kWeightHighLow:
-                        priorityString = "Weight [High > Low]";
-                        break;
-                    case SortPriority::kWeightLowHigh:
-                        priorityString = "Weight [Low > High]";
-                        break;
-                    case SortPriority::kValueHighLow:
-                        priorityString = "Value [High > Low]";
-                        break;
-                    case SortPriority::kValueLowHigh:
-                        priorityString = "Value [Low > High]";
-                        break;
-                    case SortPriority::kValueWeightHighLow:
-                        priorityString = "Value/Weight [High > Low]";
-                        break;
-                    case SortPriority::kValueWeightLowHigh:
-                        priorityString = "Value/Weight [Low > High]";
-                        break;
-                    case SortPriority::kChaos:
-                        priorityString = "Chaos";
-                        break;
-                }
-
-                SKSE::log::info(
-                    "Sell Option Settings | ConfirmSell: {} | SellPriority: {}",
-                    JunkSell.ConfirmSell,
-                    priorityString
-                );
-
-                JunkProtection.ProtectEquipped = getGlobalBool("ProtectEquipped", 0x810, JunkProtection.ProtectEquipped);
-                JunkProtection.ProtectFavorites = getGlobalBool("ProtectFavorites", 0x811, JunkProtection.ProtectFavorites);
-                JunkProtection.ProtectEnchanted = getGlobalBool("ProtectEnchanted", 0x813, JunkProtection.ProtectEnchanted);
-
-                SKSE::log::info(
-                    "Protection Settings | ProtectEquipped: {} | ProtectFavorites: {} | ProtectEnchanted: {}",
-                    JunkProtection.ProtectEquipped,
-                    JunkProtection.ProtectFavorites,
-                    JunkProtection.ProtectEnchanted
-                );
-
-                NotifyOnMarkUnmark = getGlobalBool("NotifyOnMarkUnmark", 0x814, NotifyOnMarkUnmark);
-                NotifyOnJunkTransfer = getGlobalBool("NotifyOnJunkTransfer", 0x815, NotifyOnJunkTransfer);
-                NotifyOnJunkSell = getGlobalBool("NotifyOnJunkSell", 0x816, NotifyOnJunkSell);
-
-                AggressiveRefresh = getGlobalBool("AggressiveRefresh", 0x822, AggressiveRefresh);
-                HeavyLoadDelayMultiplier = getGlobalValue("HeavyLoadDelayMultiplier", 0x828, HeavyLoadDelayMultiplier);
-
-                AutoExport = getGlobalBool("AutoExport", 0x826, AutoExport);
-                AutoImport = getGlobalBool("AutoImport", 0x827, AutoImport);
-
-                UpdateSubTypeDisplay = getGlobalBool("UpdateSubTypeDisplay", 0x823, UpdateSubTypeDisplay);
-                UpdateItemIcon = getGlobalBool("UpdateItemIcon", 0x824, UpdateItemIcon);
-                UseDynamicInventoryIcon = getGlobalBool("UseDynamicInventoryIcon", 0x825, UseDynamicInventoryIcon);
-
-                if (!DIIIInstalled && UseDynamicInventoryIcon) {
-                    SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
-                    UseDynamicInventoryIcon = false;
-                }
-
-                if (auto* form = getForm("TransferConfirmationMsg", 0x805)) TransferConfirmationMsg = form->As<BGSMessage>();
-                if (auto* form = getForm("RetrievalConfirmationMsg", 0x806)) RetrievalConfirmationMsg = form->As<BGSMessage>();
-                if (auto* form = getForm("SellConfirmationMsg", 0x807)) SellConfirmationMsg = form->As<BGSMessage>();
-
-                auto* goldForm = RE::TESForm::LookupByID(0xF);
-                if (goldForm) {
-                    Gold001 = goldForm->As<TESObjectMISC>();
-                } else {
-                    SKSE::log::error("Failed to lookup Gold001 (0xF)");
-                }
-
-                SKSE::log::info(
-                    "Notification Settings | NotifyOnMarkUnmark: {} | NotifyOnJunkTransfer: {} | NotifyOnJunkSell: {}",
-                    NotifyOnMarkUnmark,
-                    NotifyOnJunkTransfer,
-                    NotifyOnJunkSell
-                );
-
-                SKSE::log::info(
-                    "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {}",
-                    MarkJunkKey,
-                    TransferJunkKey,
-                    GamepadJunkKey,
-                    GamepadTransferHoldTime
-                );
-
-                SKSE::log::info(
-                    "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {}",
-                    AggressiveRefresh,
-                    AutoExport,
-                    AutoImport,
-                    HeavyLoadDelayMultiplier,
-                    LargeUniqueTypes,
-                    LargeTotalItems
-                );
-
-                SKSE::log::info(
-                    "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {}",
-                    UpdateItemIcon,
-                    UpdateSubTypeDisplay,
-                    UseDynamicInventoryIcon
-                );
-
-                SKSE::log::info(" ");
-            }
-
-            [[nodiscard]] static BGSListForm* GetJunkList() { return JunkList; }
-
-            [[nodiscard]] static bool ConfirmTransfer() { return JunkTransfer.ConfirmTransfer; }
-            [[nodiscard]] static SortPriority GetTransferPriority() { return JunkTransfer.TransferPriority; }
-
-            [[nodiscard]] static bool ConfirmSell() { return JunkSell.ConfirmSell; }
-            [[nodiscard]] static SortPriority GetSellPriority() { return JunkSell.SellPriority; }
-
-            [[nodiscard]] static bool ProtectEquipped() { return JunkProtection.ProtectEquipped; }
-            [[nodiscard]] static bool ProtectFavorites() { return JunkProtection.ProtectFavorites; }
-            [[nodiscard]] static bool ProtectEnchanted() { return JunkProtection.ProtectEnchanted; }
-
-            [[nodiscard]] static float GetMarkJunkKey() { return MarkJunkKey; }
-            [[nodiscard]] static float GetTransferJunkKey() { return TransferJunkKey; }
-            [[nodiscard]] static float GetGamepadJunkKey() { return GamepadJunkKey; }
-            [[nodiscard]] static float GetGamepadTransferHoldTime() { return GamepadTransferHoldTime; }
-
-            [[nodiscard]] static bool GetNotifyOnMarkUnmark() { return NotifyOnMarkUnmark; }
-            [[nodiscard]] static bool GetNotifyOnJunkTransfer() { return NotifyOnJunkTransfer; }
-            [[nodiscard]] static bool GetNotifyOnJunkSell() { return NotifyOnJunkSell; }
-            [[nodiscard]] static bool GetAggressiveRefresh() { return AggressiveRefresh; }
-            [[nodiscard]] static float GetHeavyLoadDelayMultiplier() { return HeavyLoadDelayMultiplier; }
-            [[nodiscard]] static std::size_t GetLargeUniqueTypes() { return LargeUniqueTypes; }
-            [[nodiscard]] static std::int32_t GetLargeTotalItems() { return LargeTotalItems; }
-
-            static void SetHeavyLoadThresholds(std::int32_t uniqueTypes, std::int32_t totalItems) {
-                LargeUniqueTypes = uniqueTypes < 1 ? 1 : static_cast<std::size_t>(uniqueTypes);
-                LargeTotalItems = totalItems < 1 ? 1 : totalItems;
-            }
-
-            [[nodiscard]] static bool GetAutoExport() { return AutoExport; }
-            [[nodiscard]] static bool GetAutoImport() { return AutoImport; }
-
-            [[nodiscard]] static bool GetUpdateItemIcon() { 
-                // if (DIIIInstalled && UseDynamicInventoryIcon) {
-                //     return false;
-                // }
-                return UpdateItemIcon;
-            }
-            [[nodiscard]] static bool GetUpdateSubTypeDisplay() { return UpdateSubTypeDisplay; }
-            [[nodiscard]] static bool GetUseDynamicInventoryIcon() { return UseDynamicInventoryIcon; }
-
-            [[nodiscard]] static bool IsDIIIInstalled() { return DIIIInstalled; }
-
-            [[nodiscard]] static BGSMessage* GetTransferConfirmationMsg() { return TransferConfirmationMsg; }
-            [[nodiscard]] static BGSMessage* GetRetrievalConfirmationMsg() { return RetrievalConfirmationMsg; }
-            [[nodiscard]] static BGSMessage* GetSellConfirmationMsg() { return SellConfirmationMsg; }
-
-            [[nodiscard]] static TESObjectMISC* GetGold001() { return Gold001; }
-
-        private: 
-
-            static inline float MarkJunkKey = 0x32;
-            static inline float TransferJunkKey = 0x49;
-            static inline float GamepadJunkKey = 270.0f;
-            static inline float GamepadTransferHoldTime = 2.0f;
-
-            static inline bool NotifyOnMarkUnmark = true;
-            static inline bool NotifyOnJunkTransfer = true;
-            static inline bool NotifyOnJunkSell = true;
-            static inline bool AggressiveRefresh = false;
-            static inline float HeavyLoadDelayMultiplier = 1.0f;
-            static inline std::size_t LargeUniqueTypes = 150;
-            static inline std::int32_t LargeTotalItems = 150;
-
-            static inline bool AutoExport = false;
-            static inline bool AutoImport = false;
-
-            static inline bool UpdateSubTypeDisplay = true;
-            static inline bool UpdateItemIcon = true;
-            static inline bool UseDynamicInventoryIcon = true;
-
-            static inline bool DIIIInstalled = false;
-
-            static inline BGSListForm* JunkList;  // Only for migration
-            static inline JunkTransfer JunkTransfer;
-            static inline JunkSell JunkSell;
-            static inline JunkProtection JunkProtection;
-
-            static inline BGSMessage* TransferConfirmationMsg = nullptr;
-            static inline BGSMessage* RetrievalConfirmationMsg = nullptr;
-            static inline BGSMessage* SellConfirmationMsg = nullptr;
-
-            static inline TESObjectMISC* Gold001 = nullptr;
-    };   
+            static void ApplyIntegrationGuards();
+            static void ClampValues();
+            static const char* SortPriorityLabel(SortPriority priority);
+    };
 }

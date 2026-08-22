@@ -7,6 +7,18 @@ Hook IDs and offsets must still be found manually for each version.
 
 # Requirements
 
+## Runtime (players)
+
+SKSE plugins are version-checked **before** they load. A loader abort that says the DLL is not supported means SKSE rejected the plugin metadata, or a *different* DLL in the same dialog.
+
+- Match **SKSE** to the game executable. Steam Skyrim AE **1.6.1170** needs **SKSE 2.2.6** (`skse64_2_02_06`).
+- Install [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444), Anniversary Edition all-in-one, so `Data/SKSE/Plugins/versionlib-1-6-1170-0.bin` is present. Junk It declares Address Library compatibility; without that database the plugin can fail after SKSE accepts it.
+- If the loader still aborts, open `Documents\My Games\Skyrim Special Edition\SKSE\skse64.log` and confirm the incompatible line names **JunkIt.dll**. If it names another plugin (Address Library, SKSE Menu Framework, Engine Fixes), that other DLL is the one SKSE is rejecting.
+- [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) is required at runtime for the in-game settings pages in the Mod Control Panel.
+- Settings live in `Data/SKSE/Plugins/JunkIt.ini`. If that file is missing, Junk It will migrate values from `Data/MCM/Settings/JunkIt.ini` once, then write the new INI. SkyUI / MCM Helper is no longer used.
+
+## Build (developers)
+
 - [Visual Studio 2022](https://visualstudio.microsoft.com/) (_the free Community edition_)
 - [`vcpkg`](https://github.com/microsoft/vcpkg)
   - 1. Clone the repository using git OR [download it as a .zip](https://github.com/microsoft/vcpkg/archive/refs/heads/master.zip)
