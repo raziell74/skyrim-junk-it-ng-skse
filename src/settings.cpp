@@ -31,8 +31,8 @@ namespace JunkIt {
             bool notifyOnJunkTransfer = true;
             bool notifyOnJunkSell = true;
             float heavyLoadDelayMultiplier = 1.0f;
-            std::int32_t largeUniqueTypes = 150;
-            std::int32_t largeTotalItems = 150;
+            std::int32_t largeUniqueTypes = 500;
+            std::int32_t largeTotalItems = 1000;
 
             bool updateItemIcon = true;
             bool updateSubTypeDisplay = true;
