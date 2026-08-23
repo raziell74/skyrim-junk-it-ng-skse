@@ -1,5 +1,6 @@
 #include "event.h"
 #include "junk.h"
+#include "SkyPromptIntegration.h"
 #include "UI.h"
 
 namespace JunkIt {
@@ -15,20 +16,55 @@ namespace JunkIt {
         return ActiveMenuType::kNone;
     }
 
+    void InputEventHandler::ExecuteAction(JUNKIT_EVENT_TYPE type) {
+        AtomicGuard guard(busy);
+        if (!guard) {
+            return;
+        }
+
+        if (Settings::GetAggressiveRefresh()) {
+            UIUtil::ItemList::Refresh();
+            JunkHandler::StartAggressiveRefresh();
+        }
+
+        switch (type) {
+            case JUNKIT_EVENT_TYPE::kMark:
+                JunkHandler::ToggleIsJunk();
+                break;
+            case JUNKIT_EVENT_TYPE::kTransfer:
+                JunkHandler::TransferJunk();
+                break;
+            case JUNKIT_EVENT_TYPE::kSell:
+                JunkHandler::SellJunk();
+                break;
+            default:
+                break;
+        }
+
+        if (Settings::GetAggressiveRefresh()) {
+            UIUtil::ItemList::Refresh();
+            JunkHandler::StartAggressiveRefresh();
+        }
+
+        if (type == JUNKIT_EVENT_TYPE::kMark) {
+            SkyPromptIntegration::GetSingleton().SyncPromptLabels();
+        }
+    }
+
     void InputEventHandler::HandleKeyDown(uint32_t keyCode, ActiveMenuType activeMenu) {
         uint32_t markKey = static_cast<uint32_t>(Settings::GetMarkJunkKey());
         uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
 
         if (keyCode == markKey) {
             SKSE::log::info("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", keyCode);
-            JunkHandler::ToggleIsJunk();
+            ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
         } else if (keyCode == transferKey) {
             if (activeMenu == ActiveMenuType::kContainer) {
                 SKSE::log::info("Transfer Junk key pressed (KeyCode: 0x{:X}) in Container menu", keyCode);
-                JunkHandler::TransferJunk();
+                ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
             } else if (activeMenu == ActiveMenuType::kBarter) {
                 SKSE::log::info("Sell Junk key pressed (KeyCode: 0x{:X}) in Barter menu", keyCode);
-                JunkHandler::SellJunk();
+                ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
             }
         }
     }
@@ -38,14 +74,14 @@ namespace JunkIt {
 
         if (holdTime < holdThreshold) {
             SKSE::log::info("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
-            JunkHandler::ToggleIsJunk();
+            ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
         } else {
             if (activeMenu == ActiveMenuType::kContainer) {
                 SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
-                JunkHandler::TransferJunk();
+                ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
             } else if (activeMenu == ActiveMenuType::kBarter) {
                 SKSE::log::info("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
-                JunkHandler::SellJunk();
+                ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
             }
         }
     }
@@ -85,6 +121,7 @@ namespace JunkIt {
         uint32_t markKey = static_cast<uint32_t>(Settings::GetMarkJunkKey());
         uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
         uint32_t gamepadKey = static_cast<uint32_t>(Settings::GetGamepadJunkKey());
+        const bool skyPromptShowing = SkyPromptIntegration::GetSingleton().IsShowing();
 
         for (auto event = *a_event; event; event = event->next) {
             auto buttonEvent = event->AsButtonEvent();
@@ -101,40 +138,17 @@ namespace JunkIt {
                     ActiveMenuType currentMenu = GetActiveMenu();
                     if (currentMenu == ActiveMenuType::kNone) continue;
 
-                    AtomicGuard guard(busy);
-                    if (!guard) continue;
-
-                    if (Settings::GetAggressiveRefresh()) {
-                        UIUtil::ItemList::Refresh();
-                        JunkHandler::StartAggressiveRefresh();
-                    }
-
                     HandleGamepadKeyUp(buttonEvent->HeldDuration(), currentMenu);
-
-                    if (Settings::GetAggressiveRefresh()) {
-                        UIUtil::ItemList::Refresh();
-                        JunkHandler::StartAggressiveRefresh();
-                    }
                 }
-            } else if (keyCode == markKey || keyCode == transferKey) {
+            } else if (!skyPromptShowing && (keyCode == markKey || keyCode == transferKey)) {
                 if (buttonEvent->IsDown()) {
-                    AtomicGuard guard(busy);
-                    if (!guard) continue;
-
-                    if (Settings::GetAggressiveRefresh()) {
-                        UIUtil::ItemList::Refresh();
-                        JunkHandler::StartAggressiveRefresh();
-                    }
-
                     HandleKeyDown(keyCode, activeMenu);
-
-                    if (Settings::GetAggressiveRefresh()) {
-                        UIUtil::ItemList::Refresh();
-                        JunkHandler::StartAggressiveRefresh();
-                    }
                 }
             }
         }
+
+        SkyPromptIntegration::GetSingleton().SyncPromptLabels();
+        SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
 
         return Result::kContinue;
     }

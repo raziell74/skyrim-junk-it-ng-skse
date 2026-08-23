@@ -53,6 +53,7 @@ namespace JunkIt {
             [[nodiscard]] static bool GetUseDynamicInventoryIcon();
 
             [[nodiscard]] static bool IsDIIIInstalled();
+            [[nodiscard]] static bool IsSkyPromptInstalled();
             [[nodiscard]] static RE::TESObjectMISC* GetGold001();
 
             static std::uint32_t& MarkJunkKeyValue();

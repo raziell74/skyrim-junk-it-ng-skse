@@ -13,4 +13,5 @@ set(headers ${headers}
     src/I4MovieHook.h
     src/Translation.h
     src/UI.h
+    src/SkyPromptIntegration.h
 )

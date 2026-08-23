@@ -8,6 +8,23 @@
 #include "I4Integration.h"
 #include "Translation.h"
 #include "UI.h"
+#include "SkyPromptIntegration.h"
+
+SKSE_EXPORT constinit SKSE::PluginVersionData SKSEPlugin_Version = []() noexcept {
+	SKSE::PluginVersionData v;
+	v.PluginName("JunkIt");
+	v.PluginVersion({ 2, 0, 3, 0 });
+	v.UsesAddressLibrary();
+	v.UsesNoStructs();
+	return v;
+}();
+
+SKSE_EXPORT bool SKSEPlugin_Query(SKSE::QueryInterface*, SKSE::PluginInfo* pluginInfo) {
+	pluginInfo->infoVersion = SKSE::PluginInfo::kVersion;
+	pluginInfo->name = SKSEPlugin_Version.GetPluginName().data();
+	pluginInfo->version = SKSEPlugin_Version.GetPluginVersion().pack();
+	return true;
+}
 
 void DIIIMessageHandler(SKSE::MessagingInterface::Message* msg) {
 	if (msg->type == DIII::kMessage_GetAPI) {
@@ -33,6 +50,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::Translation::Load();
 			JunkIt::UI::Register();
 			JunkIt::InputEventHandler::Install();
+			JunkIt::SkyPromptIntegration::GetSingleton().Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
@@ -63,8 +81,8 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     SKSE::Init(skse);
 	SetupLog();
 
-	const auto* plugin = SKSE::PluginDeclaration::GetSingleton();
-	SKSE::log::info("{} loaded (game {})", plugin->GetName(), skse->RuntimeVersion().string("."));
+	const auto* plugin = SKSE::PluginVersionData::GetSingleton();
+	SKSE::log::info("{} loaded (game {})", plugin->GetPluginName(), skse->RuntimeVersion().string("."));
 
 	SKSE::AllocTrampoline(64);
 

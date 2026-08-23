@@ -1,6 +1,7 @@
 #include "junk.h"
 #include "JunkData.h"
 #include "SendUIMessage.h"
+#include "SkyPromptIntegration.h"
 #include "Translation.h"
 #include <SKSE/API.h>
 #include <algorithm>
@@ -125,6 +126,7 @@ namespace JunkIt {
             }
 
             ApplyInventoryUIRefresh(primary, secondary, largeOp);
+            SkyPromptIntegration::GetSingleton().RefreshPrompts();
         });
     }
 
@@ -185,6 +187,7 @@ namespace JunkIt {
         }
 
         StartAggressiveRefresh();
+        SkyPromptIntegration::GetSingleton().RefreshPrompts();
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
@@ -219,6 +222,161 @@ namespace JunkIt {
         }
 
         return count > 0 ? count : 0;
+    }
+
+    bool JunkHandler::TryReadBarterPrices(float& vendorGold, float& sellMult) {
+        const auto ui = RE::UI::GetSingleton();
+        auto menu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
+        if (!menu || !menu->uiMovie) {
+            return false;
+        }
+
+        RE::GFxValue gfxVendorGold, gfxSellMult;
+        menu->uiMovie->GetVariable(&gfxVendorGold, "_root.Menu_mc._vendorGold");
+        menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc._sellMult");
+
+        vendorGold = static_cast<float>(gfxVendorGold.GetNumber());
+        sellMult = static_cast<float>(gfxSellMult.GetNumber());
+
+        if (sellMult <= 0.0f) {
+            menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc.fSellMult");
+            sellMult = static_cast<float>(gfxSellMult.GetNumber());
+            if (sellMult <= 0.0f) {
+                sellMult = 0.5f;
+            }
+        }
+
+        return true;
+    }
+
+    JunkHandler::SellTotals JunkHandler::ComputeSellTotals(
+        const std::vector<std::pair<InventoryEntryData*, Count>>& sellList,
+        float vendorGold,
+        float sellMult) {
+        SellTotals totals;
+        float calculatedVendorGold = vendorGold;
+        float totalSellValue = 0.0f;
+
+        for (auto& [entryData, itemCount] : sellList) {
+            if (!entryData || !entryData->object || itemCount <= 0) {
+                continue;
+            }
+
+            Count iCount = itemCount;
+            totals.totalPossibleToSell += iCount;
+
+            Count menuValue = GetMenuItemValue(entryData);
+            float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entryData->GetValue());
+            float sellValue = itemGoldValue * sellMult;
+
+            if (sellValue <= 0.0f) {
+                totals.totalToSell += iCount;
+                totals.itemsToSell.push_back({entryData, iCount});
+                continue;
+            }
+
+            while (iCount > 0 && RoundNumber(sellValue * static_cast<float>(iCount)) > RoundNumber(calculatedVendorGold)) {
+                iCount -= 1;
+            }
+
+            if (iCount > 0) {
+                calculatedVendorGold -= sellValue * static_cast<float>(iCount);
+                totalSellValue += sellValue * static_cast<float>(iCount);
+                totals.totalToSell += iCount;
+                totals.itemsToSell.push_back({entryData, iCount});
+            }
+        }
+
+        totals.roundedSellValue = RoundNumber(totalSellValue);
+        return totals;
+    }
+
+    std::int32_t JunkHandler::PreviewTransferCount() {
+        TESObjectREFR* transferContainer = GetContainerMenuContainer();
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (!transferContainer || !player) {
+            return 0;
+        }
+
+        const auto ui = RE::UI::GetSingleton();
+        auto menu = ui ? ui->GetMenu<ContainerMenu>() : nullptr;
+        if (!menu || !menu->uiMovie) {
+            return 0;
+        }
+
+        RE::GFxValue result;
+        menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
+        const int menuView = static_cast<int>(result.GetNumber());
+        auto transferList = BuildTransferList();
+        const auto containerMode = GetContainerMode();
+
+        Count total = 0;
+        if (menuView == 0) {
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) {
+                    continue;
+                }
+                total += GetItemCount(transferContainer, entryData->object);
+            }
+            return total;
+        }
+
+        if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
+            Actor* transferActor = transferContainer->As<Actor>();
+            if (!transferActor) {
+                return 0;
+            }
+
+            float maxWeight = transferActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
+            float currentWeight = transferContainer->GetWeightInContainer();
+
+            for (auto* entryData : transferList) {
+                if (!entryData || !entryData->object) {
+                    continue;
+                }
+
+                Count iCount = GetItemCount(player, entryData->object);
+                if (iCount <= 0) {
+                    continue;
+                }
+
+                float itemWeight = entryData->object->GetWeight();
+                float currentWeightWithItems = (itemWeight * static_cast<float>(iCount)) + currentWeight;
+                while (currentWeightWithItems > maxWeight && iCount > 0) {
+                    iCount -= 1;
+                    currentWeightWithItems = (itemWeight * static_cast<float>(iCount)) + currentWeight;
+                }
+
+                if (iCount > 0) {
+                    currentWeight += (itemWeight * static_cast<float>(iCount));
+                    total += iCount;
+                }
+            }
+            return total;
+        }
+
+        for (auto* entryData : transferList) {
+            if (!entryData || !entryData->object) {
+                continue;
+            }
+            total += GetItemCount(player, entryData->object);
+        }
+        return total;
+    }
+
+    std::optional<std::int32_t> JunkHandler::PreviewSellGold() {
+        auto sellList = BuildSellList();
+        if (sellList.empty()) {
+            return std::nullopt;
+        }
+
+        float vendorGold = 0.0f;
+        float sellMult = 0.0f;
+        if (!TryReadBarterPrices(vendorGold, sellMult)) {
+            return 0;
+        }
+
+        return ComputeSellTotals(sellList, vendorGold, sellMult).roundedSellValue;
     }
 
     void JunkHandler::MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList) {
@@ -608,6 +766,7 @@ namespace JunkIt {
                             ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
                         } else {
                             SKSE::log::info("User cancelled retrieval");
+                            SkyPromptIntegration::GetSingleton().RefreshPrompts();
                         }
                         operationInProgress.store(false);
                     });
@@ -636,6 +795,7 @@ namespace JunkIt {
                             ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
                         } else {
                             SKSE::log::info("User cancelled transfer");
+                            SkyPromptIntegration::GetSingleton().RefreshPrompts();
                         }
                         operationInProgress.store(false);
                     });
@@ -821,68 +981,21 @@ namespace JunkIt {
             return;
         }
 
-        RE::GFxValue gfxVendorGold, gfxSellMult;
-        menu->uiMovie->GetVariable(&gfxVendorGold, "_root.Menu_mc._vendorGold");
-        menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc._sellMult");
-
-        float vendorGoldDisplay = static_cast<float>(gfxVendorGold.GetNumber());
-        float sellMult = static_cast<float>(gfxSellMult.GetNumber());
-
-        if (sellMult <= 0.0f) {
-            SKSE::log::warn("Vendor sell multiplier from _sellMult is invalid ({}), trying fSellMult...", sellMult);
-            menu->uiMovie->GetVariable(&gfxSellMult, "_root.Menu_mc.fSellMult");
-            sellMult = static_cast<float>(gfxSellMult.GetNumber());
-            if (sellMult > 0.0f) {
-                SKSE::log::info("Successfully read fSellMult: {}", sellMult);
-            } else {
-                SKSE::log::error("Both _sellMult and fSellMult failed, using fallback 0.5");
-                sellMult = 0.5f;
-            }
+        float vendorGoldDisplay = 0.0f;
+        float sellMult = 0.0f;
+        if (!TryReadBarterPrices(vendorGoldDisplay, sellMult)) {
+            operationInProgress.store(false);
+            return;
         }
 
         SKSE::log::info("Vendor Gold: {}", vendorGoldDisplay);
         SKSE::log::info("Vendor Sell Mult: {}", sellMult);
 
-        Count totalToSell = 0;
-        Count totalPossibleToSell = 0;
-        float calculatedVendorGold = vendorGoldDisplay;
-        float totalSellValue = 0.0f;
-
-        std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell;
-
-        for (auto& [entryData, itemCount] : sellList) {
-            if (!entryData || !entryData->object || itemCount <= 0) {
-                continue;
-            }
-
-            Count iCount = itemCount;
-            totalPossibleToSell += iCount;
-
-            SKSE::log::info("Calculating Sell Item: {} x{}", entryData->object->GetName(), iCount);
-
-            Count menuValue = GetMenuItemValue(entryData);
-            float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entryData->GetValue());
-            float sellValue = itemGoldValue * sellMult;
-
-            if (sellValue <= 0.0f) {
-                totalToSell += iCount;
-                itemsToSell.push_back({entryData, iCount});
-                SKSE::log::info("Sell {} {} for 0 gold (zero-value item)", iCount, entryData->object->GetName());
-                continue;
-            }
-
-            while (iCount > 0 && RoundNumber(sellValue * static_cast<float>(iCount)) > RoundNumber(calculatedVendorGold)) {
-                iCount -= 1;
-            }
-
-            if (iCount > 0) {
-                calculatedVendorGold -= sellValue * static_cast<float>(iCount);
-                totalSellValue += sellValue * static_cast<float>(iCount);
-                totalToSell += iCount;
-                itemsToSell.push_back({entryData, iCount});
-                SKSE::log::info("Sell {} {} for {} gold ({} gold per item)", iCount, entryData->object->GetName(), RoundNumber(sellValue * static_cast<float>(iCount)), RoundNumber(sellValue));
-            }
-        }
+        auto totals = ComputeSellTotals(sellList, vendorGoldDisplay, sellMult);
+        auto itemsToSell = std::move(totals.itemsToSell);
+        Count totalToSell = totals.totalToSell;
+        Count totalPossibleToSell = totals.totalPossibleToSell;
+        Count roundedSellValue = totals.roundedSellValue;
 
         if (totalToSell <= 0) {
             if (totalPossibleToSell == 0) {
@@ -896,8 +1009,7 @@ namespace JunkIt {
             return;
         }
 
-        Count roundedSellValue = RoundNumber(totalSellValue);
-        SKSE::log::info("Sale Summary: Selling {} items for {} gold (Vendor will have {} gold remaining)", totalToSell, roundedSellValue, RoundNumber(calculatedVendorGold));
+        SKSE::log::info("Sale Summary: Selling {} items for {} gold", totalToSell, roundedSellValue);
 
         if (Settings::ConfirmSell()) {
             SKSE::log::info("Showing confirmation dialog for sale");
@@ -910,6 +1022,7 @@ namespace JunkIt {
                         ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
                     } else {
                         SKSE::log::info("User cancelled sale");
+                        SkyPromptIntegration::GetSingleton().RefreshPrompts();
                     }
                     operationInProgress.store(false);
                 });

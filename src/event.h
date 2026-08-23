@@ -46,6 +46,7 @@ namespace JunkIt {
         }
 
         RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_eventSource) override;
+        void ExecuteAction(JUNKIT_EVENT_TYPE type);
 
     private:
         InputEventHandler() = default;

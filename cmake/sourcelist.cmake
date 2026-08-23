@@ -9,4 +9,5 @@ set(sources ${sources}
     src/settings.cpp
     src/Translation.cpp
     src/UI.cpp
+    src/SkyPromptIntegration.cpp
 )
