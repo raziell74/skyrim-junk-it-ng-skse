@@ -6,7 +6,7 @@ namespace JunkIt {
     void I4MovieHook::Install() {
         SKSE::log::info("Installing I4MovieHook...");
 
-        REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(80302, 82557), REL::VariantOffset(0x1D9, 0x1DD, 0x1D9) };
+        REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(80302, 82325), REL::VariantOffset(0x1D9, 0x1DD, 0x1D9) };
 
         if (!REL::make_pattern<"FF 15">().match(target.address())) {
             SKSE::log::error("Failed to install I4MovieHook - pattern mismatch");
