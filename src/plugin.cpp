@@ -13,7 +13,7 @@
 SKSE_EXPORT constinit SKSE::PluginVersionData SKSEPlugin_Version = []() noexcept {
 	SKSE::PluginVersionData v;
 	v.PluginName("JunkIt");
-	v.PluginVersion({ 2, 0, 3, 0 });
+	v.PluginVersion({ 0, 2, 0, 5 });
 	v.UsesAddressLibrary();
 	v.UsesUpdatedStructs();
 	return v;
