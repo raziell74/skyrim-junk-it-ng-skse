@@ -139,64 +139,74 @@ namespace JunkIt {
             }
         }
 
-        void ReadBool(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, bool& value) {
+        bool ReadBool(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, bool& value) {
             if (auto* raw = FindValue(ini, section, altSection, key)) {
                 value = ParseBool(*raw, value);
+                return true;
             }
+            return false;
         }
 
-        void ReadInt(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, std::int32_t& value) {
+        bool ReadInt(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, std::int32_t& value) {
             if (auto* raw = FindValue(ini, section, altSection, key)) {
                 value = ParseInt(*raw, value);
+                return true;
             }
+            return false;
         }
 
-        void ReadUInt(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, std::uint32_t& value) {
+        bool ReadUInt(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, std::uint32_t& value) {
             if (auto* raw = FindValue(ini, section, altSection, key)) {
                 value = static_cast<std::uint32_t>(ParseInt(*raw, static_cast<std::int32_t>(value)));
+                return true;
             }
+            return false;
         }
 
-        void ReadFloat(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, float& value) {
+        bool ReadFloat(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, float& value) {
             if (auto* raw = FindValue(ini, section, altSection, key)) {
                 value = ParseFloat(*raw, value);
+                return true;
             }
+            return false;
         }
 
-        void ApplyIni(const IniMap& ini) {
-            ReadUInt(ini, "Hotkey", {}, "iJunkKey", g_values.markJunkKey);
-            ReadUInt(ini, "Hotkey", {}, "iTransferJunkKey", g_values.transferJunkKey);
-            ReadUInt(ini, "Hotkey", {}, "iGamepadJunkKey", g_values.gamepadJunkKey);
-            ReadInt(ini, "Hotkey", {}, "iGamepadTransferHoldTime", g_values.gamepadTransferHoldTime);
+        bool ApplyIni(const IniMap& ini) {
+            bool complete = true;
+            complete &= ReadUInt(ini, "Hotkey", {}, "iJunkKey", g_values.markJunkKey);
+            complete &= ReadUInt(ini, "Hotkey", {}, "iTransferJunkKey", g_values.transferJunkKey);
+            complete &= ReadUInt(ini, "Hotkey", {}, "iGamepadJunkKey", g_values.gamepadJunkKey);
+            complete &= ReadInt(ini, "Hotkey", {}, "iGamepadTransferHoldTime", g_values.gamepadTransferHoldTime);
 
-            ReadBool(ini, "Confirmation", {}, "bConfirmTransfer", g_values.confirmTransfer);
-            ReadBool(ini, "Confirmation", {}, "bConfirmSell", g_values.confirmSell);
+            complete &= ReadBool(ini, "Confirmation", {}, "bConfirmTransfer", g_values.confirmTransfer);
+            complete &= ReadBool(ini, "Confirmation", {}, "bConfirmSell", g_values.confirmSell);
 
-            ReadInt(ini, "Priority", {}, "iTransferPriority", g_values.transferPriority);
-            ReadInt(ini, "Priority", {}, "iSellPriority", g_values.sellPriority);
+            complete &= ReadInt(ini, "Priority", {}, "iTransferPriority", g_values.transferPriority);
+            complete &= ReadInt(ini, "Priority", {}, "iSellPriority", g_values.sellPriority);
 
-            ReadBool(ini, "Protection", {}, "bProtectEquipped", g_values.protectEquipped);
-            ReadBool(ini, "Protection", {}, "bProtectFavorites", g_values.protectFavorites);
-            ReadBool(ini, "Protection", {}, "bProtectEnchanted", g_values.protectEnchanted);
+            complete &= ReadBool(ini, "Protection", {}, "bProtectEquipped", g_values.protectEquipped);
+            complete &= ReadBool(ini, "Protection", {}, "bProtectFavorites", g_values.protectFavorites);
+            complete &= ReadBool(ini, "Protection", {}, "bProtectEnchanted", g_values.protectEnchanted);
 
-            ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnMarkUnmark", g_values.notifyOnMarkUnmark);
-            ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkTransfer", g_values.notifyOnJunkTransfer);
-            ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkSell", g_values.notifyOnJunkSell);
-            ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
-            ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
-            ReadInt(ini, "Misc", "MiscSettings", "iLargeTotalItems", g_values.largeTotalItems);
+            complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnMarkUnmark", g_values.notifyOnMarkUnmark);
+            complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkTransfer", g_values.notifyOnJunkTransfer);
+            complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkSell", g_values.notifyOnJunkSell);
+            complete &= ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
+            complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
+            complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeTotalItems", g_values.largeTotalItems);
 
-            ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateItemIcon", g_values.updateItemIcon);
-            ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateSubTypeDisplay", g_values.updateSubTypeDisplay);
-            ReadBool(ini, "Integration", "IntegrationSettings", "bUseDynamicInventoryIcon", g_values.useDynamicInventoryIcon);
-            ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptShowCounts", g_values.skyPromptShowCounts);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateItemIcon", g_values.updateItemIcon);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateSubTypeDisplay", g_values.updateSubTypeDisplay);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUseDynamicInventoryIcon", g_values.useDynamicInventoryIcon);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptShowCounts", g_values.skyPromptShowCounts);
 
-            ReadBool(ini, "Utility", {}, "bReplaceJunkListOnLoad", g_values.replaceJunkListOnLoad);
-            ReadBool(ini, "Utility", {}, "bAggressiveRefresh", g_values.aggressiveRefresh);
-            ReadInt(ini, "Utility", {}, "iAggressiveRefreshMaxInterval", g_values.aggressiveRefreshMaxInterval);
+            complete &= ReadBool(ini, "Utility", {}, "bReplaceJunkListOnLoad", g_values.replaceJunkListOnLoad);
+            complete &= ReadBool(ini, "Utility", {}, "bAggressiveRefresh", g_values.aggressiveRefresh);
+            complete &= ReadInt(ini, "Utility", {}, "iAggressiveRefreshMaxInterval", g_values.aggressiveRefreshMaxInterval);
 
-            ReadBool(ini, "Maintenance", {}, "bAutoSaveJunkListToFile", g_values.autoExport);
-            ReadBool(ini, "Maintenance", {}, "bAutoLoadJunkListFromFile", g_values.autoImport);
+            complete &= ReadBool(ini, "Maintenance", {}, "bAutoSaveJunkListToFile", g_values.autoExport);
+            complete &= ReadBool(ini, "Maintenance", {}, "bAutoLoadJunkListFromFile", g_values.autoImport);
+            return complete;
         }
 
         void LogSettings() {
@@ -288,8 +298,16 @@ namespace JunkIt {
         const auto mcmPath = AbsolutePath(kMcmIniPath);
 
         if (std::filesystem::exists(iniPath)) {
-            ApplyIni(ParseIni(iniPath));
+            ResetToDefaults();
+            const bool complete = ApplyIni(ParseIni(iniPath));
             SKSE::log::info("Loaded settings from {}", iniPath.string());
+            ClampValues();
+            ApplyIntegrationGuards();
+            if (!complete) {
+                SaveToIni();
+                SKSE::log::info("Filled missing settings in {}", iniPath.string());
+            }
+            LogSettings();
         } else if (std::filesystem::exists(mcmPath)) {
             ApplyIni(ParseIni(mcmPath));
             SKSE::log::info("Migrated settings from {}", mcmPath.string());
@@ -297,18 +315,12 @@ namespace JunkIt {
             ApplyIntegrationGuards();
             SaveToIni();
             LogSettings();
-            return;
         } else {
             SKSE::log::info("No settings INI found, writing defaults to {}", iniPath.string());
             ResetToDefaults();
             SaveToIni();
             LogSettings();
-            return;
         }
-
-        ClampValues();
-        ApplyIntegrationGuards();
-        LogSettings();
     }
 
     bool Settings::SaveToIni() {
