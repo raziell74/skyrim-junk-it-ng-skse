@@ -37,6 +37,7 @@ namespace JunkIt {
             bool updateItemIcon = true;
             bool updateSubTypeDisplay = true;
             bool useDynamicInventoryIcon = true;
+            bool skyPromptShowCounts = true;
 
             bool autoExport = false;
             bool autoImport = false;
@@ -188,6 +189,7 @@ namespace JunkIt {
             ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateItemIcon", g_values.updateItemIcon);
             ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateSubTypeDisplay", g_values.updateSubTypeDisplay);
             ReadBool(ini, "Integration", "IntegrationSettings", "bUseDynamicInventoryIcon", g_values.useDynamicInventoryIcon);
+            ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptShowCounts", g_values.skyPromptShowCounts);
 
             ReadBool(ini, "Utility", {}, "bReplaceJunkListOnLoad", g_values.replaceJunkListOnLoad);
             ReadBool(ini, "Utility", {}, "bAggressiveRefresh", g_values.aggressiveRefresh);
@@ -234,10 +236,11 @@ namespace JunkIt {
                 g_values.largeUniqueTypes,
                 g_values.largeTotalItems);
             SKSE::log::info(
-                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {}",
+                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptShowCounts: {}",
                 g_values.updateItemIcon,
                 g_values.updateSubTypeDisplay,
-                g_values.useDynamicInventoryIcon);
+                g_values.useDynamicInventoryIcon,
+                g_values.skyPromptShowCounts);
             SKSE::log::info(" ");
         }
 
@@ -360,7 +363,8 @@ namespace JunkIt {
             out << "[Integration]\n";
             out << "bUpdateItemIcon=" << (g_values.updateItemIcon ? 1 : 0) << "\n";
             out << "bUpdateSubTypeDisplay=" << (g_values.updateSubTypeDisplay ? 1 : 0) << "\n";
-            out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n\n";
+            out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n";
+            out << "bSkyPromptShowCounts=" << (g_values.skyPromptShowCounts ? 1 : 0) << "\n\n";
 
             out << "[Utility]\n";
             out << "bReplaceJunkListOnLoad=" << (g_values.replaceJunkListOnLoad ? 1 : 0) << "\n";
@@ -447,6 +451,7 @@ namespace JunkIt {
     bool Settings::GetUpdateItemIcon() { return g_values.updateItemIcon; }
     bool Settings::GetUpdateSubTypeDisplay() { return g_values.updateSubTypeDisplay; }
     bool Settings::GetUseDynamicInventoryIcon() { return g_values.useDynamicInventoryIcon; }
+    bool Settings::GetSkyPromptShowCounts() { return g_values.skyPromptShowCounts; }
 
     bool Settings::IsDIIIInstalled() { return g_values.diiiInstalled; }
     bool Settings::IsSkyPromptInstalled() { return g_values.skyPromptInstalled; }
@@ -476,6 +481,7 @@ namespace JunkIt {
     bool& Settings::UpdateItemIconValue() { return g_values.updateItemIcon; }
     bool& Settings::UpdateSubTypeDisplayValue() { return g_values.updateSubTypeDisplay; }
     bool& Settings::UseDynamicInventoryIconValue() { return g_values.useDynamicInventoryIcon; }
+    bool& Settings::SkyPromptShowCountsValue() { return g_values.skyPromptShowCounts; }
 
     bool& Settings::AutoExportValue() { return g_values.autoExport; }
     bool& Settings::AutoImportValue() { return g_values.autoImport; }

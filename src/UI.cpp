@@ -477,6 +477,19 @@ namespace JunkIt {
             ImGui::TextWrapped("%s", Translation::Get(
                 Settings::IsSkyPromptInstalled() ? "$JunkIt_SkyPromptInstalled" : "$JunkIt_SkyPromptNotInstalled"
             ).c_str());
+            if (BeginSettingsTable("skyprompt")) {
+                ImGui::BeginDisabled(!Settings::IsSkyPromptInstalled());
+                const bool skyPromptChanged = CheckboxRow(
+                    "$JunkIt_SkyPromptShowCounts",
+                    "$JunkIt_SkyPromptShowCounts_Help",
+                    Settings::SkyPromptShowCountsValue());
+                ImGui::EndDisabled();
+                ImGui::EndTable();
+                if (skyPromptChanged) {
+                    SaveSettings();
+                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+            }
 
             RenderStatus();
             PopBrandColors();

@@ -258,11 +258,6 @@ namespace JunkIt {
     }
 
     std::string SkyPromptIntegration::FormatTransferPrompt() {
-        const auto count = JunkHandler::PreviewTransferCount();
-        if (count <= 0) {
-            return {};
-        }
-
         const char* key = "$JunkIt_Prompt_Retrieve";
         const auto ui = RE::UI::GetSingleton();
         auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
@@ -274,10 +269,23 @@ namespace JunkIt {
             }
         }
 
+        if (!Settings::GetSkyPromptShowCounts()) {
+            return Translation::Get(key);
+        }
+
+        const auto count = JunkHandler::PreviewTransferCount();
+        if (count <= 0) {
+            return {};
+        }
+
         return fmt::format("{} ({})", Translation::Get(key), count);
     }
 
     std::string SkyPromptIntegration::FormatSellPrompt() {
+        if (!Settings::GetSkyPromptShowCounts()) {
+            return Translation::Get("$JunkIt_Prompt_Sell");
+        }
+
         const auto gold = JunkHandler::PreviewSellGold();
         if (!gold) {
             return {};

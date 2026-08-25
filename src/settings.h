@@ -51,6 +51,7 @@ namespace JunkIt {
             [[nodiscard]] static bool GetUpdateItemIcon();
             [[nodiscard]] static bool GetUpdateSubTypeDisplay();
             [[nodiscard]] static bool GetUseDynamicInventoryIcon();
+            [[nodiscard]] static bool GetSkyPromptShowCounts();
 
             [[nodiscard]] static bool IsDIIIInstalled();
             [[nodiscard]] static bool IsSkyPromptInstalled();
@@ -80,6 +81,7 @@ namespace JunkIt {
             static bool& UpdateItemIconValue();
             static bool& UpdateSubTypeDisplayValue();
             static bool& UseDynamicInventoryIconValue();
+            static bool& SkyPromptShowCountsValue();
 
             static bool& AutoExportValue();
             static bool& AutoImportValue();
