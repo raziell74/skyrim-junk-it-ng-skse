@@ -4,3 +4,4 @@
 build
 cmake-build*
 releases
+__pycache__
