@@ -1102,6 +1102,11 @@ namespace JunkIt {
         auto transferList = BuildTransferList();
         SKSE::log::info("Transfer list contains {} unique item types", transferList.size());
 
+        Count totalCount = 0;
+        if (const auto preview = CaptureContainerPreview()) {
+            totalCount = menuView == 0 ? preview->retrieveCount : preview->storeCount;
+        }
+
         if (menuView == 0) {
             SKSE::log::info("Transfer Direction: Retrieve FROM container TO player");
             if (transferList.empty()) {
@@ -1112,9 +1117,10 @@ namespace JunkIt {
             }
 
             if (Settings::ConfirmTransfer()) {
-                SKSE::log::info("Showing confirmation dialog for retrieval");
+                SKSE::log::info("Retrieve {} Junk Items?", totalCount);
+                std::string confirmText = Translation::Format("$JunkIt_RetrievalConfirmation", totalCount);
                 ShowConfirmationMessageBox(
-                    Translation::Get("$JunkIt_RetrievalConfirmation").c_str(),
+                    confirmText.c_str(),
                     { Translation::Get("$JunkIt_RetrieveConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
                     [transferList, transferContainer, containerMode, menuView](unsigned int choice) {
                         if (choice == 0) {
@@ -1141,9 +1147,10 @@ namespace JunkIt {
             }
 
             if (Settings::ConfirmTransfer()) {
-                SKSE::log::info("Showing confirmation dialog for transfer");
+                SKSE::log::info("Store {} Junk Items?", totalCount);
+                std::string confirmText = Translation::Format("$JunkIt_TransferConfirmation", totalCount);
                 ShowConfirmationMessageBox(
-                    Translation::Get("$JunkIt_TransferConfirmation").c_str(),
+                    confirmText.c_str(),
                     { Translation::Get("$JunkIt_TransferConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
                     [transferList, transferContainer, containerMode, menuView](unsigned int choice) {
                         if (choice == 0) {
