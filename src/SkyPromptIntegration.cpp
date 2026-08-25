@@ -9,8 +9,14 @@
 
 #include <SKSE/API.h>
 #include <fmt/format.h>
+#include <vector>
 
 namespace JunkIt {
+    namespace {
+        std::int32_t ClampNonNegative(std::int32_t value) {
+            return value < 0 ? 0 : value;
+        }
+    }
     SkyPromptIntegration& SkyPromptIntegration::GetSingleton() {
         static SkyPromptIntegration singleton;
         return singleton;
@@ -58,8 +64,21 @@ namespace JunkIt {
             return;
         }
 
+        TryEnsurePreview();
         RebuildPrompts(menu);
         Send();
+    }
+
+    void SkyPromptIntegration::RecapturePreviews() {
+        const auto menu = GetActiveMenu();
+        if (menu == MenuKind::kContainer) {
+            previewMenu_ = MenuKind::kContainer;
+            CaptureContainerPreview();
+        } else if (menu == MenuKind::kBarter) {
+            previewMenu_ = MenuKind::kBarter;
+            CaptureSellPreview();
+        }
+        RefreshPrompts();
     }
 
     void SkyPromptIntegration::ProcessEvent(SkyPromptAPI::PromptEvent event) const {
@@ -119,6 +138,35 @@ namespace JunkIt {
             return RE::BSEventNotifyControl::kContinue;
         }
 
+        if (a_event->opening) {
+            if (name == "ContainerMenu") {
+                previewMenu_ = MenuKind::kContainer;
+                sellPreview_ = {};
+                CaptureContainerPreview();
+                if (!containerPreview_.valid) {
+                    ScheduleLabelSync();
+                }
+            } else if (name == "BarterMenu") {
+                previewMenu_ = MenuKind::kBarter;
+                containerPreview_ = {};
+                CaptureSellPreview();
+                if (!sellPreview_.valid) {
+                    ScheduleLabelSync();
+                }
+            } else {
+                previewMenu_ = MenuKind::kInventory;
+                InvalidatePreviews();
+            }
+        } else if (name == "ContainerMenu" && previewMenu_ == MenuKind::kContainer) {
+            previewMenu_ = MenuKind::kNone;
+            InvalidatePreviews();
+        } else if (name == "BarterMenu" && previewMenu_ == MenuKind::kBarter) {
+            previewMenu_ = MenuKind::kNone;
+            InvalidatePreviews();
+        } else if (name == "InventoryMenu" && previewMenu_ == MenuKind::kInventory) {
+            previewMenu_ = MenuKind::kNone;
+        }
+
         RefreshPrompts();
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -130,9 +178,29 @@ namespace JunkIt {
             return RE::BSEventNotifyControl::kContinue;
         }
 
-        if (EventInvolvesOpenMenu(a_event->oldContainer, a_event->newContainer)) {
-            ScheduleLabelSync();
+        if (JunkHandler::operationInProgress.load()) {
+            return RE::BSEventNotifyControl::kContinue;
         }
+
+        if (a_event->itemCount <= 0) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        if (auto* gold = Settings::GetGold001(); gold && a_event->baseObj == gold->GetFormID()) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        if (!EventIsPlayerAndOpenTarget(a_event->oldContainer, a_event->newContainer)) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        if (previewMenu_ == MenuKind::kContainer && containerPreview_.valid) {
+            ApplyContainerMove(a_event);
+        } else if (previewMenu_ == MenuKind::kBarter && sellPreview_.valid) {
+            ApplyBarterMove(a_event);
+        }
+
+        ScheduleLabelSync();
         return RE::BSEventNotifyControl::kContinue;
     }
 
@@ -169,43 +237,32 @@ namespace JunkIt {
         tasks->AddUITask([]() {
             auto& self = SkyPromptIntegration::GetSingleton();
             if (GetActiveMenu() != MenuKind::kNone) {
+                self.TryEnsurePreview();
                 self.SyncPromptLabels();
             }
         });
     }
 
-    bool SkyPromptIntegration::EventInvolvesOpenMenu(RE::FormID oldContainer, RE::FormID newContainer) {
-        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-            const auto playerId = player->GetFormID();
-            if (oldContainer == playerId || newContainer == playerId) {
-                return true;
-            }
+    bool SkyPromptIntegration::EventIsPlayerAndOpenTarget(RE::FormID oldContainer, RE::FormID newContainer) const {
+        if (previewPlayerId_ == 0) {
+            return false;
         }
 
-        switch (GetActiveMenu()) {
+        const bool playerInvolved = oldContainer == previewPlayerId_ || newContainer == previewPlayerId_;
+        if (!playerInvolved) {
+            return false;
+        }
+
+        switch (previewMenu_) {
             case MenuKind::kContainer:
-                if (auto* container = JunkHandler::GetContainerMenuContainer()) {
-                    const auto id = container->GetFormID();
-                    return oldContainer == id || newContainer == id;
-                }
-                break;
+                return previewContainerId_ != 0 &&
+                    (oldContainer == previewContainerId_ || newContainer == previewContainerId_);
             case MenuKind::kBarter:
-                if (auto* vendor = JunkHandler::GetBarterMenuContainer()) {
-                    const auto id = vendor->GetFormID();
-                    if (oldContainer == id || newContainer == id) {
-                        return true;
-                    }
-                }
-                if (auto* merchant = JunkHandler::GetBarterMenuMerchantContainer()) {
-                    const auto id = merchant->GetFormID();
-                    return oldContainer == id || newContainer == id;
-                }
-                break;
+                return (previewVendorId_ != 0 && (oldContainer == previewVendorId_ || newContainer == previewVendorId_)) ||
+                    (previewMerchantId_ != 0 && (oldContainer == previewMerchantId_ || newContainer == previewMerchantId_));
             default:
-                break;
+                return false;
         }
-
-        return false;
     }
 
     std::optional<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> SkyPromptIntegration::ToSkyPromptButton(
@@ -258,22 +315,25 @@ namespace JunkIt {
     }
 
     std::string SkyPromptIntegration::FormatTransferPrompt() {
-        const char* key = "$JunkIt_Prompt_Retrieve";
+        bool storeView = false;
         const auto ui = RE::UI::GetSingleton();
         auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
         if (menu && menu->uiMovie) {
             RE::GFxValue result;
             menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
-            if (static_cast<int>(result.GetNumber()) != 0) {
-                key = "$JunkIt_Prompt_Store";
-            }
+            storeView = static_cast<int>(result.GetNumber()) != 0;
         }
 
+        const char* key = storeView ? "$JunkIt_Prompt_Store" : "$JunkIt_Prompt_Retrieve";
         if (!Settings::GetSkyPromptShowCounts()) {
             return Translation::Get(key);
         }
 
-        const auto count = JunkHandler::PreviewTransferCount();
+        if (!containerPreview_.valid) {
+            return {};
+        }
+
+        const auto count = storeView ? containerPreview_.storeCount : containerPreview_.retrieveCount;
         if (count <= 0) {
             return {};
         }
@@ -286,12 +346,11 @@ namespace JunkIt {
             return Translation::Get("$JunkIt_Prompt_Sell");
         }
 
-        const auto gold = JunkHandler::PreviewSellGold();
-        if (!gold) {
+        if (!sellPreview_.valid || !sellPreview_.gold) {
             return {};
         }
 
-        return fmt::format("{} ({}g)", Translation::Get("$JunkIt_Prompt_Sell"), *gold);
+        return fmt::format("{} ({}g)", Translation::Get("$JunkIt_Prompt_Sell"), *sellPreview_.gold);
     }
 
     void SkyPromptIntegration::SyncPromptLabels() {
@@ -303,6 +362,8 @@ namespace JunkIt {
         if (menu == MenuKind::kNone) {
             return;
         }
+
+        TryEnsurePreview();
 
         const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
         const auto transferAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer);
@@ -442,5 +503,174 @@ namespace JunkIt {
         transferKeys_.clear();
         transferLabel_.clear();
         sellLabel_.clear();
+    }
+
+    void SkyPromptIntegration::InvalidatePreviews() {
+        containerPreview_ = {};
+        sellPreview_ = {};
+        previewPlayerId_ = 0;
+        previewContainerId_ = 0;
+        previewVendorId_ = 0;
+        previewMerchantId_ = 0;
+    }
+
+    void SkyPromptIntegration::CaptureContainerPreview() {
+        containerPreview_ = {};
+        previewPlayerId_ = 0;
+        previewContainerId_ = 0;
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            previewPlayerId_ = player->GetFormID();
+        }
+        if (auto* container = JunkHandler::GetContainerMenuContainer()) {
+            previewContainerId_ = container->GetFormID();
+        }
+
+        const auto captured = JunkHandler::CaptureContainerPreview();
+        if (!captured) {
+            return;
+        }
+
+        containerPreview_.storeCount = ClampNonNegative(captured->storeCount);
+        containerPreview_.retrieveCount = ClampNonNegative(captured->retrieveCount);
+        containerPreview_.valid = true;
+    }
+
+    void SkyPromptIntegration::CaptureSellPreview() {
+        sellPreview_ = {};
+        previewPlayerId_ = 0;
+        previewVendorId_ = 0;
+        previewMerchantId_ = 0;
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            previewPlayerId_ = player->GetFormID();
+        }
+        if (auto* vendor = JunkHandler::GetBarterMenuContainer()) {
+            previewVendorId_ = vendor->GetFormID();
+        }
+        if (auto* merchant = JunkHandler::GetBarterMenuMerchantContainer()) {
+            previewMerchantId_ = merchant->GetFormID();
+        }
+
+        const auto captured = JunkHandler::CaptureSellPreview();
+        sellPreview_.sellMult = captured.sellMult;
+        if (!captured.pricesReady) {
+            return;
+        }
+
+        sellPreview_.gold = captured.gold;
+        sellPreview_.valid = true;
+    }
+
+    void SkyPromptIntegration::TryEnsurePreview() {
+        if (previewMenu_ == MenuKind::kContainer && !containerPreview_.valid) {
+            CaptureContainerPreview();
+        } else if (previewMenu_ == MenuKind::kBarter && !sellPreview_.valid) {
+            CaptureSellPreview();
+        }
+    }
+
+    void SkyPromptIntegration::OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned) {
+        if (!entry) {
+            return;
+        }
+
+        std::vector<std::string> identities;
+        JunkHandler::CollectEntryIdentities(entry, identities);
+        if (identities.empty()) {
+            return;
+        }
+
+        const std::int32_t sign = nowJunk ? 1 : -1;
+
+        if (previewMenu_ == MenuKind::kContainer && containerPreview_.valid) {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            RE::TESObjectREFR* container = nullptr;
+            if (auto* form = RE::TESForm::LookupByID(previewContainerId_)) {
+                container = form->As<RE::TESObjectREFR>();
+            }
+            const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false);
+            const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false);
+            containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + sign * playerCount);
+            containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + sign * containerCount);
+        } else if (previewMenu_ == MenuKind::kBarter && sellPreview_.valid && playerOwned) {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            const auto count = JunkHandler::CountPreviewIdentities(player, identities, true);
+            const auto goldDelta = JunkHandler::ComputeSellGoldDelta(entry, count, sellPreview_.sellMult);
+            if (nowJunk) {
+                if (!sellPreview_.gold) {
+                    sellPreview_.gold = ClampNonNegative(goldDelta);
+                } else {
+                    *sellPreview_.gold += goldDelta;
+                    if (*sellPreview_.gold < 0) {
+                        *sellPreview_.gold = 0;
+                    }
+                }
+            } else if (sellPreview_.gold) {
+                *sellPreview_.gold = ClampNonNegative(*sellPreview_.gold - goldDelta);
+            }
+        }
+    }
+
+    void SkyPromptIntegration::ApplyContainerMove(const RE::TESContainerChangedEvent* a_event) {
+        if (!a_event || previewPlayerId_ == 0 || previewContainerId_ == 0) {
+            return;
+        }
+
+        const bool toPlayer = a_event->newContainer == previewPlayerId_ && a_event->oldContainer == previewContainerId_;
+        const bool toContainer = a_event->oldContainer == previewPlayerId_ && a_event->newContainer == previewContainerId_;
+        if (!toPlayer && !toContainer) {
+            return;
+        }
+
+        auto* destForm = RE::TESForm::LookupByID(a_event->newContainer);
+        auto* dest = destForm ? destForm->As<RE::TESObjectREFR>() : nullptr;
+        if (!JunkHandler::MovedItemIsPreviewableJunk(dest, a_event->baseObj, a_event->uniqueID, false)) {
+            return;
+        }
+
+        const auto count = a_event->itemCount;
+        if (toPlayer) {
+            containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount - count);
+            containerPreview_.storeCount += count;
+        } else {
+            containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount - count);
+            containerPreview_.retrieveCount += count;
+        }
+    }
+
+    void SkyPromptIntegration::ApplyBarterMove(const RE::TESContainerChangedEvent* a_event) {
+        if (!a_event || previewPlayerId_ == 0) {
+            return;
+        }
+
+        const bool fromPlayer = a_event->oldContainer == previewPlayerId_;
+        const bool toPlayer = a_event->newContainer == previewPlayerId_;
+        if (fromPlayer == toPlayer) {
+            return;
+        }
+
+        auto* dest = RE::TESForm::LookupByID(a_event->newContainer);
+        auto* destRef = dest ? dest->As<RE::TESObjectREFR>() : nullptr;
+        const auto goldDelta = JunkHandler::ComputeMovedItemSellGold(
+            destRef,
+            a_event->baseObj,
+            a_event->uniqueID,
+            a_event->itemCount,
+            sellPreview_.sellMult);
+        if (!goldDelta) {
+            return;
+        }
+
+        if (toPlayer) {
+            if (!sellPreview_.gold) {
+                sellPreview_.gold = ClampNonNegative(*goldDelta);
+            } else {
+                *sellPreview_.gold += *goldDelta;
+                if (*sellPreview_.gold < 0) {
+                    *sellPreview_.gold = 0;
+                }
+            }
+        } else if (sellPreview_.gold) {
+            *sellPreview_.gold = ClampNonNegative(*sellPreview_.gold - *goldDelta);
+        }
     }
 }

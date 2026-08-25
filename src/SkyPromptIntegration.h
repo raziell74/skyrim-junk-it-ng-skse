@@ -20,6 +20,8 @@ namespace JunkIt {
         void Install();
         [[nodiscard]] bool IsShowing() const;
         void RefreshPrompts();
+        void RecapturePreviews();
+        void OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned);
         void SyncPromptLabels();
         void ScheduleLabelSync();
 
@@ -65,12 +67,33 @@ namespace JunkIt {
         std::string FormatTransferPrompt();
         std::string FormatSellPrompt();
         void RebuildPrompts(MenuKind menu);
-        bool EventInvolvesOpenMenu(RE::FormID oldContainer, RE::FormID newContainer);
+        bool EventIsPlayerAndOpenTarget(RE::FormID oldContainer, RE::FormID newContainer) const;
+        void InvalidatePreviews();
+        void CaptureContainerPreview();
+        void CaptureSellPreview();
+        void TryEnsurePreview();
+        void ApplyContainerMove(const RE::TESContainerChangedEvent* a_event);
+        void ApplyBarterMove(const RE::TESContainerChangedEvent* a_event);
         void Send();
         void Remove();
 
         SkyPromptAPI::ClientID clientID_{ 0 };
         bool showing_{ false };
+        MenuKind previewMenu_{ MenuKind::kNone };
+        RE::FormID previewPlayerId_{ 0 };
+        RE::FormID previewContainerId_{ 0 };
+        RE::FormID previewVendorId_{ 0 };
+        RE::FormID previewMerchantId_{ 0 };
+        struct ContainerPreview {
+            std::int32_t storeCount = 0;
+            std::int32_t retrieveCount = 0;
+            bool valid = false;
+        } containerPreview_;
+        struct SellPreview {
+            std::optional<std::int32_t> gold;
+            float sellMult = 0.5f;
+            bool valid = false;
+        } sellPreview_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> markKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> transferKeys_;
         std::vector<SkyPromptAPI::Prompt> prompts_;

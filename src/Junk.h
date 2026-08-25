@@ -3,6 +3,8 @@
 #include <atomic>
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 using namespace RE;
 
 namespace JunkIt {
@@ -49,8 +51,25 @@ namespace JunkIt {
 
         static void TransferJunk();
         static void SellJunk();
-        [[nodiscard]] static std::int32_t PreviewTransferCount();
-        [[nodiscard]] static std::optional<std::int32_t> PreviewSellGold();
+
+        struct ContainerPreviewCounts {
+            std::int32_t storeCount = 0;
+            std::int32_t retrieveCount = 0;
+        };
+
+        struct SellPreviewCapture {
+            std::optional<std::int32_t> gold;
+            float sellMult = 0.5f;
+            bool pricesReady = false;
+        };
+
+        [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview();
+        [[nodiscard]] static SellPreviewCapture CaptureSellPreview();
+        static void CollectEntryIdentities(InventoryEntryData* entry, std::vector<std::string>& out);
+        [[nodiscard]] static std::int32_t CountPreviewIdentities(TESObjectREFR* container, const std::vector<std::string>& identities, bool sellFilters);
+        [[nodiscard]] static bool MovedItemIsPreviewableJunk(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, bool sellFilters);
+        [[nodiscard]] static std::int32_t ComputeSellGoldDelta(InventoryEntryData* entry, std::int32_t count, float sellMult);
+        [[nodiscard]] static std::optional<std::int32_t> ComputeMovedItemSellGold(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, std::int32_t count, float sellMult);
 
         [[nodiscard]] static InventoryCountMap* GetContainerInventoryCountMap(TESObjectREFR* a_container) {
             if (cInventoryContainerId == a_container->GetFormID()) return &cInventoryCountMap;
@@ -87,6 +106,7 @@ namespace JunkIt {
         static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList = nullptr);
         static Count GetSellableJunkCount(InventoryEntryData* a_entry);
         static bool EntryIsFullyJunk(InventoryEntryData* a_entry);
+        static bool EntryPassesPreviewFilters(InventoryEntryData* a_entry, bool sellFilters);
         static void SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count);
 
         struct SellTotals {
