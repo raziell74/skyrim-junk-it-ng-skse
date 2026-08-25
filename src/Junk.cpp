@@ -638,6 +638,56 @@ namespace JunkIt {
         return EntryMatchesMovedUniqueID(entry, uniqueID);
     }
 
+    std::int32_t JunkHandler::CountJunkUnits(InventoryEntryData* entry) {
+        return GetSellableJunkCount(entry);
+    }
+
+    std::optional<JunkHandler::JunkPreviewUnit> JunkHandler::LookupJunkPreviewUnit(
+        TESObjectREFR* dest,
+        FormID baseObj,
+        std::uint16_t uniqueID,
+        float sellMult) {
+        if (!dest) {
+            return std::nullopt;
+        }
+
+        auto* form = TESForm::LookupByID(baseObj);
+        if (!form || !JunkDataManager::GetSingleton().IsAnyJunkForForm(form)) {
+            return std::nullopt;
+        }
+
+        auto* bound = LookupBoundObject(baseObj);
+        if (!bound) {
+            return std::nullopt;
+        }
+
+        auto inventory = dest->GetInventory();
+        const auto it = inventory.find(bound);
+        if (it == inventory.end() || !it->second.second) {
+            return std::nullopt;
+        }
+
+        auto* entry = it->second.second.get();
+        if (!entry || entry->IsQuestObject() || !EntryMatchesMovedUniqueID(entry, uniqueID)) {
+            return std::nullopt;
+        }
+
+        const Count count = GetSellableJunkCount(entry);
+        if (count <= 0) {
+            return std::nullopt;
+        }
+
+        JunkPreviewUnit unit;
+        unit.count = count;
+        unit.favorited = entry->IsFavorited();
+        unit.enchanted = entry->IsEnchanted();
+        unit.worn = entry->IsWorn();
+        if (sellMult > 0.0f) {
+            unit.gold = ComputeSellGoldDelta(entry, count, sellMult);
+        }
+        return unit;
+    }
+
     std::int32_t JunkHandler::ComputeSellGoldDelta(InventoryEntryData* entry, std::int32_t count, float sellMult) {
         if (!entry || count <= 0) {
             return 0;

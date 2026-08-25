@@ -43,6 +43,7 @@ namespace JunkIt {
         ui->AddEventSink<RE::MenuOpenCloseEvent>(this);
         if (auto* holder = RE::ScriptEventSourceHolder::GetSingleton()) {
             holder->AddEventSink<RE::TESContainerChangedEvent>(this);
+            holder->AddEventSink<RE::TESEquipEvent>(this);
         }
         SKSE::log::info("SkyPrompt client {} registered", clientID_);
         RefreshPrompts();
@@ -200,6 +201,22 @@ namespace JunkIt {
             ApplyBarterMove(a_event);
         }
 
+        ScheduleLabelSync();
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    RE::BSEventNotifyControl SkyPromptIntegration::ProcessEvent(
+        const RE::TESEquipEvent* a_event,
+        RE::BSTEventSource<RE::TESEquipEvent>*) {
+        if (!a_event || GetActiveMenu() == MenuKind::kNone) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        if (JunkHandler::operationInProgress.load() || !Settings::ProtectEquipped()) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        ApplyEquipChange(a_event);
         ScheduleLabelSync();
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -364,6 +381,7 @@ namespace JunkIt {
         }
 
         TryEnsurePreview();
+        ApplySelectedFavoriteChange();
 
         const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
         const auto transferAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer);
@@ -512,6 +530,7 @@ namespace JunkIt {
         previewContainerId_ = 0;
         previewVendorId_ = 0;
         previewMerchantId_ = 0;
+        selectedProtection_ = {};
     }
 
     void SkyPromptIntegration::CaptureContainerPreview() {
@@ -595,18 +614,7 @@ namespace JunkIt {
             auto* player = RE::PlayerCharacter::GetSingleton();
             const auto count = JunkHandler::CountPreviewIdentities(player, identities, true);
             const auto goldDelta = JunkHandler::ComputeSellGoldDelta(entry, count, sellPreview_.sellMult);
-            if (nowJunk) {
-                if (!sellPreview_.gold) {
-                    sellPreview_.gold = ClampNonNegative(goldDelta);
-                } else {
-                    *sellPreview_.gold += goldDelta;
-                    if (*sellPreview_.gold < 0) {
-                        *sellPreview_.gold = 0;
-                    }
-                }
-            } else if (sellPreview_.gold) {
-                *sellPreview_.gold = ClampNonNegative(*sellPreview_.gold - goldDelta);
-            }
+            ApplySellGoldDelta(sign * goldDelta);
         }
     }
 
@@ -661,16 +669,177 @@ namespace JunkIt {
         }
 
         if (toPlayer) {
+            ApplySellGoldDelta(*goldDelta);
+        } else {
+            ApplySellGoldDelta(-*goldDelta);
+        }
+    }
+
+    bool SkyPromptIntegration::SelectedRowIsPlayerSide() const {
+        auto* itemList = UIUtil::ItemList::GetOpenList();
+        auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+        if (!selected) {
+            return previewMenu_ != MenuKind::kContainer;
+        }
+
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            if (selected->data.owner == player->GetHandle().native_handle()) {
+                return true;
+            }
+            if (selected->data.owner != 0) {
+                return false;
+            }
+        }
+
+        if (previewMenu_ == MenuKind::kBarter) {
+            return false;
+        }
+
+        if (previewMenu_ == MenuKind::kContainer) {
+            const auto ui = RE::UI::GetSingleton();
+            auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
+            if (menu && menu->uiMovie) {
+                RE::GFxValue result;
+                menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
+                return static_cast<int>(result.GetNumber()) != 0;
+            }
+        }
+
+        return true;
+    }
+
+    void SkyPromptIntegration::ApplySellGoldDelta(std::int32_t goldDelta) {
+        if (goldDelta == 0 || !sellPreview_.valid) {
+            return;
+        }
+
+        if (goldDelta > 0) {
             if (!sellPreview_.gold) {
-                sellPreview_.gold = ClampNonNegative(*goldDelta);
+                sellPreview_.gold = goldDelta;
             } else {
-                *sellPreview_.gold += *goldDelta;
+                *sellPreview_.gold += goldDelta;
                 if (*sellPreview_.gold < 0) {
                     *sellPreview_.gold = 0;
                 }
             }
-        } else if (sellPreview_.gold) {
-            *sellPreview_.gold = ClampNonNegative(*sellPreview_.gold - *goldDelta);
+            return;
         }
+
+        if (sellPreview_.gold) {
+            *sellPreview_.gold = ClampNonNegative(*sellPreview_.gold + goldDelta);
+        }
+    }
+
+    void SkyPromptIntegration::ApplyTransferableDelta(
+        std::int32_t sign,
+        std::int32_t count,
+        bool playerSide,
+        std::int32_t goldDelta) {
+        if (previewMenu_ == MenuKind::kContainer && containerPreview_.valid) {
+            if (count <= 0) {
+                return;
+            }
+            const auto delta = sign * count;
+            if (playerSide) {
+                containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + delta);
+            } else {
+                containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + delta);
+            }
+            return;
+        }
+
+        if (previewMenu_ == MenuKind::kBarter && sellPreview_.valid && playerSide) {
+            ApplySellGoldDelta(sign * goldDelta);
+        }
+    }
+
+    void SkyPromptIntegration::ApplySelectedFavoriteChange() {
+        if (previewMenu_ != MenuKind::kContainer && previewMenu_ != MenuKind::kBarter) {
+            selectedProtection_ = {};
+            return;
+        }
+
+        auto* itemList = UIUtil::ItemList::GetOpenList();
+        auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+        if (!selected || !selected->data.objDesc || !selected->data.objDesc->object) {
+            selectedProtection_ = {};
+            return;
+        }
+
+        auto* entry = selected->data.objDesc;
+        const auto formId = entry->object->GetFormID();
+        const auto owner = selected->data.owner;
+        const bool playerSide = SelectedRowIsPlayerSide();
+        const bool favorited = entry->IsFavorited();
+        const bool junk = JunkDataManager::GetSingleton().IsJunk(entry);
+
+        const bool sameItem = selectedProtection_.valid &&
+            selectedProtection_.formId == formId &&
+            selectedProtection_.owner == owner &&
+            selectedProtection_.playerSide == playerSide;
+
+        if (sameItem && junk && Settings::ProtectFavorites() && selectedProtection_.favorited != favorited) {
+            const bool blockedByEquip = Settings::ProtectEquipped() && entry->IsWorn();
+            const bool blockedByEnchant =
+                previewMenu_ == MenuKind::kBarter && Settings::ProtectEnchanted() && entry->IsEnchanted();
+            if (!blockedByEquip && !blockedByEnchant) {
+                const auto count = JunkHandler::CountJunkUnits(entry);
+                const auto gold = previewMenu_ == MenuKind::kBarter
+                    ? JunkHandler::ComputeSellGoldDelta(entry, count, sellPreview_.sellMult)
+                    : 0;
+                ApplyTransferableDelta(favorited ? -1 : 1, count, playerSide, gold);
+            }
+        }
+
+        selectedProtection_.formId = formId;
+        selectedProtection_.owner = owner;
+        selectedProtection_.playerSide = playerSide;
+        selectedProtection_.favorited = favorited;
+        selectedProtection_.valid = true;
+    }
+
+    void SkyPromptIntegration::ApplyEquipChange(const RE::TESEquipEvent* a_event) {
+        if (!a_event || previewMenu_ == MenuKind::kNone || previewMenu_ == MenuKind::kInventory) {
+            return;
+        }
+        if (previewMenu_ == MenuKind::kContainer && !containerPreview_.valid) {
+            return;
+        }
+        if (previewMenu_ == MenuKind::kBarter && !sellPreview_.valid) {
+            return;
+        }
+
+        auto* actor = a_event->actor ? a_event->actor.get() : nullptr;
+        if (!actor) {
+            return;
+        }
+
+        const bool playerSide = previewPlayerId_ != 0 && actor->GetFormID() == previewPlayerId_;
+        const bool containerSide = previewContainerId_ != 0 && actor->GetFormID() == previewContainerId_;
+        if (previewMenu_ == MenuKind::kBarter) {
+            if (!playerSide) {
+                return;
+            }
+        } else if (!playerSide && !containerSide) {
+            return;
+        }
+
+        const float sellMult = previewMenu_ == MenuKind::kBarter ? sellPreview_.sellMult : 0.0f;
+        const auto unit = JunkHandler::LookupJunkPreviewUnit(
+            actor,
+            a_event->baseObject,
+            a_event->uniqueID,
+            sellMult);
+        if (!unit) {
+            return;
+        }
+        if (Settings::ProtectFavorites() && unit->favorited) {
+            return;
+        }
+        if (previewMenu_ == MenuKind::kBarter && Settings::ProtectEnchanted() && unit->enchanted) {
+            return;
+        }
+
+        ApplyTransferableDelta(a_event->equipped ? -1 : 1, unit->count, playerSide, unit->gold);
     }
 }

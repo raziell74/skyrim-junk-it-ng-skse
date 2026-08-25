@@ -68,6 +68,19 @@ namespace JunkIt {
         static void CollectEntryIdentities(InventoryEntryData* entry, std::vector<std::string>& out);
         [[nodiscard]] static std::int32_t CountPreviewIdentities(TESObjectREFR* container, const std::vector<std::string>& identities, bool sellFilters);
         [[nodiscard]] static bool MovedItemIsPreviewableJunk(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, bool sellFilters);
+        [[nodiscard]] static std::int32_t CountJunkUnits(InventoryEntryData* entry);
+        struct JunkPreviewUnit {
+            std::int32_t count = 0;
+            std::int32_t gold = 0;
+            bool favorited = false;
+            bool enchanted = false;
+            bool worn = false;
+        };
+        [[nodiscard]] static std::optional<JunkPreviewUnit> LookupJunkPreviewUnit(
+            TESObjectREFR* dest,
+            FormID baseObj,
+            std::uint16_t uniqueID,
+            float sellMult = 0.0f);
         [[nodiscard]] static std::int32_t ComputeSellGoldDelta(InventoryEntryData* entry, std::int32_t count, float sellMult);
         [[nodiscard]] static std::optional<std::int32_t> ComputeMovedItemSellGold(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, std::int32_t count, float sellMult);
 

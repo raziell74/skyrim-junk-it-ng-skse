@@ -13,7 +13,8 @@ namespace JunkIt {
     class SkyPromptIntegration :
         public SkyPromptAPI::PromptSink,
         public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
-        public RE::BSTEventSink<RE::TESContainerChangedEvent> {
+        public RE::BSTEventSink<RE::TESContainerChangedEvent>,
+        public RE::BSTEventSink<RE::TESEquipEvent> {
     public:
         static SkyPromptIntegration& GetSingleton();
 
@@ -33,6 +34,9 @@ namespace JunkIt {
         RE::BSEventNotifyControl ProcessEvent(
             const RE::TESContainerChangedEvent* a_event,
             RE::BSTEventSource<RE::TESContainerChangedEvent>* a_eventSource) override;
+        RE::BSEventNotifyControl ProcessEvent(
+            const RE::TESEquipEvent* a_event,
+            RE::BSTEventSource<RE::TESEquipEvent>* a_eventSource) override;
 
     private:
         enum class MenuKind {
@@ -74,6 +78,11 @@ namespace JunkIt {
         void TryEnsurePreview();
         void ApplyContainerMove(const RE::TESContainerChangedEvent* a_event);
         void ApplyBarterMove(const RE::TESContainerChangedEvent* a_event);
+        void ApplySelectedFavoriteChange();
+        void ApplyEquipChange(const RE::TESEquipEvent* a_event);
+        void ApplyTransferableDelta(std::int32_t sign, std::int32_t count, bool playerSide, std::int32_t goldDelta);
+        void ApplySellGoldDelta(std::int32_t goldDelta);
+        [[nodiscard]] bool SelectedRowIsPlayerSide() const;
         void Send();
         void Remove();
 
@@ -94,6 +103,13 @@ namespace JunkIt {
             float sellMult = 0.5f;
             bool valid = false;
         } sellPreview_;
+        struct SelectedProtectionCache {
+            RE::FormID formId = 0;
+            std::uint32_t owner = 0;
+            bool playerSide = false;
+            bool favorited = false;
+            bool valid = false;
+        } selectedProtection_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> markKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> transferKeys_;
         std::vector<SkyPromptAPI::Prompt> prompts_;
