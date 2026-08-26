@@ -245,7 +245,7 @@ namespace JunkIt {
             }
 
             ApplyInventoryUIRefresh(primary, secondary, largeOp);
-            SkyPromptIntegration::GetSingleton().RefreshPrompts();
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
         });
     }
 
@@ -306,7 +306,7 @@ namespace JunkIt {
         }
 
         StartAggressiveRefresh();
-        SkyPromptIntegration::GetSingleton().RecapturePreviews();
+        SkyPromptIntegration::GetSingleton().ScheduleFullRefresh(std::max(3, deferredFrames));
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {

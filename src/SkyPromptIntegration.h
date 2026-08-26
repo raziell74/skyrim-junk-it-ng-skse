@@ -22,6 +22,7 @@ namespace JunkIt {
         [[nodiscard]] bool IsShowing() const;
         void RefreshPrompts();
         void RecapturePreviews();
+        void ScheduleFullRefresh(int framesRemaining);
         void OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned);
         void SyncPromptLabels();
         void ScheduleLabelSync();

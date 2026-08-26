@@ -75,11 +75,40 @@ namespace JunkIt {
         if (menu == MenuKind::kContainer) {
             previewMenu_ = MenuKind::kContainer;
             CaptureContainerPreview();
+            if (!containerPreview_.valid) {
+                ScheduleLabelSync();
+            }
         } else if (menu == MenuKind::kBarter) {
             previewMenu_ = MenuKind::kBarter;
             CaptureSellPreview();
+            if (!sellPreview_.valid) {
+                ScheduleLabelSync();
+            }
         }
         RefreshPrompts();
+    }
+
+    void SkyPromptIntegration::ScheduleFullRefresh(int framesRemaining) {
+        if (clientID_ == 0) {
+            return;
+        }
+
+        auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) {
+            RecapturePreviews();
+            return;
+        }
+
+        tasks->AddUITask([framesRemaining]() {
+            auto& self = SkyPromptIntegration::GetSingleton();
+            if (framesRemaining > 0) {
+                self.ScheduleFullRefresh(framesRemaining - 1);
+                return;
+            }
+            if (GetActiveMenu() != MenuKind::kNone) {
+                self.RecapturePreviews();
+            }
+        });
     }
 
     void SkyPromptIntegration::ProcessEvent(SkyPromptAPI::PromptEvent event) const {
