@@ -10,6 +10,8 @@
 #include "UI.h"
 #include "SkyPromptIntegration.h"
 #include "AutoJunk.h"
+#include "PluginAPI.h"
+#include "Papyrus.h"
 
 SKSE_EXPORT constinit SKSE::PluginVersionData SKSEPlugin_Version = []() noexcept {
 	SKSE::PluginVersionData v;
@@ -45,6 +47,8 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
+		case SKSE::MessagingInterface::kPostPostLoad:
+			JunkIt::BroadcastAPI();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			JunkIt::Settings::LoadGameForms();
@@ -94,6 +98,12 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 	JunkIt::Translation::Load();
 
 	DIII::ListenForRegistration(&DIIIMessageHandler);
+
+	auto papyrus = SKSE::GetPapyrusInterface();
+	if (!papyrus || !papyrus->Register(JunkIt::Papyrus::Register)) {
+		SKSE::log::error("Failed to register Papyrus functions");
+		return false;
+	}
 
     auto messaging = SKSE::GetMessagingInterface();
 	if (!messaging->RegisterListener("SKSE", MessageHandler)) {

@@ -11,4 +11,6 @@ set(sources ${sources}
     src/Translation.cpp
     src/UI.cpp
     src/SkyPromptIntegration.cpp
+    src/PluginAPI.cpp
+    src/Papyrus.cpp
 )

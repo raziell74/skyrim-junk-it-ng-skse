@@ -15,4 +15,6 @@ set(headers ${headers}
     src/UI.h
     src/SkyPromptIntegration.h
     src/AutoJunk.h
+    src/PluginAPI.h
+    src/Papyrus.h
 )
