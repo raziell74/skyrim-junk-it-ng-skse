@@ -9,6 +9,7 @@
 #include "Translation.h"
 #include "UI.h"
 #include "SkyPromptIntegration.h"
+#include "AutoJunk.h"
 
 SKSE_EXPORT constinit SKSE::PluginVersionData SKSEPlugin_Version = []() noexcept {
 	SKSE::PluginVersionData v;
@@ -51,6 +52,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::UI::Register();
 			JunkIt::InputEventHandler::Install();
 			JunkIt::SkyPromptIntegration::GetSingleton().Install();
+			JunkIt::AutoJunk::Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
@@ -70,7 +72,9 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			}
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
-			if (JunkIt::Settings::GetAutoExport() && JunkIt::JunkDataManager::GetSingleton().Size() > 0) {
+			if (JunkIt::Settings::GetAutoExport() &&
+				(JunkIt::JunkDataManager::GetSingleton().Size() > 0 ||
+					JunkIt::JunkDataManager::GetSingleton().NoAutoJunkSize() > 0)) {
 				JunkIt::JunkDataManager::GetSingleton().SaveToFile();
 			}
 			break;

@@ -6,6 +6,7 @@
 #include <map>
 #include <sstream>
 #include <system_error>
+#include <vector>
 
 namespace JunkIt {
     namespace {
@@ -38,6 +39,10 @@ namespace JunkIt {
             bool updateSubTypeDisplay = true;
             bool useDynamicInventoryIcon = true;
             bool skyPromptShowCounts = true;
+
+            bool autoJunkOnPickup = true;
+            bool autoJunkOnMenuOpen = true;
+            std::vector<std::string> autoJunkTypes;
 
             bool autoExport = false;
             bool autoImport = false;
@@ -171,6 +176,31 @@ namespace JunkIt {
             return false;
         }
 
+        bool ReadString(const IniMap& ini, std::string_view section, std::string_view altSection, std::string_view key, std::string& value) {
+            if (auto* raw = FindValue(ini, section, altSection, key)) {
+                value = *raw;
+                return true;
+            }
+            return false;
+        }
+
+        std::vector<std::string> ParseTypeList(std::string_view text) {
+            std::vector<std::string> types;
+            for (const auto& token : Util::String::Split(std::string(text), ",")) {
+                auto trimmed = Trim(token);
+                if (trimmed.empty() || trimmed.find(',') != std::string::npos) {
+                    continue;
+                }
+                const bool duplicate = std::ranges::any_of(types, [&](const std::string& existing) {
+                    return Util::String::iEquals(existing, trimmed);
+                });
+                if (!duplicate) {
+                    types.push_back(std::move(trimmed));
+                }
+            }
+            return types;
+        }
+
         bool ApplyIni(const IniMap& ini) {
             bool complete = true;
             complete &= ReadUInt(ini, "Hotkey", {}, "iJunkKey", g_values.markJunkKey);
@@ -206,6 +236,15 @@ namespace JunkIt {
 
             complete &= ReadBool(ini, "Maintenance", {}, "bAutoSaveJunkListToFile", g_values.autoExport);
             complete &= ReadBool(ini, "Maintenance", {}, "bAutoLoadJunkListFromFile", g_values.autoImport);
+
+            complete &= ReadBool(ini, "AutoJunk", {}, "bAutoJunkOnPickup", g_values.autoJunkOnPickup);
+            complete &= ReadBool(ini, "AutoJunk", {}, "bAutoJunkOnMenuOpen", g_values.autoJunkOnMenuOpen);
+            std::string autoJunkTypesRaw;
+            if (ReadString(ini, "AutoJunk", {}, "sAutoJunkTypes", autoJunkTypesRaw)) {
+                g_values.autoJunkTypes = ParseTypeList(autoJunkTypesRaw);
+            } else {
+                complete = false;
+            }
             return complete;
         }
 
@@ -251,6 +290,11 @@ namespace JunkIt {
                 g_values.updateSubTypeDisplay,
                 g_values.useDynamicInventoryIcon,
                 g_values.skyPromptShowCounts);
+            SKSE::log::info(
+                "Auto Junk Settings | OnPickup: {} | OnMenuOpen: {} | Types: {}",
+                g_values.autoJunkOnPickup,
+                g_values.autoJunkOnMenuOpen,
+                Util::String::Join(g_values.autoJunkTypes, ", "));
             SKSE::log::info(" ");
         }
 
@@ -385,7 +429,12 @@ namespace JunkIt {
 
             out << "[Maintenance]\n";
             out << "bAutoSaveJunkListToFile=" << (g_values.autoExport ? 1 : 0) << "\n";
-            out << "bAutoLoadJunkListFromFile=" << (g_values.autoImport ? 1 : 0) << "\n";
+            out << "bAutoLoadJunkListFromFile=" << (g_values.autoImport ? 1 : 0) << "\n\n";
+
+            out << "[AutoJunk]\n";
+            out << "sAutoJunkTypes=" << Util::String::Join(g_values.autoJunkTypes, ", ") << "\n";
+            out << "bAutoJunkOnPickup=" << (g_values.autoJunkOnPickup ? 1 : 0) << "\n";
+            out << "bAutoJunkOnMenuOpen=" << (g_values.autoJunkOnMenuOpen ? 1 : 0) << "\n";
 
             out.flush();
             if (!out) {
@@ -465,6 +514,33 @@ namespace JunkIt {
     bool Settings::GetUseDynamicInventoryIcon() { return g_values.useDynamicInventoryIcon; }
     bool Settings::GetSkyPromptShowCounts() { return g_values.skyPromptShowCounts; }
 
+    bool Settings::GetAutoJunkOnPickup() { return g_values.autoJunkOnPickup; }
+    bool Settings::GetAutoJunkOnMenuOpen() { return g_values.autoJunkOnMenuOpen; }
+    const std::vector<std::string>& Settings::GetAutoJunkTypes() { return g_values.autoJunkTypes; }
+
+    bool Settings::TryAddAutoJunkType(std::string_view type) {
+        auto trimmed = Trim(type);
+        if (trimmed.empty() || trimmed.find(',') != std::string::npos) {
+            return false;
+        }
+        const bool duplicate = std::ranges::any_of(g_values.autoJunkTypes, [&](const std::string& existing) {
+            return Util::String::iEquals(existing, trimmed);
+        });
+        if (duplicate) {
+            return false;
+        }
+        g_values.autoJunkTypes.push_back(std::move(trimmed));
+        return true;
+    }
+
+    bool Settings::RemoveAutoJunkTypeAt(std::size_t index) {
+        if (index >= g_values.autoJunkTypes.size()) {
+            return false;
+        }
+        g_values.autoJunkTypes.erase(g_values.autoJunkTypes.begin() + static_cast<std::ptrdiff_t>(index));
+        return true;
+    }
+
     bool Settings::IsDIIIInstalled() { return g_values.diiiInstalled; }
     bool Settings::IsSkyPromptInstalled() { return g_values.skyPromptInstalled; }
     RE::TESObjectMISC* Settings::GetGold001() { return g_values.gold001; }
@@ -494,6 +570,9 @@ namespace JunkIt {
     bool& Settings::UpdateSubTypeDisplayValue() { return g_values.updateSubTypeDisplay; }
     bool& Settings::UseDynamicInventoryIconValue() { return g_values.useDynamicInventoryIcon; }
     bool& Settings::SkyPromptShowCountsValue() { return g_values.skyPromptShowCounts; }
+
+    bool& Settings::AutoJunkOnPickupValue() { return g_values.autoJunkOnPickup; }
+    bool& Settings::AutoJunkOnMenuOpenValue() { return g_values.autoJunkOnMenuOpen; }
 
     bool& Settings::AutoExportValue() { return g_values.autoExport; }
     bool& Settings::AutoImportValue() { return g_values.autoImport; }

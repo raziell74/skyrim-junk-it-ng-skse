@@ -2,6 +2,10 @@
 
 #include "util.h"
 
+#include <string>
+#include <string_view>
+#include <vector>
+
 namespace JunkIt {
     class Settings {
         public:
@@ -53,6 +57,12 @@ namespace JunkIt {
             [[nodiscard]] static bool GetUseDynamicInventoryIcon();
             [[nodiscard]] static bool GetSkyPromptShowCounts();
 
+            [[nodiscard]] static bool GetAutoJunkOnPickup();
+            [[nodiscard]] static bool GetAutoJunkOnMenuOpen();
+            [[nodiscard]] static const std::vector<std::string>& GetAutoJunkTypes();
+            static bool TryAddAutoJunkType(std::string_view type);
+            static bool RemoveAutoJunkTypeAt(std::size_t index);
+
             [[nodiscard]] static bool IsDIIIInstalled();
             [[nodiscard]] static bool IsSkyPromptInstalled();
             [[nodiscard]] static RE::TESObjectMISC* GetGold001();
@@ -82,6 +92,9 @@ namespace JunkIt {
             static bool& UpdateSubTypeDisplayValue();
             static bool& UseDynamicInventoryIconValue();
             static bool& SkyPromptShowCountsValue();
+
+            static bool& AutoJunkOnPickupValue();
+            static bool& AutoJunkOnMenuOpenValue();
 
             static bool& AutoExportValue();
             static bool& AutoImportValue();

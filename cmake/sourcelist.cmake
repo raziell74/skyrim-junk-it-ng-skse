@@ -1,4 +1,5 @@
 set(sources ${sources}
+    src/AutoJunk.cpp
     src/plugin.cpp
     src/event.cpp
     src/junk.cpp

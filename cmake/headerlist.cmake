@@ -14,4 +14,5 @@ set(headers ${headers}
     src/Translation.h
     src/UI.h
     src/SkyPromptIntegration.h
+    src/AutoJunk.h
 )
