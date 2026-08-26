@@ -34,7 +34,9 @@ namespace JunkIt {
         CaptureSlot g_capture = CaptureSlot::kNone;
         char g_junkFilter[128] = {};
         char g_customAutoJunkType[64] = {};
+        char g_customAutoJunkMaterial[64] = {};
         int g_knownAutoJunkIndex = 0;
+        int g_knownAutoJunkMaterialIndex = 0;
         bool g_showAutoJunkExclusions = false;
         std::string g_status;
         StatusKind g_statusKind = StatusKind::kNone;
@@ -502,13 +504,21 @@ namespace JunkIt {
             PopBrandColors();
         }
 
-        bool TypeAlreadyAdded(std::string_view type) {
-            for (const auto& existing : Settings::GetAutoJunkTypes()) {
-                if (Util::String::iEquals(existing, type)) {
+        bool ListContainsInsensitive(const std::vector<std::string>& list, std::string_view value) {
+            for (const auto& existing : list) {
+                if (Util::String::iEquals(existing, value)) {
                     return true;
                 }
             }
             return false;
+        }
+
+        bool TypeAlreadyAdded(std::string_view type) {
+            return ListContainsInsensitive(Settings::GetAutoJunkTypes(), type);
+        }
+
+        bool MaterialAlreadyAdded(std::string_view material) {
+            return ListContainsInsensitive(Settings::GetAutoJunkMaterials(), material);
         }
 
         bool AddAutoJunkTypeFromUi(std::string_view type) {
@@ -521,6 +531,54 @@ namespace JunkIt {
             return true;
         }
 
+        bool AddAutoJunkMaterialFromUi(std::string_view material) {
+            if (!Settings::TryAddAutoJunkMaterial(material)) {
+                return false;
+            }
+            SaveSettings();
+            AutoJunk::ApplyToPlayerInventory();
+            UIUtil::ItemList::Refresh();
+            return true;
+        }
+
+        void RenderAutoJunkList(
+            const char* tableId,
+            const char* headerKey,
+            const char* emptyKey,
+            const std::vector<std::string>& values,
+            bool (*removeAt)(std::size_t)) {
+            ImGui::SeparatorText(Translation::Get(headerKey).c_str());
+            if (values.empty()) {
+                ImGui::TextWrapped("%s", Translation::Get(emptyKey).c_str());
+                return;
+            }
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+            if (!ImGui::BeginTable(tableId, 2, flags, ImVec2(0.0f, 0.0f))) {
+                return;
+            }
+            ImGui::TableSetupColumn(Translation::Get(headerKey).c_str(), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(Translation::Get("$JunkIt_Remove").c_str(), ImGuiTableColumnFlags_WidthFixed, 140.0f);
+            ImGui::TableHeadersRow();
+            for (std::size_t index = 0; index < values.size(); ++index) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(values[index].c_str());
+                ImGui::TableNextColumn();
+                ImGui::PushID(tableId);
+                ImGui::PushID(static_cast<int>(index));
+                if (IconButton(kIconRemove, "$JunkIt_Remove")) {
+                    if (removeAt(index)) {
+                        SaveSettings();
+                    }
+                }
+                ImGui::PopID();
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+
         void RenderAutoJunk() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_AutoJunk");
@@ -529,7 +587,11 @@ namespace JunkIt {
             ImGui::GetContentRegionAvail(&avail);
             const float leftWidth = avail.x * 0.52f;
 
-            ImGui::BeginChild("autoJunkLeft", ImVec2(leftWidth, 0.0f), ImGuiChildFlags_Border);
+            ImGui::BeginChild(
+                "autoJunkLeft",
+                ImVec2(leftWidth, 0.0f),
+                ImGuiChildFlags_Border,
+                ImGuiWindowFlags_AlwaysVerticalScrollbar);
             ImGui::SeparatorText(Translation::Get("$JunkIt_AutoJunk_TypesHeader").c_str());
             HelpMarker("$JunkIt_AutoJunk_TypesHeader_Help");
 
@@ -578,6 +640,59 @@ namespace JunkIt {
             }
 
             ImGui::Spacing();
+            ImGui::SeparatorText(Translation::Get("$JunkIt_AutoJunk_MaterialsHeader").c_str());
+            HelpMarker("$JunkIt_AutoJunk_MaterialsHeader_Help");
+
+            ImGui::TextUnformatted(Translation::Get("$JunkIt_AutoJunk_AddKnownMaterial").c_str());
+            std::vector<const char*> availableMaterials;
+            for (const char* material : AutoJunk::KnownItemMaterials()) {
+                if (!MaterialAlreadyAdded(material)) {
+                    availableMaterials.push_back(material);
+                }
+            }
+            if (g_knownAutoJunkMaterialIndex >= static_cast<int>(availableMaterials.size())) {
+                g_knownAutoJunkMaterialIndex = 0;
+            }
+            ImGui::BeginDisabled(availableMaterials.empty());
+            ImVec2 knownMaterialAvail{};
+            ImGui::GetContentRegionAvail(&knownMaterialAvail);
+            ImGui::SetNextItemWidth(knownMaterialAvail.x - 128.0f);
+            if (!availableMaterials.empty()) {
+                ImGui::Combo(
+                    "##knownAutoJunkMaterial",
+                    &g_knownAutoJunkMaterialIndex,
+                    availableMaterials.data(),
+                    static_cast<int>(availableMaterials.size()));
+            } else {
+                const char* empty = "";
+                int unused = 0;
+                ImGui::Combo("##knownAutoJunkMaterial", &unused, &empty, 0);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button((Translation::Get("$JunkIt_AutoJunk_Add") + "##knownMaterial").c_str()) &&
+                !availableMaterials.empty()) {
+                AddAutoJunkMaterialFromUi(availableMaterials[static_cast<std::size_t>(g_knownAutoJunkMaterialIndex)]);
+            }
+            ImGui::EndDisabled();
+
+            ImGui::Spacing();
+            ImGui::TextUnformatted(Translation::Get("$JunkIt_AutoJunk_AddCustomMaterial").c_str());
+            ImVec2 customMaterialAvail{};
+            ImGui::GetContentRegionAvail(&customMaterialAvail);
+            ImGui::SetNextItemWidth(customMaterialAvail.x - 128.0f);
+            ImGui::InputTextWithHint(
+                "##customAutoJunkMaterial",
+                Translation::Get("$JunkIt_AutoJunk_CustomMaterialHint").c_str(),
+                g_customAutoJunkMaterial,
+                sizeof(g_customAutoJunkMaterial));
+            ImGui::SameLine();
+            if (ImGui::Button((Translation::Get("$JunkIt_AutoJunk_Add") + "##customMaterial").c_str())) {
+                if (AddAutoJunkMaterialFromUi(g_customAutoJunkMaterial)) {
+                    g_customAutoJunkMaterial[0] = '\0';
+                }
+            }
+
+            ImGui::Spacing();
             ImGui::SeparatorText(Translation::Get("$JunkIt_AutoJunk_WhenHeader").c_str());
             if (BeginSettingsTable("autoJunkWhen")) {
                 SaveIfChanged(CheckboxRow(
@@ -594,35 +709,25 @@ namespace JunkIt {
 
             ImGui::SameLine();
             ImGui::BeginChild("autoJunkRight", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border);
-            const auto types = Settings::GetAutoJunkTypes();
-            ImGui::SeparatorText(Translation::Get("$JunkIt_AutoJunk_ListHeader").c_str());
-            if (types.empty()) {
-                ImGui::TextWrapped("%s", Translation::Get("$JunkIt_AutoJunk_EmptyList").c_str());
-            } else {
-                const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
-                if (ImGui::BeginTable("autoJunkTypes", 2, flags, ImVec2(0.0f, 0.0f))) {
-                    ImGui::TableSetupColumn(Translation::Get("$JunkIt_AutoJunk_ListHeader").c_str(), ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn(Translation::Get("$JunkIt_Remove").c_str(), ImGuiTableColumnFlags_WidthFixed, 140.0f);
-                    ImGui::TableHeadersRow();
-
-                    for (std::size_t index = 0; index < types.size(); ++index) {
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        ImGui::AlignTextToFramePadding();
-                        ImGui::TextUnformatted(types[index].c_str());
-
-                        ImGui::TableNextColumn();
-                        ImGui::PushID(static_cast<int>(index));
-                        if (IconButton(kIconRemove, "$JunkIt_Remove")) {
-                            if (Settings::RemoveAutoJunkTypeAt(index)) {
-                                SaveSettings();
-                            }
-                        }
-                        ImGui::PopID();
-                    }
-                    ImGui::EndTable();
-                }
-            }
+            ImVec2 rightAvail{};
+            ImGui::GetContentRegionAvail(&rightAvail);
+            const float halfHeight = rightAvail.y * 0.5f;
+            ImGui::BeginChild("autoJunkRightTypes", ImVec2(0.0f, halfHeight));
+            RenderAutoJunkList(
+                "autoJunkTypes",
+                "$JunkIt_AutoJunk_ListHeader",
+                "$JunkIt_AutoJunk_EmptyList",
+                Settings::GetAutoJunkTypes(),
+                Settings::RemoveAutoJunkTypeAt);
+            ImGui::EndChild();
+            ImGui::BeginChild("autoJunkRightMaterials", ImVec2(0.0f, 0.0f));
+            RenderAutoJunkList(
+                "autoJunkMaterials",
+                "$JunkIt_AutoJunk_MaterialListHeader",
+                "$JunkIt_AutoJunk_EmptyMaterialList",
+                Settings::GetAutoJunkMaterials(),
+                Settings::RemoveAutoJunkMaterialAt);
+            ImGui::EndChild();
             ImGui::EndChild();
 
             RenderStatus();

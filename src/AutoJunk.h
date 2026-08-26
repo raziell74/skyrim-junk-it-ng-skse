@@ -8,6 +8,7 @@ namespace JunkIt {
     public:
         static void Install();
         [[nodiscard]] static std::span<const char* const> KnownItemTypes();
+        [[nodiscard]] static std::span<const char* const> KnownItemMaterials();
         static bool TryMarkEntry(RE::InventoryEntryData* entry);
         static bool ApplyToPlayerInventory();
         static bool ApplyToReferenceInventory(RE::TESObjectREFR* container);

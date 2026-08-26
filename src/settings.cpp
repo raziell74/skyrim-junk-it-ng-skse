@@ -43,6 +43,7 @@ namespace JunkIt {
             bool autoJunkOnPickup = true;
             bool autoJunkOnMenuOpen = true;
             std::vector<std::string> autoJunkTypes;
+            std::vector<std::string> autoJunkMaterials;
 
             bool autoExport = false;
             bool autoImport = false;
@@ -245,6 +246,12 @@ namespace JunkIt {
             } else {
                 complete = false;
             }
+            std::string autoJunkMaterialsRaw;
+            if (ReadString(ini, "AutoJunk", {}, "sAutoJunkMaterials", autoJunkMaterialsRaw)) {
+                g_values.autoJunkMaterials = ParseTypeList(autoJunkMaterialsRaw);
+            } else {
+                complete = false;
+            }
             return complete;
         }
 
@@ -291,10 +298,11 @@ namespace JunkIt {
                 g_values.useDynamicInventoryIcon,
                 g_values.skyPromptShowCounts);
             SKSE::log::info(
-                "Auto Junk Settings | OnPickup: {} | OnMenuOpen: {} | Types: {}",
+                "Auto Junk Settings | OnPickup: {} | OnMenuOpen: {} | Types: {} | Materials: {}",
                 g_values.autoJunkOnPickup,
                 g_values.autoJunkOnMenuOpen,
-                Util::String::Join(g_values.autoJunkTypes, ", "));
+                Util::String::Join(g_values.autoJunkTypes, ", "),
+                Util::String::Join(g_values.autoJunkMaterials, ", "));
             SKSE::log::info(" ");
         }
 
@@ -433,6 +441,7 @@ namespace JunkIt {
 
             out << "[AutoJunk]\n";
             out << "sAutoJunkTypes=" << Util::String::Join(g_values.autoJunkTypes, ", ") << "\n";
+            out << "sAutoJunkMaterials=" << Util::String::Join(g_values.autoJunkMaterials, ", ") << "\n";
             out << "bAutoJunkOnPickup=" << (g_values.autoJunkOnPickup ? 1 : 0) << "\n";
             out << "bAutoJunkOnMenuOpen=" << (g_values.autoJunkOnMenuOpen ? 1 : 0) << "\n";
 
@@ -538,6 +547,31 @@ namespace JunkIt {
             return false;
         }
         g_values.autoJunkTypes.erase(g_values.autoJunkTypes.begin() + static_cast<std::ptrdiff_t>(index));
+        return true;
+    }
+
+    const std::vector<std::string>& Settings::GetAutoJunkMaterials() { return g_values.autoJunkMaterials; }
+
+    bool Settings::TryAddAutoJunkMaterial(std::string_view material) {
+        auto trimmed = Trim(material);
+        if (trimmed.empty() || trimmed.find(',') != std::string::npos) {
+            return false;
+        }
+        const bool duplicate = std::ranges::any_of(g_values.autoJunkMaterials, [&](const std::string& existing) {
+            return Util::String::iEquals(existing, trimmed);
+        });
+        if (duplicate) {
+            return false;
+        }
+        g_values.autoJunkMaterials.push_back(std::move(trimmed));
+        return true;
+    }
+
+    bool Settings::RemoveAutoJunkMaterialAt(std::size_t index) {
+        if (index >= g_values.autoJunkMaterials.size()) {
+            return false;
+        }
+        g_values.autoJunkMaterials.erase(g_values.autoJunkMaterials.begin() + static_cast<std::ptrdiff_t>(index));
         return true;
     }
 

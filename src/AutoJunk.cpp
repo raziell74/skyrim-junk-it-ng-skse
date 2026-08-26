@@ -81,6 +81,47 @@ namespace JunkIt {
             "Strips"
         };
 
+        constexpr const char* const kKnownItemMaterials[] = {
+            "Hide",
+            "Wood",
+            "Iron",
+            "Iron Banded",
+            "Studded",
+            "Leather",
+            "Imperial",
+            "Stormcloak",
+            "Forsworn",
+            "Draugr",
+            "Draugr Honed",
+            "Falmer",
+            "Falmer Honed",
+            "Silver",
+            "Steel",
+            "Steel Plate",
+            "Scaled",
+            "Hunter",
+            "Vampire",
+            "Bonemold",
+            "Chitin",
+            "Morag Tong",
+            "Elven",
+            "Elven Gilded",
+            "Dwarven",
+            "Nordic",
+            "Orcish",
+            "Glass",
+            "Falmer Hardened",
+            "Dawnguard",
+            "Ebony",
+            "Stalhrim",
+            "Dragonscale",
+            "Dragonplate",
+            "Dragonbone",
+            "Daedric",
+            "Deathbrand",
+            "Aetherium"
+        };
+
         constexpr RE::FormID kLocalIDMask = 0x00FFFFFF;
         constexpr RE::FormID kWeapPickaxe = 0x0E3C16;
         constexpr RE::FormID kSSDRocksplinterPickaxe = 0x06A707;
@@ -89,6 +130,32 @@ namespace JunkIt {
         constexpr RE::FormID kDunHaltedStreamPoachersAxe = 0x0AE086;
         constexpr RE::FormID kDLC1ClothesVampireLordArmor = 0x011A84;
         constexpr RE::FormID kDLC2RieklingSpearThrown = 0x017720;
+        constexpr RE::FormID kDaedricArrow = 0x0139C0;
+        constexpr RE::FormID kEbonyArrow = 0x0139BF;
+        constexpr RE::FormID kGlassArrow = 0x0139BE;
+        constexpr RE::FormID kElvenArrow = 0x0139BD;
+        constexpr RE::FormID kDLC1ElvenArrowBlessed = 0x0098A1;
+        constexpr RE::FormID kDLC1ElvenArrowBlood = 0x0098A0;
+        constexpr RE::FormID kDwarvenArrow = 0x0139BC;
+        constexpr RE::FormID kDwarvenSphereArrow = 0x07B932;
+        constexpr RE::FormID kDwarvenSphereBolt01 = 0x07B935;
+        constexpr RE::FormID kDwarvenSphereBolt02 = 0x10EC8C;
+        constexpr RE::FormID kDLC2DwarvenBallistaBolt = 0x0339A1;
+        constexpr RE::FormID kOrcishArrow = 0x0139BB;
+        constexpr RE::FormID kNordHeroArrow = 0x0EAFDF;
+        constexpr RE::FormID kDraugrArrow = 0x034182;
+        constexpr RE::FormID kFalmerArrow = 0x038341;
+        constexpr RE::FormID kSteelArrow = 0x01397F;
+        constexpr RE::FormID kMQ101SteelArrow = 0x105EE7;
+        constexpr RE::FormID kIronArrow = 0x01397D;
+        constexpr RE::FormID kCWArrow = 0x020DDF;
+        constexpr RE::FormID kCWArrowShort = 0x020F02;
+        constexpr RE::FormID kTrapDart = 0x0236DD;
+        constexpr RE::FormID kDunArcherPracticeArrow = 0x0CAB52;
+        constexpr RE::FormID kDunGeirmundSigdisArrowsIllusion = 0x0E738A;
+        constexpr RE::FormID kFollowerIronArrow = 0x10E2DE;
+        constexpr RE::FormID kTestDLC1Bolt = 0x00590C;
+        constexpr RE::FormID kForswornArrow = 0x0CEE9E;
         constexpr RE::FormID kLockpick = 0x00000A;
         constexpr RE::FormID kGold001 = 0x00000F;
         constexpr RE::FormID kLeather01 = 0x0DB5D2;
@@ -147,6 +214,22 @@ namespace JunkIt {
 
         bool HasEditorKeyword(RE::BGSKeywordForm* keywordForm, std::string_view editorId) {
             return keywordForm && keywordForm->HasKeywordString(editorId);
+        }
+
+        RE::BGSKeywordForm* KeywordFormOf(RE::TESBoundObject* object) {
+            if (!object) {
+                return nullptr;
+            }
+            if (auto* weap = object->As<RE::TESObjectWEAP>()) {
+                return weap;
+            }
+            if (auto* armo = object->As<RE::TESObjectARMO>()) {
+                return armo;
+            }
+            if (auto* ammo = object->As<RE::TESAmmo>()) {
+                return ammo->AsKeywordForm();
+            }
+            return nullptr;
         }
 
         std::string_view WeaponTypeLabel(RE::TESObjectWEAP* weap) {
@@ -408,6 +491,199 @@ namespace JunkIt {
             }
         }
 
+        std::string_view KeywordMaterialLabel(RE::BGSKeywordForm* keywords) {
+            if (!keywords) {
+                return "Other";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialDaedric") || HasEditorKeyword(keywords, "WeapMaterialDaedric")) {
+                return "Daedric";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialDragonplate")) {
+                return "Dragonplate";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialDragonscale")) {
+                return "Dragonscale";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialDwarven") || HasEditorKeyword(keywords, "WeapMaterialDwarven")) {
+                return "Dwarven";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialEbony") || HasEditorKeyword(keywords, "WeapMaterialEbony")) {
+                return "Ebony";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialElven") || HasEditorKeyword(keywords, "WeapMaterialElven")) {
+                return "Elven";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialElvenGilded")) {
+                return "Elven Gilded";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialGlass") || HasEditorKeyword(keywords, "WeapMaterialGlass")) {
+                return "Glass";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialHide")) {
+                return "Hide";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialImperialHeavy") ||
+                HasEditorKeyword(keywords, "ArmorMaterialImperialLight") ||
+                HasEditorKeyword(keywords, "WeapMaterialImperial")) {
+                return "Imperial";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialImperialStudded")) {
+                return "Studded";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialIron") || HasEditorKeyword(keywords, "WeapMaterialIron")) {
+                return "Iron";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialIronBanded")) {
+                return "Iron Banded";
+            }
+            if (HasEditorKeyword(keywords, "DLC1ArmorMaterialVampire")) {
+                return "Vampire";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialLeather")) {
+                return "Leather";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialOrcish") || HasEditorKeyword(keywords, "WeapMaterialOrcish")) {
+                return "Orcish";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialScaled")) {
+                return "Scaled";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialSteel") || HasEditorKeyword(keywords, "WeapMaterialSteel")) {
+                return "Steel";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialSteelPlate")) {
+                return "Steel Plate";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialStormcloak")) {
+                return "Stormcloak";
+            }
+            if (HasEditorKeyword(keywords, "ArmorMaterialStudded")) {
+                return "Studded";
+            }
+            if (HasEditorKeyword(keywords, "DLC1ArmorMaterialDawnguard")) {
+                return "Dawnguard";
+            }
+            if (HasEditorKeyword(keywords, "DLC1ArmorMaterialFalmerHardened") ||
+                HasEditorKeyword(keywords, "DLC1ArmorMaterialFalmerHeavy")) {
+                return "Falmer Hardened";
+            }
+            if (HasEditorKeyword(keywords, "DLC1ArmorMaterialHunter")) {
+                return "Hunter";
+            }
+            if (HasEditorKeyword(keywords, "DLC1LD_CraftingMaterialAetherium")) {
+                return "Aetherium";
+            }
+            if (HasEditorKeyword(keywords, "DLC1WeapMaterialDragonbone")) {
+                return "Dragonbone";
+            }
+            if (HasEditorKeyword(keywords, "DLC2ArmorMaterialBonemoldHeavy") ||
+                HasEditorKeyword(keywords, "DLC2ArmorMaterialBonemoldLight")) {
+                return "Bonemold";
+            }
+            if (HasEditorKeyword(keywords, "DLC2ArmorMaterialChitinHeavy") ||
+                HasEditorKeyword(keywords, "DLC2ArmorMaterialChitinLight")) {
+                return "Chitin";
+            }
+            if (HasEditorKeyword(keywords, "DLC2ArmorMaterialMoragTong")) {
+                return "Morag Tong";
+            }
+            if (HasEditorKeyword(keywords, "DLC2ArmorMaterialNordicHeavy") ||
+                HasEditorKeyword(keywords, "DLC2ArmorMaterialNordicLight") ||
+                HasEditorKeyword(keywords, "DLC2WeaponMaterialNordic")) {
+                return "Nordic";
+            }
+            if (HasEditorKeyword(keywords, "DLC2ArmorMaterialStalhrimHeavy") ||
+                HasEditorKeyword(keywords, "DLC2ArmorMaterialStalhrimLight") ||
+                HasEditorKeyword(keywords, "DLC2WeaponMaterialStalhrim")) {
+                if (HasEditorKeyword(keywords, "DLC2dunHaknirArmor")) {
+                    return "Deathbrand";
+                }
+                return "Stalhrim";
+            }
+            if (HasEditorKeyword(keywords, "WeapMaterialDraugr")) {
+                return "Draugr";
+            }
+            if (HasEditorKeyword(keywords, "WeapMaterialDraugrHoned")) {
+                return "Draugr Honed";
+            }
+            if (HasEditorKeyword(keywords, "WeapMaterialFalmer")) {
+                return "Falmer";
+            }
+            if (HasEditorKeyword(keywords, "WeapMaterialFalmerHoned")) {
+                return "Falmer Honed";
+            }
+            if (HasEditorKeyword(keywords, "WeapMaterialSilver")) {
+                return "Silver";
+            }
+            if (HasEditorKeyword(keywords, "WeapMaterialWood")) {
+                return "Wood";
+            }
+            return "Other";
+        }
+
+        std::string_view AmmoBaseIdMaterial(RE::TESBoundObject* object) {
+            switch (LocalFormID(object)) {
+                case kDaedricArrow:
+                    return "Daedric";
+                case kEbonyArrow:
+                    return "Ebony";
+                case kGlassArrow:
+                    return "Glass";
+                case kElvenArrow:
+                case kDLC1ElvenArrowBlessed:
+                case kDLC1ElvenArrowBlood:
+                    return "Elven";
+                case kDwarvenArrow:
+                case kDwarvenSphereArrow:
+                case kDwarvenSphereBolt01:
+                case kDwarvenSphereBolt02:
+                case kDLC2DwarvenBallistaBolt:
+                    return "Dwarven";
+                case kOrcishArrow:
+                    return "Orcish";
+                case kNordHeroArrow:
+                    return "Nordic";
+                case kDraugrArrow:
+                    return "Draugr";
+                case kFalmerArrow:
+                    return "Falmer";
+                case kSteelArrow:
+                case kMQ101SteelArrow:
+                    return "Steel";
+                case kIronArrow:
+                case kCWArrow:
+                case kCWArrowShort:
+                case kTrapDart:
+                case kDunArcherPracticeArrow:
+                case kDunGeirmundSigdisArrowsIllusion:
+                case kFollowerIronArrow:
+                case kTestDLC1Bolt:
+                    return "Iron";
+                case kForswornArrow:
+                    return "Forsworn";
+                case kDLC2RieklingSpearThrown:
+                    return "Wood";
+                default:
+                    return {};
+            }
+        }
+
+        std::string GetSkyUIMaterialLabel(RE::TESBoundObject* object) {
+            if (!object) {
+                return {};
+            }
+            const auto formType = object->GetFormType();
+            if (formType != RE::FormType::Weapon && formType != RE::FormType::Armor && formType != RE::FormType::Ammo) {
+                return {};
+            }
+            if (formType == RE::FormType::Ammo) {
+                if (const auto ammoMaterial = AmmoBaseIdMaterial(object); !ammoMaterial.empty()) {
+                    return std::string(ammoMaterial);
+                }
+            }
+            return std::string(KeywordMaterialLabel(KeywordFormOf(object)));
+        }
+
         bool IsJunkOverrideType(std::string_view label) {
             const auto& configured = I4JunkConfig::GetSingleton().subTypeDisplay;
             const std::string_view overrideLabel = configured.empty() ? "Junk" : configured;
@@ -427,7 +703,7 @@ namespace JunkIt {
             return false;
         }
 
-        std::string GetOpenSubTypeDisplay(RE::InventoryEntryData* entry) {
+        std::string GetOpenGFxString(RE::InventoryEntryData* entry, const char* member, bool skipJunkOverride) {
             auto* itemList = UIUtil::ItemList::GetOpenList();
             if (!itemList || !entry || !entry->object) {
                 return {};
@@ -444,11 +720,14 @@ namespace JunkIt {
                 }
 
                 RE::GFxValue value;
-                if (!item->obj.GetMember("subTypeDisplay", &value) || !value.IsString()) {
+                if (!item->obj.GetMember(member, &value) || !value.IsString()) {
                     continue;
                 }
                 const char* text = value.GetString();
-                if (!text || !*text || IsJunkOverrideType(text)) {
+                if (!text || !*text) {
+                    continue;
+                }
+                if (skipJunkOverride && IsJunkOverrideType(text)) {
                     continue;
                 }
                 if (item->data.objDesc == entry) {
@@ -461,22 +740,42 @@ namespace JunkIt {
             return fromObject;
         }
 
-        bool TypeMatches(RE::InventoryEntryData* entry) {
-            const auto& configured = Settings::GetAutoJunkTypes();
-            if (!entry || !entry->object || configured.empty()) {
+        bool ConfiguredListMatches(
+            const std::vector<std::string>& configured,
+            std::string_view nativeLabel,
+            std::string_view gfxLabel) {
+            if (configured.empty()) {
                 return false;
             }
 
             std::vector<std::string> configuredNormalized;
             configuredNormalized.reserve(configured.size());
-            for (const auto& type : configured) {
-                configuredNormalized.push_back(NormalizeType(type));
+            for (const auto& value : configured) {
+                configuredNormalized.push_back(NormalizeType(value));
             }
 
-            if (LabelMatchesConfigured(GetSkyUITypeLabel(entry->object), configuredNormalized)) {
+            return LabelMatchesConfigured(nativeLabel, configuredNormalized) ||
+                LabelMatchesConfigured(gfxLabel, configuredNormalized);
+        }
+
+        bool AutoJunkListsEmpty() {
+            return Settings::GetAutoJunkTypes().empty() && Settings::GetAutoJunkMaterials().empty();
+        }
+
+        bool AutoJunkMatches(RE::InventoryEntryData* entry) {
+            if (!entry || !entry->object) {
+                return false;
+            }
+            if (ConfiguredListMatches(
+                    Settings::GetAutoJunkTypes(),
+                    GetSkyUITypeLabel(entry->object),
+                    GetOpenGFxString(entry, "subTypeDisplay", true))) {
                 return true;
             }
-            return LabelMatchesConfigured(GetOpenSubTypeDisplay(entry), configuredNormalized);
+            return ConfiguredListMatches(
+                Settings::GetAutoJunkMaterials(),
+                GetSkyUIMaterialLabel(entry->object),
+                GetOpenGFxString(entry, "materialDisplay", false));
         }
 
         bool ExtraListMatchesUniqueID(const RE::ExtraDataList* extraList, std::uint16_t uniqueID) {
@@ -499,7 +798,7 @@ namespace JunkIt {
             if (!entry || !entry->object) {
                 return false;
             }
-            if (Settings::GetAutoJunkTypes().empty()) {
+            if (AutoJunkListsEmpty()) {
                 return false;
             }
             if (JunkHandler::operationInProgress.load()) {
@@ -517,7 +816,7 @@ namespace JunkIt {
             if (Settings::ProtectFavorites() && entry->IsFavorited()) {
                 return false;
             }
-            if (!TypeMatches(entry)) {
+            if (!AutoJunkMatches(entry)) {
                 return false;
             }
 
@@ -561,7 +860,7 @@ namespace JunkIt {
                 return;
             }
             tasks->AddUITask([]() {
-                if (!Settings::GetAutoJunkOnMenuOpen() || Settings::GetAutoJunkTypes().empty()) {
+                if (!Settings::GetAutoJunkOnMenuOpen() || AutoJunkListsEmpty()) {
                     return;
                 }
                 RecaptureAfterAutoJunk(AutoJunk::ApplyToOpenMenus());
@@ -581,7 +880,7 @@ namespace JunkIt {
         }
 
         void TryMarkPickup(RE::FormID baseObj, std::uint16_t uniqueID, bool isRetry) {
-            if (!Settings::GetAutoJunkOnPickup() || Settings::GetAutoJunkTypes().empty()) {
+            if (!Settings::GetAutoJunkOnPickup() || AutoJunkListsEmpty()) {
                 return;
             }
             if (ContainerOrBarterOpen()) {
@@ -644,7 +943,7 @@ namespace JunkIt {
                     a_event->menuName != RE::BarterMenu::MENU_NAME) {
                     return RE::BSEventNotifyControl::kContinue;
                 }
-                if (!Settings::GetAutoJunkOnMenuOpen() || Settings::GetAutoJunkTypes().empty()) {
+                if (!Settings::GetAutoJunkOnMenuOpen() || AutoJunkListsEmpty()) {
                     return RE::BSEventNotifyControl::kContinue;
                 }
 
@@ -659,7 +958,7 @@ namespace JunkIt {
                 if (!a_event || a_event->itemCount <= 0) {
                     return RE::BSEventNotifyControl::kContinue;
                 }
-                if (!Settings::GetAutoJunkOnPickup() || Settings::GetAutoJunkTypes().empty()) {
+                if (!Settings::GetAutoJunkOnPickup() || AutoJunkListsEmpty()) {
                     return RE::BSEventNotifyControl::kContinue;
                 }
                 if (JunkHandler::operationInProgress.load() || ContainerOrBarterOpen()) {
@@ -682,6 +981,10 @@ namespace JunkIt {
 
     std::span<const char* const> AutoJunk::KnownItemTypes() {
         return std::span<const char* const>(kKnownItemTypes);
+    }
+
+    std::span<const char* const> AutoJunk::KnownItemMaterials() {
+        return std::span<const char* const>(kKnownItemMaterials);
     }
 
     bool AutoJunk::TryMarkEntry(RE::InventoryEntryData* entry) {
