@@ -520,47 +520,26 @@ namespace JunkIt {
 
     JunkHandler::SellPreviewCapture JunkHandler::CaptureSellPreview() {
         SellPreviewCapture capture;
-        auto* player = PlayerCharacter::GetSingleton();
-        if (!player) {
-            capture.pricesReady = true;
-            return capture;
-        }
-
-        auto playerInventory = player->GetInventory();
-        std::vector<PreviewStack> sellStacks;
-        FillPreviewStacks(
-            playerInventory,
-            true,
-            sellStacks,
-            [](InventoryEntryData* entry, bool sellFilters) {
-                return JunkHandler::EntryPassesPreviewFilters(entry, sellFilters);
-            },
-            [](InventoryEntryData* entry) {
-                return JunkHandler::GetSellableJunkCount(entry);
-            });
-
-        if (sellStacks.empty()) {
-            capture.pricesReady = true;
-            return capture;
-        }
-
-        SortPreviewStacks(sellStacks, Settings::GetSellPriority());
-
-        std::vector<std::pair<InventoryEntryData*, Count>> sellList;
-        sellList.reserve(sellStacks.size());
-        for (const auto& stack : sellStacks) {
-            sellList.emplace_back(stack.entry, stack.count);
-        }
 
         float vendorGold = 0.0f;
         float sellMult = 0.0f;
         if (!TryReadBarterPrices(vendorGold, sellMult)) {
             return capture;
         }
-
         capture.sellMult = sellMult;
+
+        const auto ui = RE::UI::GetSingleton();
+        auto barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
+        ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
+        if (!itemListMenu || itemListMenu->items.empty()) {
+            return capture;
+        }
+
         capture.pricesReady = true;
-        capture.gold = ComputeSellTotals(sellList, vendorGold, sellMult).roundedSellValue;
+        auto sellList = BuildSellList();
+        if (!sellList.empty()) {
+            capture.gold = ComputeSellTotals(sellList, vendorGold, sellMult).roundedSellValue;
+        }
         return capture;
     }
 
