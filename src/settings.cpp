@@ -38,6 +38,8 @@ namespace JunkIt {
             bool updateItemIcon = true;
             bool updateSubTypeDisplay = true;
             bool useDynamicInventoryIcon = true;
+            bool skyPromptEnabled = true;
+            std::int32_t skyPromptButtonPlacement = 0;
             bool skyPromptShowCounts = true;
 
             bool autoJunkOnPickup = true;
@@ -229,6 +231,8 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateItemIcon", g_values.updateItemIcon);
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateSubTypeDisplay", g_values.updateSubTypeDisplay);
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUseDynamicInventoryIcon", g_values.useDynamicInventoryIcon);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptEnabled", g_values.skyPromptEnabled);
+            complete &= ReadInt(ini, "Integration", "IntegrationSettings", "iSkyPromptButtonPlacement", g_values.skyPromptButtonPlacement);
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptShowCounts", g_values.skyPromptShowCounts);
 
             complete &= ReadBool(ini, "Utility", {}, "bReplaceJunkListOnLoad", g_values.replaceJunkListOnLoad);
@@ -292,10 +296,12 @@ namespace JunkIt {
                 g_values.largeUniqueTypes,
                 g_values.largeTotalItems);
             SKSE::log::info(
-                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptShowCounts: {}",
+                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptEnabled: {} | SkyPromptButtonPlacement: {} | SkyPromptShowCounts: {}",
                 g_values.updateItemIcon,
                 g_values.updateSubTypeDisplay,
                 g_values.useDynamicInventoryIcon,
+                g_values.skyPromptEnabled,
+                g_values.skyPromptButtonPlacement,
                 g_values.skyPromptShowCounts);
             SKSE::log::info(
                 "Auto Junk Settings | OnPickup: {} | OnMenuOpen: {} | Types: {} | Materials: {}",
@@ -332,6 +338,7 @@ namespace JunkIt {
         g_values.largeUniqueTypes = std::clamp(g_values.largeUniqueTypes, 1, 500);
         g_values.largeTotalItems = std::clamp(g_values.largeTotalItems, 1, 1000);
         g_values.aggressiveRefreshMaxInterval = std::clamp(g_values.aggressiveRefreshMaxInterval, 1, 60);
+        g_values.skyPromptButtonPlacement = std::clamp(g_values.skyPromptButtonPlacement, 0, 1);
     }
 
     void Settings::ApplyIntegrationGuards() {
@@ -428,6 +435,8 @@ namespace JunkIt {
             out << "bUpdateItemIcon=" << (g_values.updateItemIcon ? 1 : 0) << "\n";
             out << "bUpdateSubTypeDisplay=" << (g_values.updateSubTypeDisplay ? 1 : 0) << "\n";
             out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n";
+            out << "bSkyPromptEnabled=" << (g_values.skyPromptEnabled ? 1 : 0) << "\n";
+            out << "iSkyPromptButtonPlacement=" << g_values.skyPromptButtonPlacement << "\n";
             out << "bSkyPromptShowCounts=" << (g_values.skyPromptShowCounts ? 1 : 0) << "\n\n";
 
             out << "[Utility]\n";
@@ -521,6 +530,10 @@ namespace JunkIt {
     bool Settings::GetUpdateItemIcon() { return g_values.updateItemIcon; }
     bool Settings::GetUpdateSubTypeDisplay() { return g_values.updateSubTypeDisplay; }
     bool Settings::GetUseDynamicInventoryIcon() { return g_values.useDynamicInventoryIcon; }
+    bool Settings::GetSkyPromptEnabled() { return g_values.skyPromptEnabled; }
+    Settings::SkyPromptButtonPlacement Settings::GetSkyPromptButtonPlacement() {
+        return static_cast<SkyPromptButtonPlacement>(g_values.skyPromptButtonPlacement);
+    }
     bool Settings::GetSkyPromptShowCounts() { return g_values.skyPromptShowCounts; }
 
     bool Settings::GetAutoJunkOnPickup() { return g_values.autoJunkOnPickup; }
@@ -603,6 +616,8 @@ namespace JunkIt {
     bool& Settings::UpdateItemIconValue() { return g_values.updateItemIcon; }
     bool& Settings::UpdateSubTypeDisplayValue() { return g_values.updateSubTypeDisplay; }
     bool& Settings::UseDynamicInventoryIconValue() { return g_values.useDynamicInventoryIcon; }
+    bool& Settings::SkyPromptEnabledValue() { return g_values.skyPromptEnabled; }
+    std::int32_t& Settings::SkyPromptButtonPlacementValue() { return g_values.skyPromptButtonPlacement; }
     bool& Settings::SkyPromptShowCountsValue() { return g_values.skyPromptShowCounts; }
 
     bool& Settings::AutoJunkOnPickupValue() { return g_values.autoJunkOnPickup; }

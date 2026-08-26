@@ -80,12 +80,26 @@ namespace JunkIt {
         return showing_;
     }
 
+    bool SkyPromptIntegration::IsEnabled() const {
+        return clientID_ != 0 && Settings::GetSkyPromptEnabled();
+    }
+
+    RE::FormID SkyPromptIntegration::PromptAttachRefID() {
+        if (Settings::GetSkyPromptButtonPlacement() == Settings::SkyPromptButtonPlacement::kLowerRight) {
+            return 0;
+        }
+        return Inventory3DAttachRefID();
+    }
+
     void SkyPromptIntegration::RefreshPrompts() {
         if (clientID_ == 0) {
             return;
         }
 
         Remove();
+        if (!Settings::GetSkyPromptEnabled()) {
+            return;
+        }
 
         const auto menu = GetActiveMenu();
         if (menu == MenuKind::kNone) {
@@ -98,6 +112,11 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::RecapturePreviews() {
+        if (!IsEnabled()) {
+            RefreshPrompts();
+            return;
+        }
+
         const auto menu = GetActiveMenu();
         if (menu == MenuKind::kContainer) {
             previewMenu_ = MenuKind::kContainer;
@@ -116,7 +135,7 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::ScheduleFullRefresh(int framesRemaining) {
-        if (clientID_ == 0) {
+        if (!IsEnabled()) {
             return;
         }
 
@@ -225,7 +244,9 @@ namespace JunkIt {
         }
 
         RefreshPrompts();
-        if (a_event->opening && Inventory3DModelPending()) {
+        if (a_event->opening &&
+            Settings::GetSkyPromptButtonPlacement() == Settings::SkyPromptButtonPlacement::kAttachToItemModel &&
+            Inventory3DModelPending()) {
             ScheduleLabelSync();
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -234,7 +255,7 @@ namespace JunkIt {
     RE::BSEventNotifyControl SkyPromptIntegration::ProcessEvent(
         const RE::TESContainerChangedEvent* a_event,
         RE::BSTEventSource<RE::TESContainerChangedEvent>*) {
-        if (!a_event || GetActiveMenu() == MenuKind::kNone) {
+        if (!a_event || !IsEnabled() || GetActiveMenu() == MenuKind::kNone) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
@@ -267,7 +288,7 @@ namespace JunkIt {
     RE::BSEventNotifyControl SkyPromptIntegration::ProcessEvent(
         const RE::TESEquipEvent* a_event,
         RE::BSTEventSource<RE::TESEquipEvent>*) {
-        if (!a_event || GetActiveMenu() == MenuKind::kNone) {
+        if (!a_event || !IsEnabled() || GetActiveMenu() == MenuKind::kNone) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
@@ -300,7 +321,7 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::ScheduleLabelSync() {
-        if (clientID_ == 0) {
+        if (!IsEnabled()) {
             return;
         }
 
@@ -430,7 +451,7 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::SyncPromptLabels() {
-        if (clientID_ == 0) {
+        if (!IsEnabled()) {
             return;
         }
 
@@ -445,7 +466,7 @@ namespace JunkIt {
         const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
         const auto transferAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer);
         const auto sellAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell);
-        const auto wantedRefId = Inventory3DAttachRefID();
+        const auto wantedRefId = PromptAttachRefID();
 
         bool hasMark = false;
         bool hasTransfer = false;
@@ -519,7 +540,7 @@ namespace JunkIt {
             transferKeys_.push_back(*transferButton);
         }
 
-        const auto attachRefId = Inventory3DAttachRefID();
+        const auto attachRefId = PromptAttachRefID();
 
         if (!markKeys_.empty()) {
             if (const char* markText = MarkPromptText()) {
@@ -656,7 +677,7 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned) {
-        if (!entry) {
+        if (!entry || !IsEnabled()) {
             return;
         }
 

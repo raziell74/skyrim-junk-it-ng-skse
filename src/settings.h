@@ -19,6 +19,11 @@ namespace JunkIt {
                 kChaos = 6
             };
 
+            enum class SkyPromptButtonPlacement {
+                kAttachToItemModel = 0,
+                kLowerRight = 1
+            };
+
             static void LoadFromIni();
             static bool SaveToIni();
             static void ResetToDefaults();
@@ -55,6 +60,8 @@ namespace JunkIt {
             [[nodiscard]] static bool GetUpdateItemIcon();
             [[nodiscard]] static bool GetUpdateSubTypeDisplay();
             [[nodiscard]] static bool GetUseDynamicInventoryIcon();
+            [[nodiscard]] static bool GetSkyPromptEnabled();
+            [[nodiscard]] static SkyPromptButtonPlacement GetSkyPromptButtonPlacement();
             [[nodiscard]] static bool GetSkyPromptShowCounts();
 
             [[nodiscard]] static bool GetAutoJunkOnPickup();
@@ -94,6 +101,8 @@ namespace JunkIt {
             static bool& UpdateItemIconValue();
             static bool& UpdateSubTypeDisplayValue();
             static bool& UseDynamicInventoryIconValue();
+            static bool& SkyPromptEnabledValue();
+            static std::int32_t& SkyPromptButtonPlacementValue();
             static bool& SkyPromptShowCountsValue();
 
             static bool& AutoJunkOnPickupValue();

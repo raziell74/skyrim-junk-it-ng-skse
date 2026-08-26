@@ -65,6 +65,8 @@ namespace JunkIt {
         SkyPromptIntegration& operator=(SkyPromptIntegration&&) = delete;
 
         static MenuKind GetActiveMenu();
+        [[nodiscard]] bool IsEnabled() const;
+        static RE::FormID PromptAttachRefID();
         static std::optional<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> ToSkyPromptButton(std::uint32_t keyCode);
         static bool HasSelectedItem();
         static bool SelectedItemIsJunk();

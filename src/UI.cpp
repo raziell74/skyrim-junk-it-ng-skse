@@ -382,6 +382,13 @@ namespace JunkIt {
             return items;
         }
 
+        const char* const* SkyPromptPlacementItems() {
+            static const char* items[2];
+            items[0] = Translation::Get("$JunkIt_SkyPromptPlacement_Attach_ENUM").c_str();
+            items[1] = Translation::Get("$JunkIt_SkyPromptPlacement_LowerRight_ENUM").c_str();
+            return items;
+        }
+
         void RenderGeneral() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_General");
@@ -488,13 +495,25 @@ namespace JunkIt {
             ).c_str());
             if (BeginSettingsTable("skyprompt")) {
                 ImGui::BeginDisabled(!Settings::IsSkyPromptInstalled());
-                const bool skyPromptChanged = CheckboxRow(
+                const bool enabledChanged = CheckboxRow(
+                    "$JunkIt_SkyPromptEnabled",
+                    "$JunkIt_SkyPromptEnabled_Help",
+                    Settings::SkyPromptEnabledValue());
+                ImGui::BeginDisabled(!Settings::SkyPromptEnabledValue());
+                const bool placementChanged = ComboRow(
+                    "$JunkIt_SkyPromptButtonPlacement",
+                    "$JunkIt_SkyPromptButtonPlacement_Help",
+                    Settings::SkyPromptButtonPlacementValue(),
+                    SkyPromptPlacementItems(),
+                    2);
+                const bool countsChanged = CheckboxRow(
                     "$JunkIt_SkyPromptShowCounts",
                     "$JunkIt_SkyPromptShowCounts_Help",
                     Settings::SkyPromptShowCountsValue());
                 ImGui::EndDisabled();
+                ImGui::EndDisabled();
                 ImGui::EndTable();
-                if (skyPromptChanged) {
+                if (enabledChanged || placementChanged || countsChanged) {
                     SaveSettings();
                     SkyPromptIntegration::GetSingleton().RefreshPrompts();
                 }
@@ -914,6 +933,7 @@ namespace JunkIt {
             ImGui::Spacing();
             if (IconButton(kIconSync, "$JunkIt_ReloadSettings")) {
                 Settings::LoadFromIni();
+                SkyPromptIntegration::GetSingleton().RefreshPrompts();
                 SetStatus("$JunkIt_SettingsReloaded", true);
             }
             HelpMarker("$JunkIt_ReloadSettings_Help");
@@ -930,6 +950,7 @@ namespace JunkIt {
                 } else {
                     SetStatus("$JunkIt_SettingsSaveFailed", false);
                 }
+                SkyPromptIntegration::GetSingleton().RefreshPrompts();
             }
 
             RenderStatus();
