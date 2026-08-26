@@ -16,6 +16,33 @@ namespace JunkIt {
         std::int32_t ClampNonNegative(std::int32_t value) {
             return value < 0 ? 0 : value;
         }
+
+        RE::FormID Inventory3DAttachRefID() {
+            auto* mgr = RE::Inventory3DManager::GetSingleton();
+            if (!mgr || !mgr->tempRef) {
+                return 0;
+            }
+
+            const auto id = mgr->tempRef->GetFormID();
+            if (id == 0) {
+                return 0;
+            }
+
+            const auto& models = mgr->GetRuntimeData().loadedModels;
+            if (models.empty() || !models.back().spModel) {
+                return 0;
+            }
+
+            return id;
+        }
+
+        bool Inventory3DModelPending() {
+            auto* mgr = RE::Inventory3DManager::GetSingleton();
+            if (!mgr || !mgr->tempRef || mgr->tempRef->GetFormID() == 0) {
+                return false;
+            }
+            return Inventory3DAttachRefID() == 0;
+        }
     }
     SkyPromptIntegration& SkyPromptIntegration::GetSingleton() {
         static SkyPromptIntegration singleton;
@@ -198,6 +225,9 @@ namespace JunkIt {
         }
 
         RefreshPrompts();
+        if (a_event->opening && Inventory3DModelPending()) {
+            ScheduleLabelSync();
+        }
         return RE::BSEventNotifyControl::kContinue;
     }
 
@@ -415,10 +445,12 @@ namespace JunkIt {
         const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
         const auto transferAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer);
         const auto sellAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell);
+        const auto wantedRefId = Inventory3DAttachRefID();
 
         bool hasMark = false;
         bool hasTransfer = false;
         bool hasSell = false;
+        bool refidMismatch = false;
         for (const auto& prompt : prompts_) {
             if (prompt.actionID == markAction) {
                 hasMark = true;
@@ -426,6 +458,9 @@ namespace JunkIt {
                 hasTransfer = true;
             } else if (prompt.actionID == sellAction) {
                 hasSell = true;
+            }
+            if (prompt.refid != wantedRefId) {
+                refidMismatch = true;
             }
         }
 
@@ -438,9 +473,11 @@ namespace JunkIt {
         if (menu == MenuKind::kBarter) {
             wantedSell = FormatSellPrompt();
         }
+
         if (hasMark != (wantedMark != nullptr) ||
             hasTransfer != !wantedTransfer.empty() ||
-            hasSell != !wantedSell.empty()) {
+            hasSell != !wantedSell.empty() ||
+            refidMismatch) {
             RefreshPrompts();
             return;
         }
@@ -482,6 +519,8 @@ namespace JunkIt {
             transferKeys_.push_back(*transferButton);
         }
 
+        const auto attachRefId = Inventory3DAttachRefID();
+
         if (!markKeys_.empty()) {
             if (const char* markText = MarkPromptText()) {
                 prompts_.emplace_back(
@@ -489,7 +528,7 @@ namespace JunkIt {
                     static_cast<SkyPromptAPI::EventID>(PromptEventID::kMark),
                     static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark),
                     SkyPromptAPI::PromptType::kSinglePress,
-                    0,
+                    attachRefId,
                     markKeys_);
             }
         }
@@ -506,7 +545,7 @@ namespace JunkIt {
                     static_cast<SkyPromptAPI::EventID>(PromptEventID::kTransfer),
                     static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer),
                     SkyPromptAPI::PromptType::kHold,
-                    0,
+                    attachRefId,
                     transferKeys_);
             }
         } else if (menu == MenuKind::kBarter) {
@@ -517,7 +556,7 @@ namespace JunkIt {
                     static_cast<SkyPromptAPI::EventID>(PromptEventID::kTransfer),
                     static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell),
                     SkyPromptAPI::PromptType::kHold,
-                    0,
+                    attachRefId,
                     transferKeys_);
             }
         }
