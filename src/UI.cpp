@@ -35,6 +35,7 @@ namespace JunkIt {
         char g_junkFilter[128] = {};
         char g_customAutoJunkType[64] = {};
         char g_customAutoJunkMaterial[64] = {};
+        char g_customAutoJunkKeyword[64] = {};
         int g_knownAutoJunkIndex = 0;
         int g_knownAutoJunkMaterialIndex = 0;
         bool g_showAutoJunkExclusions = false;
@@ -560,6 +561,16 @@ namespace JunkIt {
             return true;
         }
 
+        bool AddAutoJunkKeywordFromUi(std::string_view keyword) {
+            if (!Settings::TryAddAutoJunkKeyword(keyword)) {
+                return false;
+            }
+            SaveSettings();
+            AutoJunk::ApplyToPlayerInventory();
+            UIUtil::ItemList::Refresh();
+            return true;
+        }
+
         void RenderAutoJunkList(
             const char* tableId,
             const char* headerKey,
@@ -712,6 +723,26 @@ namespace JunkIt {
             }
 
             ImGui::Spacing();
+            ImGui::SeparatorText(Translation::Get("$JunkIt_AutoJunk_KeywordsHeader").c_str());
+            HelpMarker("$JunkIt_AutoJunk_KeywordsHeader_Help");
+
+            ImGui::TextUnformatted(Translation::Get("$JunkIt_AutoJunk_AddKeyword").c_str());
+            ImVec2 customKeywordAvail{};
+            ImGui::GetContentRegionAvail(&customKeywordAvail);
+            ImGui::SetNextItemWidth(customKeywordAvail.x - 128.0f);
+            ImGui::InputTextWithHint(
+                "##customAutoJunkKeyword",
+                Translation::Get("$JunkIt_AutoJunk_CustomKeywordHint").c_str(),
+                g_customAutoJunkKeyword,
+                sizeof(g_customAutoJunkKeyword));
+            ImGui::SameLine();
+            if (ImGui::Button((Translation::Get("$JunkIt_AutoJunk_Add") + "##customKeyword").c_str())) {
+                if (AddAutoJunkKeywordFromUi(g_customAutoJunkKeyword)) {
+                    g_customAutoJunkKeyword[0] = '\0';
+                }
+            }
+
+            ImGui::Spacing();
             ImGui::SeparatorText(Translation::Get("$JunkIt_AutoJunk_WhenHeader").c_str());
             if (BeginSettingsTable("autoJunkWhen")) {
                 SaveIfChanged(CheckboxRow(
@@ -730,8 +761,8 @@ namespace JunkIt {
             ImGui::BeginChild("autoJunkRight", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border);
             ImVec2 rightAvail{};
             ImGui::GetContentRegionAvail(&rightAvail);
-            const float halfHeight = rightAvail.y * 0.5f;
-            ImGui::BeginChild("autoJunkRightTypes", ImVec2(0.0f, halfHeight));
+            const float thirdHeight = rightAvail.y / 3.0f;
+            ImGui::BeginChild("autoJunkRightTypes", ImVec2(0.0f, thirdHeight));
             RenderAutoJunkList(
                 "autoJunkTypes",
                 "$JunkIt_AutoJunk_ListHeader",
@@ -739,13 +770,21 @@ namespace JunkIt {
                 Settings::GetAutoJunkTypes(),
                 Settings::RemoveAutoJunkTypeAt);
             ImGui::EndChild();
-            ImGui::BeginChild("autoJunkRightMaterials", ImVec2(0.0f, 0.0f));
+            ImGui::BeginChild("autoJunkRightMaterials", ImVec2(0.0f, thirdHeight));
             RenderAutoJunkList(
                 "autoJunkMaterials",
                 "$JunkIt_AutoJunk_MaterialListHeader",
                 "$JunkIt_AutoJunk_EmptyMaterialList",
                 Settings::GetAutoJunkMaterials(),
                 Settings::RemoveAutoJunkMaterialAt);
+            ImGui::EndChild();
+            ImGui::BeginChild("autoJunkRightKeywords", ImVec2(0.0f, 0.0f));
+            RenderAutoJunkList(
+                "autoJunkKeywords",
+                "$JunkIt_AutoJunk_KeywordListHeader",
+                "$JunkIt_AutoJunk_EmptyKeywordList",
+                Settings::GetAutoJunkKeywords(),
+                Settings::RemoveAutoJunkKeywordAt);
             ImGui::EndChild();
             ImGui::EndChild();
 

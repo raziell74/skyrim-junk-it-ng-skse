@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <windows.h>
 
 namespace JunkIt {
     namespace {
@@ -230,6 +231,48 @@ namespace JunkIt {
                 return ammo->AsKeywordForm();
             }
             return nullptr;
+        }
+
+        RE::BGSKeywordForm* KeywordFormOfAny(RE::TESBoundObject* object) {
+            if (auto* form = KeywordFormOf(object)) {
+                return form;
+            }
+            if (!object) {
+                return nullptr;
+            }
+            if (auto* book = object->As<RE::TESObjectBOOK>()) {
+                return book;
+            }
+            if (auto* misc = object->As<RE::TESObjectMISC>()) {
+                return misc;
+            }
+            if (auto* magic = object->As<RE::MagicItem>()) {
+                return magic;
+            }
+            return nullptr;
+        }
+
+        bool KeywordFormHasEditorId(RE::BGSKeywordForm* keywordForm, std::string_view editorId, bool contains) {
+            if (!keywordForm || editorId.empty()) {
+                return false;
+            }
+            bool found = false;
+            keywordForm->ForEachKeyword([&](RE::BGSKeyword* keyword) {
+                if (!keyword) {
+                    return RE::BSContainer::ForEachResult::kContinue;
+                }
+                const char* id = keyword->GetFormEditorID();
+                if (!id || !*id) {
+                    return RE::BSContainer::ForEachResult::kContinue;
+                }
+                const bool match = contains ? Util::String::iContains(id, editorId) : Util::String::iEquals(id, editorId);
+                if (match) {
+                    found = true;
+                    return RE::BSContainer::ForEachResult::kStop;
+                }
+                return RE::BSContainer::ForEachResult::kContinue;
+            });
+            return found;
         }
 
         std::string_view WeaponTypeLabel(RE::TESObjectWEAP* weap) {
@@ -606,7 +649,7 @@ namespace JunkIt {
             if (HasEditorKeyword(keywords, "WeapMaterialDraugrHoned")) {
                 return "Draugr Honed";
             }
-            if (HasEditorKeyword(keywords, "WeapMaterialFalmer")) {
+            if (HasEditorKeyword(keywords, "WeapMaterialFalmer") || HasEditorKeyword(keywords, "ArmorMaterialFalmer")) {
                 return "Falmer";
             }
             if (HasEditorKeyword(keywords, "WeapMaterialFalmerHoned")) {
@@ -703,6 +746,27 @@ namespace JunkIt {
             return false;
         }
 
+        std::string GFxValueToUtf8(const RE::GFxValue& value) {
+            if (value.IsString()) {
+                const char* text = value.GetString();
+                return (text && *text) ? std::string(text) : std::string{};
+            }
+            if (value.IsStringW()) {
+                const wchar_t* text = value.GetStringW();
+                if (!text || !*text) {
+                    return {};
+                }
+                const int utf8Size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+                if (utf8Size <= 1) {
+                    return {};
+                }
+                std::string utf8(static_cast<std::size_t>(utf8Size - 1), '\0');
+                WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8.data(), utf8Size, nullptr, nullptr);
+                return utf8;
+            }
+            return {};
+        }
+
         std::string GetOpenGFxString(RE::InventoryEntryData* entry, const char* member, bool skipJunkOverride) {
             auto* itemList = UIUtil::ItemList::GetOpenList();
             if (!itemList || !entry || !entry->object) {
@@ -720,11 +784,11 @@ namespace JunkIt {
                 }
 
                 RE::GFxValue value;
-                if (!item->obj.GetMember(member, &value) || !value.IsString()) {
+                if (!item->obj.GetMember(member, &value)) {
                     continue;
                 }
-                const char* text = value.GetString();
-                if (!text || !*text) {
+                const std::string text = GFxValueToUtf8(value);
+                if (text.empty()) {
                     continue;
                 }
                 if (skipJunkOverride && IsJunkOverrideType(text)) {
@@ -758,8 +822,42 @@ namespace JunkIt {
                 LabelMatchesConfigured(gfxLabel, configuredNormalized);
         }
 
+        bool MaterialKeywordsContainConfigured(RE::TESBoundObject* object, const std::vector<std::string>& configured) {
+            if (configured.empty()) {
+                return false;
+            }
+            auto* keywords = KeywordFormOf(object);
+            if (!keywords) {
+                return false;
+            }
+            for (const auto& value : configured) {
+                if (KeywordFormHasEditorId(keywords, value, true)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool ConfiguredKeywordsMatch(RE::TESBoundObject* object, const std::vector<std::string>& configured) {
+            if (configured.empty()) {
+                return false;
+            }
+            auto* keywords = KeywordFormOfAny(object);
+            if (!keywords) {
+                return false;
+            }
+            for (const auto& value : configured) {
+                if (KeywordFormHasEditorId(keywords, value, false)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         bool AutoJunkListsEmpty() {
-            return Settings::GetAutoJunkTypes().empty() && Settings::GetAutoJunkMaterials().empty();
+            return Settings::GetAutoJunkTypes().empty() &&
+                Settings::GetAutoJunkMaterials().empty() &&
+                Settings::GetAutoJunkKeywords().empty();
         }
 
         bool AutoJunkMatches(RE::InventoryEntryData* entry) {
@@ -772,10 +870,15 @@ namespace JunkIt {
                     GetOpenGFxString(entry, "subTypeDisplay", true))) {
                 return true;
             }
-            return ConfiguredListMatches(
-                Settings::GetAutoJunkMaterials(),
-                GetSkyUIMaterialLabel(entry->object),
-                GetOpenGFxString(entry, "materialDisplay", false));
+            const auto& materials = Settings::GetAutoJunkMaterials();
+            if (ConfiguredListMatches(
+                    materials,
+                    GetSkyUIMaterialLabel(entry->object),
+                    GetOpenGFxString(entry, "materialDisplay", false)) ||
+                MaterialKeywordsContainConfigured(entry->object, materials)) {
+                return true;
+            }
+            return ConfiguredKeywordsMatch(entry->object, Settings::GetAutoJunkKeywords());
         }
 
         bool ExtraListMatchesUniqueID(const RE::ExtraDataList* extraList, std::uint16_t uniqueID) {

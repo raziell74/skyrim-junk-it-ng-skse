@@ -73,6 +73,9 @@ namespace JunkIt {
             [[nodiscard]] static const std::vector<std::string>& GetAutoJunkMaterials();
             static bool TryAddAutoJunkMaterial(std::string_view material);
             static bool RemoveAutoJunkMaterialAt(std::size_t index);
+            [[nodiscard]] static const std::vector<std::string>& GetAutoJunkKeywords();
+            static bool TryAddAutoJunkKeyword(std::string_view keyword);
+            static bool RemoveAutoJunkKeywordAt(std::size_t index);
 
             [[nodiscard]] static bool IsDIIIInstalled();
             [[nodiscard]] static bool IsSkyPromptInstalled();
