@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -61,27 +62,6 @@ namespace JunkIt {
                 return;
             }
             movie->Invoke("_root.Menu_mc.inventoryLists.InvalidateListData", nullptr, nullptr, 0);
-        }
-
-        void NudgeActiveSegment(RE::GFxMovieView* movie) {
-            if (!movie) {
-                return;
-            }
-
-            RE::GFxValue activeSegment;
-            if (!movie->GetVariable(&activeSegment, "_root.Menu_mc.inventoryLists.categoryList.activeSegment")) {
-                return;
-            }
-
-            const int original = static_cast<int>(activeSegment.GetNumber());
-            const int flipped = original == 0 ? 1 : 0;
-
-            RE::GFxValue flippedVal(static_cast<double>(flipped));
-            movie->SetVariable("_root.Menu_mc.inventoryLists.categoryList.activeSegment", flippedVal);
-
-            RE::GFxValue restoredVal(static_cast<double>(original));
-            movie->SetVariable("_root.Menu_mc.inventoryLists.categoryList.activeSegment", restoredVal);
-            movie->Invoke("_root.Menu_mc.inventoryLists.showItemsList", nullptr, nullptr, 0);
         }
 
         struct PreviewStack {
@@ -199,9 +179,13 @@ namespace JunkIt {
             auto* form = TESForm::LookupByID(baseObj);
             return form ? form->As<TESBoundObject>() : nullptr;
         }
+
+        int HeavyLoadDeferredFrames() {
+            return std::clamp(static_cast<int>(std::lround(2.0f * Settings::GetHeavyLoadDelayMultiplier())), 1, 10);
+        }
     }
 
-    void JunkHandler::ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary, bool nudgeSegment) {
+    void JunkHandler::ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary) {
         ItemList* itemList = UIUtil::ItemList::GetOpenList();
         if (!itemList) {
             return;
@@ -220,32 +204,39 @@ namespace JunkIt {
         }
 
         InvalidateInventoryLists(movie);
-
-        if (nudgeSegment) {
-            NudgeActiveSegment(movie);
-        }
     }
 
-    void JunkHandler::ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, bool largeOp, int framesRemaining) {
+    void JunkHandler::ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete) {
         auto* taskInterface = SKSE::GetTaskInterface();
         if (!taskInterface) {
+            if (onComplete) {
+                onComplete();
+            }
             return;
         }
 
-        taskInterface->AddUITask([primaryId, secondaryId, largeOp, framesRemaining]() {
+        taskInterface->AddUITask([primaryId, secondaryId, framesRemaining, onComplete = std::move(onComplete)]() mutable {
             if (framesRemaining > 0) {
-                ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, framesRemaining - 1);
+                ScheduleInventoryUIRefresh(primaryId, secondaryId, framesRemaining - 1, std::move(onComplete));
                 return;
             }
 
             auto* primary = LookupRefr(primaryId);
             auto* secondary = LookupRefr(secondaryId);
-            if (!primary && !secondary) {
+            if (primary || secondary) {
+                ApplyInventoryUIRefresh(primary, secondary);
+                SkyPromptIntegration::GetSingleton().RecapturePreviews();
+            }
+
+            if (!onComplete) {
                 return;
             }
 
-            ApplyInventoryUIRefresh(primary, secondary, largeOp);
-            SkyPromptIntegration::GetSingleton().RecapturePreviews();
+            if (auto* tasks = SKSE::GetTaskInterface()) {
+                tasks->AddUITask(std::move(onComplete));
+            } else {
+                onComplete();
+            }
         });
     }
 
@@ -283,8 +274,7 @@ namespace JunkIt {
         const bool largeOp = uniqueTypes >= Settings::GetLargeUniqueTypes() || totalItems >= Settings::GetLargeTotalItems();
         int deferredFrames = 1;
         if (largeOp) {
-            deferredFrames = static_cast<int>(std::lround(2.0f * Settings::GetHeavyLoadDelayMultiplier()));
-            deferredFrames = std::clamp(deferredFrames, 1, 10);
+            deferredFrames = HeavyLoadDeferredFrames();
         }
 
         SKSE::log::info(
@@ -294,15 +284,15 @@ namespace JunkIt {
             largeOp,
             deferredFrames);
 
-        ApplyInventoryUIRefresh(primary, secondary, largeOp);
+        ApplyInventoryUIRefresh(primary, secondary);
 
         const FormID primaryId = primary ? primary->GetFormID() : 0;
         const FormID secondaryId = secondary ? secondary->GetFormID() : 0;
 
-        ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, 0);
+        ScheduleInventoryUIRefresh(primaryId, secondaryId, 0);
 
         if (largeOp && deferredFrames > 1) {
-            ScheduleInventoryUIRefresh(primaryId, secondaryId, largeOp, deferredFrames - 1);
+            ScheduleInventoryUIRefresh(primaryId, secondaryId, deferredFrames - 1);
         }
 
         StartAggressiveRefresh();
@@ -1075,8 +1065,10 @@ namespace JunkIt {
         }
 
         RE::GFxValue result;
-        menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
-        int menuView = static_cast<int>(result.GetNumber());
+        int menuView = 0;
+        if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
+            menuView = static_cast<int>(result.GetNumber());
+        }
 
         auto transferList = BuildTransferList();
         SKSE::log::info("Transfer list contains {} unique item types", transferList.size());
@@ -1365,16 +1357,159 @@ namespace JunkIt {
                     } else {
                         SKSE::log::info("User cancelled sale");
                         SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                        operationInProgress.store(false);
                     }
-                    operationInProgress.store(false);
                 });
         } else {
             SKSE::log::info("Confirmation disabled, proceeding with sale");
             ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
-            operationInProgress.store(false);
         }
         SKSE::log::info("==== Junk Sell Operation Complete ====");
         SKSE::log::info(" ");
+    }
+
+    std::vector<JunkHandler::SellWorkItem> JunkHandler::BuildSellWorkList(
+        const std::vector<std::pair<InventoryEntryData*, Count>>& itemsToSell) {
+        std::vector<SellWorkItem> work;
+        std::unordered_map<FormID, std::size_t> index;
+        for (const auto& [entry, count] : itemsToSell) {
+            if (!entry || !entry->object || count <= 0) {
+                continue;
+            }
+            const FormID formId = entry->object->GetFormID();
+            if (auto it = index.find(formId); it != index.end()) {
+                work[it->second].count += count;
+            } else {
+                index[formId] = work.size();
+                work.push_back({ formId, count });
+            }
+        }
+        return work;
+    }
+
+    void JunkHandler::SellWorkUnits(std::vector<SellWorkItem>& remaining, TESObjectREFR* from, TESObjectREFR* to, Count maxUnits) {
+        if (!from || !to || maxUnits <= 0) {
+            return;
+        }
+
+        Count sold = 0;
+        while (!remaining.empty() && sold < maxUnits) {
+            auto& item = remaining.front();
+            auto* bound = LookupBoundObject(item.formId);
+            if (!bound) {
+                remaining.erase(remaining.begin());
+                continue;
+            }
+
+            auto inventory = from->GetInventory();
+            const auto it = inventory.find(bound);
+            if (it == inventory.end() || !it->second.second) {
+                remaining.erase(remaining.begin());
+                continue;
+            }
+
+            const Count take = std::min(item.count, maxUnits - sold);
+            SKSE::log::info("Selling {} x{}", bound->GetName(), take);
+            SellEntryUnits(it->second.second.get(), from, to, take);
+            SKSE::log::info("Transaction for {} {} complete", take, bound->GetName());
+            item.count -= take;
+            sold += take;
+            if (item.count <= 0) {
+                remaining.erase(remaining.begin());
+            }
+        }
+    }
+
+    void JunkHandler::ContinueChunkedSell(SellSession session) {
+        auto* player = PlayerCharacter::GetSingleton();
+        auto* vendorActorRef = LookupRefr(session.vendorActorId);
+        auto* vendorContainer = LookupRefr(session.vendorContainerId);
+        if (!player || !vendorActorRef || !vendorContainer) {
+            SKSE::log::error("Chunked sale aborted: missing player or vendor reference");
+            operationInProgress.store(false);
+            return;
+        }
+
+        const Count chunkSize = Settings::GetSellChunkSize();
+        Count remainingUnits = 0;
+        for (const auto& item : session.remaining) {
+            remainingUnits += item.count;
+        }
+
+        SKSE::log::info("Selling chunk of up to {} items ({} remaining)", chunkSize, remainingUnits);
+        SellWorkUnits(session.remaining, player, vendorContainer, chunkSize);
+
+        if (session.remaining.empty()) {
+            FinishSell(player, vendorActorRef, vendorContainer, session.totalSellValue, session.totalToSell, session.totalPossibleToSell, session.uniqueTypes);
+            return;
+        }
+
+        const auto ui = RE::UI::GetSingleton();
+        auto menu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
+        if (!menu || !menu->uiMovie) {
+            SKSE::log::info("Barter menu closed during chunked sale, selling remaining items");
+            remainingUnits = 0;
+            for (const auto& item : session.remaining) {
+                remainingUnits += item.count;
+            }
+            SellWorkUnits(session.remaining, player, vendorContainer, remainingUnits);
+            FinishSell(player, vendorActorRef, vendorContainer, session.totalSellValue, session.totalToSell, session.totalPossibleToSell, session.uniqueTypes);
+            return;
+        }
+
+        ApplyInventoryUIRefresh(player, vendorActorRef);
+        if (vendorContainer != vendorActorRef) {
+            SendInventoryUpdate(vendorContainer);
+            if (auto* itemList = UIUtil::ItemList::GetOpenList()) {
+                itemList->Update(vendorContainer);
+            }
+        }
+
+        const int deferredFrames = HeavyLoadDeferredFrames();
+        ScheduleInventoryUIRefresh(
+            player->GetFormID(),
+            session.vendorActorId,
+            deferredFrames - 1,
+            [session = std::move(session)]() mutable {
+                ContinueChunkedSell(std::move(session));
+            });
+    }
+
+    void JunkHandler::FinishSell(
+        TESObjectREFR* player,
+        TESObjectREFR* vendorActorRef,
+        TESObjectREFR* vendorContainer,
+        Count totalSellValue,
+        Count totalToSell,
+        Count totalPossibleToSell,
+        std::size_t uniqueTypes) {
+        if (auto* playerActor = player ? player->As<PlayerCharacter>() : nullptr) {
+            SKSE::log::info("Adding {} Speech experience", totalSellValue);
+            playerActor->AddSkillExperience(RE::ActorValue::kSpeech, static_cast<float>(totalSellValue));
+        }
+
+        if (totalToSell >= totalPossibleToSell) {
+            SKSE::log::info("Sold ALL {} Junk Items for {} Gold", totalToSell, totalSellValue);
+            if (Settings::GetNotifyOnJunkSell()) {
+                SendHUDMessage::ShowHUDMessage("JunkIt - Sold All Junk Items!");
+            }
+        } else {
+            SKSE::log::info("Sold {} of {} Junk Items for {} Gold (vendor gold limit reached)", totalToSell, totalPossibleToSell, totalSellValue);
+            if (Settings::GetNotifyOnJunkSell()) {
+                std::string msg = fmt::format("JunkIt - Sold {} Junk Items!", totalToSell);
+                SendHUDMessage::ShowHUDMessage(msg.c_str());
+            }
+        }
+
+        RefreshMenusAfterBulk(player, vendorActorRef, uniqueTypes, totalToSell);
+        if (vendorContainer && vendorContainer != vendorActorRef) {
+            RE::SendUIMessage::SendInventoryUpdateMessage(vendorContainer, nullptr);
+            if (auto* itemList = UIUtil::ItemList::GetOpenList()) {
+                itemList->Update(vendorContainer);
+            }
+        }
+        SKSE::log::info("---- Sale Execution Complete ----");
+        operationInProgress.store(false);
     }
 
     void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay) {
@@ -1429,40 +1564,32 @@ namespace JunkIt {
             menu->uiMovie->SetVariable("_root.Menu_mc._vendorGold", goldVal);
         }
 
+        const Count chunkSize = Settings::GetSellChunkSize();
         SKSE::log::info("SellList Size: {}", itemsToSell.size());
-        SKSE::log::info("Transferring junk items to vendor...");
-        for (const auto& [entryData, count] : itemsToSell) {
-            if (count > 0 && entryData && entryData->object) {
-                SKSE::log::info("Selling {} x{}", entryData->object->GetName(), count);
-                SellEntryUnits(entryData, player, vendorContainer, count);
-                SKSE::log::info("Transaction for {} {} complete", count, entryData->object->GetName());
+
+        if (totalToSell <= chunkSize) {
+            SKSE::log::info("Transferring junk items to vendor...");
+            for (const auto& [entryData, count] : itemsToSell) {
+                if (count > 0 && entryData && entryData->object) {
+                    SKSE::log::info("Selling {} x{}", entryData->object->GetName(), count);
+                    SellEntryUnits(entryData, player, vendorContainer, count);
+                    SKSE::log::info("Transaction for {} {} complete", count, entryData->object->GetName());
+                }
             }
+            FinishSell(player, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, itemsToSell.size());
+            return;
         }
 
-        SKSE::log::info("Adding {} Speech experience", totalSellValue);
-        player->AddSkillExperience(RE::ActorValue::kSpeech, static_cast<float>(totalSellValue));
-
-        if (totalToSell >= totalPossibleToSell) {
-            SKSE::log::info("Sold ALL {} Junk Items for {} Gold", totalToSell, totalSellValue);
-            if (Settings::GetNotifyOnJunkSell()) {
-                SendHUDMessage::ShowHUDMessage("JunkIt - Sold All Junk Items!");
-            }
-        } else {
-            SKSE::log::info("Sold {} of {} Junk Items for {} Gold (vendor gold limit reached)", totalToSell, totalPossibleToSell, totalSellValue);
-            if (Settings::GetNotifyOnJunkSell()) {
-                std::string msg = fmt::format("JunkIt - Sold {} Junk Items!", totalToSell);
-                SendHUDMessage::ShowHUDMessage(msg.c_str());
-            }
-        }
-
-        RefreshMenusAfterBulk(player, vendorActorRef, itemsToSell.size(), totalToSell);
-        if (vendorContainer && vendorContainer != vendorActorRef) {
-            RE::SendUIMessage::SendInventoryUpdateMessage(vendorContainer, nullptr);
-            if (auto* itemList = UIUtil::ItemList::GetOpenList()) {
-                itemList->Update(vendorContainer);
-            }
-        }
-        SKSE::log::info("---- Sale Execution Complete ----");
+        SKSE::log::info("Chunked sale: {} items in chunks of {}", totalToSell, chunkSize);
+        SellSession session;
+        session.remaining = BuildSellWorkList(itemsToSell);
+        session.vendorActorId = vendorActorRef->GetFormID();
+        session.vendorContainerId = vendorContainer->GetFormID();
+        session.totalSellValue = totalSellValue;
+        session.totalToSell = totalToSell;
+        session.totalPossibleToSell = totalPossibleToSell;
+        session.uniqueTypes = itemsToSell.size();
+        ContinueChunkedSell(std::move(session));
     }
 
     TESForm* JunkHandler::ToggleSelectedItemJunk() {

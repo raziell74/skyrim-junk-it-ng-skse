@@ -52,6 +52,7 @@ namespace JunkIt {
             [[nodiscard]] static float GetHeavyLoadDelayMultiplier();
             [[nodiscard]] static std::size_t GetLargeUniqueTypes();
             [[nodiscard]] static std::int32_t GetLargeTotalItems();
+            [[nodiscard]] static std::int32_t GetSellChunkSize();
 
             [[nodiscard]] static bool GetAutoExport();
             [[nodiscard]] static bool GetAutoImport();
@@ -97,6 +98,7 @@ namespace JunkIt {
             static float& HeavyLoadDelayMultiplierValue();
             static std::int32_t& LargeUniqueTypesValue();
             static std::int32_t& LargeTotalItemsValue();
+            static std::int32_t& SellChunkSizeValue();
 
             static bool& UpdateItemIconValue();
             static bool& UpdateSubTypeDisplayValue();

@@ -910,6 +910,12 @@ namespace JunkIt {
                         Settings::LargeTotalItemsValue(),
                         1,
                         1000));
+                    SaveIfChanged(SliderIntRow(
+                        "$JunkIt_SellChunkSize",
+                        "$JunkIt_SellChunkSize_Help",
+                        Settings::SellChunkSizeValue(),
+                        50,
+                        1500));
                     ImGui::EndTable();
                 }
             }

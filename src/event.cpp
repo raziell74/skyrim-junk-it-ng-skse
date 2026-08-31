@@ -47,7 +47,7 @@ namespace JunkIt {
         }
 
         if (type == JUNKIT_EVENT_TYPE::kMark) {
-            SkyPromptIntegration::GetSingleton().SyncPromptLabels();
+            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
         }
     }
 

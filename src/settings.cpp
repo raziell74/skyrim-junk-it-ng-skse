@@ -34,6 +34,7 @@ namespace JunkIt {
             float heavyLoadDelayMultiplier = 1.0f;
             std::int32_t largeUniqueTypes = 500;
             std::int32_t largeTotalItems = 1000;
+            std::int32_t sellChunkSize = 250;
 
             bool updateItemIcon = true;
             bool updateSubTypeDisplay = true;
@@ -227,6 +228,7 @@ namespace JunkIt {
             complete &= ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeTotalItems", g_values.largeTotalItems);
+            complete &= ReadInt(ini, "Misc", "MiscSettings", "iSellChunkSize", g_values.sellChunkSize);
 
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateItemIcon", g_values.updateItemIcon);
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bUpdateSubTypeDisplay", g_values.updateSubTypeDisplay);
@@ -288,13 +290,14 @@ namespace JunkIt {
                 g_values.gamepadJunkKey,
                 g_values.gamepadTransferHoldTime);
             SKSE::log::info(
-                "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {}",
+                "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
                 g_values.aggressiveRefresh,
                 g_values.autoExport,
                 g_values.autoImport,
                 g_values.heavyLoadDelayMultiplier,
                 g_values.largeUniqueTypes,
-                g_values.largeTotalItems);
+                g_values.largeTotalItems,
+                g_values.sellChunkSize);
             SKSE::log::info(
                 "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptEnabled: {} | SkyPromptButtonPlacement: {} | SkyPromptShowCounts: {}",
                 g_values.updateItemIcon,
@@ -337,6 +340,7 @@ namespace JunkIt {
         g_values.heavyLoadDelayMultiplier = std::clamp(g_values.heavyLoadDelayMultiplier, 0.5f, 5.0f);
         g_values.largeUniqueTypes = std::clamp(g_values.largeUniqueTypes, 1, 500);
         g_values.largeTotalItems = std::clamp(g_values.largeTotalItems, 1, 1000);
+        g_values.sellChunkSize = std::clamp(g_values.sellChunkSize, 50, 1500);
         g_values.aggressiveRefreshMaxInterval = std::clamp(g_values.aggressiveRefreshMaxInterval, 1, 60);
         g_values.skyPromptButtonPlacement = std::clamp(g_values.skyPromptButtonPlacement, 0, 1);
     }
@@ -429,7 +433,8 @@ namespace JunkIt {
             out << "bNotifyOnJunkSell=" << (g_values.notifyOnJunkSell ? 1 : 0) << "\n";
             out << "fHeavyLoadDelayMultiplier=" << g_values.heavyLoadDelayMultiplier << "\n";
             out << "iLargeUniqueTypes=" << g_values.largeUniqueTypes << "\n";
-            out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n\n";
+            out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n";
+            out << "iSellChunkSize=" << g_values.sellChunkSize << "\n\n";
 
             out << "[Integration]\n";
             out << "bUpdateItemIcon=" << (g_values.updateItemIcon ? 1 : 0) << "\n";
@@ -522,6 +527,7 @@ namespace JunkIt {
     float Settings::GetHeavyLoadDelayMultiplier() { return g_values.heavyLoadDelayMultiplier; }
     std::size_t Settings::GetLargeUniqueTypes() { return static_cast<std::size_t>(g_values.largeUniqueTypes); }
     std::int32_t Settings::GetLargeTotalItems() { return g_values.largeTotalItems; }
+    std::int32_t Settings::GetSellChunkSize() { return g_values.sellChunkSize; }
 
     bool Settings::GetAutoExport() { return g_values.autoExport; }
     bool Settings::GetAutoImport() { return g_values.autoImport; }
@@ -612,6 +618,7 @@ namespace JunkIt {
     float& Settings::HeavyLoadDelayMultiplierValue() { return g_values.heavyLoadDelayMultiplier; }
     std::int32_t& Settings::LargeUniqueTypesValue() { return g_values.largeUniqueTypes; }
     std::int32_t& Settings::LargeTotalItemsValue() { return g_values.largeTotalItems; }
+    std::int32_t& Settings::SellChunkSizeValue() { return g_values.sellChunkSize; }
 
     bool& Settings::UpdateItemIconValue() { return g_values.updateItemIcon; }
     bool& Settings::UpdateSubTypeDisplayValue() { return g_values.updateSubTypeDisplay; }

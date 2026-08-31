@@ -164,7 +164,8 @@ namespace JunkIt {
             switch (static_cast<PromptActionID>(event.prompt.actionID)) {
                 case PromptActionID::kMark:
                     InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
-                    break;
+                    self.ScheduleLabelSync();
+                    return;
                 case PromptActionID::kTransfer:
                     InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
                     break;
@@ -417,8 +418,9 @@ namespace JunkIt {
         auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
         if (menu && menu->uiMovie) {
             RE::GFxValue result;
-            menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
-            storeView = static_cast<int>(result.GetNumber()) != 0;
+            if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
+                storeView = static_cast<int>(result.GetNumber()) != 0;
+            }
         }
 
         const char* key = storeView ? "$JunkIt_Prompt_Store" : "$JunkIt_Prompt_Retrieve";
@@ -789,8 +791,9 @@ namespace JunkIt {
             auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
             if (menu && menu->uiMovie) {
                 RE::GFxValue result;
-                menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment");
-                return static_cast<int>(result.GetNumber()) != 0;
+                if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
+                    return static_cast<int>(result.GetNumber()) != 0;
+                }
             }
         }
 

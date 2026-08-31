@@ -138,8 +138,28 @@ namespace JunkIt {
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
         static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay);
 
-        static void ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary, bool nudgeSegment);
-        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, bool largeOp, int framesRemaining);
+        struct SellWorkItem {
+            FormID formId = 0;
+            Count count = 0;
+        };
+
+        struct SellSession {
+            std::vector<SellWorkItem> remaining;
+            FormID vendorActorId = 0;
+            FormID vendorContainerId = 0;
+            Count totalSellValue = 0;
+            Count totalToSell = 0;
+            Count totalPossibleToSell = 0;
+            std::size_t uniqueTypes = 0;
+        };
+
+        static std::vector<SellWorkItem> BuildSellWorkList(const std::vector<std::pair<InventoryEntryData*, Count>>& itemsToSell);
+        static void SellWorkUnits(std::vector<SellWorkItem>& remaining, TESObjectREFR* from, TESObjectREFR* to, Count maxUnits);
+        static void ContinueChunkedSell(SellSession session);
+        static void FinishSell(TESObjectREFR* player, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, std::size_t uniqueTypes);
+
+        static void ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary);
+        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {});
         static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
