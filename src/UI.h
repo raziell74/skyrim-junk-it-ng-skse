@@ -7,5 +7,6 @@ namespace JunkIt {
         public:
             static void Register();
             static bool ConsumeKeyCapture(std::uint32_t keyCode);
+            static void CloseFrameworkOverlay();
     };
 }

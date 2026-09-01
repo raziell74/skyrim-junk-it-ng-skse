@@ -4,6 +4,7 @@
 #include "JunkData.h"
 #include "SkyPromptIntegration.h"
 #include "Translation.h"
+#include "junk.h"
 #include "settings.h"
 #include "util.h"
 
@@ -22,7 +23,8 @@ namespace JunkIt {
             kNone = 0,
             kMark = 1,
             kTransfer = 2,
-            kGamepad = 3
+            kGamepad = 3,
+            kTrash = 4
         };
 
         enum class StatusKind {
@@ -60,6 +62,9 @@ namespace JunkIt {
         constexpr unsigned kIconSwitch = 0xf362;
 
         const char* KeyName(std::uint32_t keyCode) {
+            if (keyCode == 0) {
+                return Translation::Get("$JunkIt_Unbound").c_str();
+            }
             switch (keyCode) {
                 case 1: return "Escape";
                 case 2: return "1";
@@ -175,7 +180,8 @@ namespace JunkIt {
             ImGui::SameLine();
             ImGui::PushID(helpKey);
             ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_Stationary)) {
+            if (ImGui::IsItemHovered(
+                    ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_Stationary | ImGuiHoveredFlags_AllowWhenDisabled)) {
                 if (ImGui::BeginTooltip()) {
                     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
                     ImGui::TextUnformatted(Translation::Get(helpKey).c_str());
@@ -282,7 +288,9 @@ namespace JunkIt {
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(Translation::Get(labelKey).c_str());
             if (helpKey && std::strcmp(labelKey, helpKey) != 0) {
+                ImGui::PushID(labelKey);
                 HelpMarker(helpKey);
+                ImGui::PopID();
             }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-1.0f);
@@ -425,6 +433,57 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
+            ImGui::SeparatorText(Translation::Get("$JunkIt_TrashHeader").c_str());
+            const bool trashResolved = Settings::GetTrashContainer() != nullptr;
+            const bool trashAvailable = Settings::IsTrashAvailable();
+            if (!trashResolved) {
+                ImGui::TextWrapped("%s", Translation::Get("$JunkIt_TrashRequiresEsp").c_str());
+                ImGui::BeginDisabled();
+            }
+            if (BeginSettingsTable("generalTrash")) {
+                const bool enableChanged = CheckboxRow(
+                    "$JunkIt_EnableTrash",
+                    "$JunkIt_EnableTrash_Help",
+                    Settings::EnableTrashValue());
+                SaveIfChanged(enableChanged);
+                if (enableChanged) {
+                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+                ImGui::BeginDisabled(!trashAvailable);
+                const char* holdHelp = !trashResolved
+                    ? "$JunkIt_TrashRequiresEsp"
+                    : (trashAvailable ? "$JunkIt_TrashHoldSeconds_Help" : "$JunkIt_EnableTrash_Help");
+                const bool holdChanged = SliderIntRow(
+                    "$JunkIt_TrashHoldSeconds",
+                    holdHelp,
+                    Settings::TrashHoldSecondsValue(),
+                    0,
+                    10);
+                SaveIfChanged(holdChanged);
+                if (holdChanged) {
+                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+                const char* expireHelp = !trashResolved
+                    ? "$JunkIt_TrashRequiresEsp"
+                    : (trashAvailable ? "$JunkIt_TrashExpireDays_Help" : "$JunkIt_EnableTrash_Help");
+                SaveIfChanged(SliderIntRow(
+                    "$JunkIt_TrashExpireDays",
+                    expireHelp,
+                    Settings::TrashExpireDaysValue(),
+                    0,
+                    30));
+                ImGui::EndDisabled();
+                ImGui::EndTable();
+            }
+
+            if (IconButton(kIconTrash, "$JunkIt_OpenTrash")) {
+                JunkHandler::OpenTrashContainer();
+            }
+            HelpMarker(trashResolved ? "$JunkIt_OpenTrash_Help" : "$JunkIt_TrashRequiresEsp");
+            if (!trashResolved) {
+                ImGui::EndDisabled();
+            }
+
             RenderStatus();
             PopBrandColors();
         }
@@ -437,6 +496,22 @@ namespace JunkIt {
             if (BeginSettingsTable("hotkeysKeyboard")) {
                 KeyBindRow("$JunkIt_Text_Hotkey", "$JunkIt_Help_Hotkey", Settings::MarkJunkKeyValue(), CaptureSlot::kMark);
                 KeyBindRow("$JunkIt_Transfer_Hotkey", "$JunkIt_Transfer_Hotkey_Help", Settings::TransferJunkKeyValue(), CaptureSlot::kTransfer);
+                const bool trashResolved = Settings::GetTrashContainer() != nullptr;
+                const bool trashAvailable = Settings::IsTrashAvailable();
+                const char* trashKeyHelp = !trashResolved
+                    ? "$JunkIt_TrashRequiresEsp"
+                    : (trashAvailable ? "$JunkIt_TrashJunkKey_Help" : "$JunkIt_EnableTrash_Help");
+                if (!trashAvailable) {
+                    ImGui::BeginDisabled();
+                }
+                KeyBindRow(
+                    "$JunkIt_TrashJunkKey",
+                    trashKeyHelp,
+                    Settings::TrashJunkKeyValue(),
+                    CaptureSlot::kTrash);
+                if (!trashAvailable) {
+                    ImGui::EndDisabled();
+                }
                 ImGui::EndTable();
             }
 
@@ -1045,6 +1120,9 @@ namespace JunkIt {
             case CaptureSlot::kGamepad:
                 Settings::GamepadJunkKeyValue() = keyCode;
                 break;
+            case CaptureSlot::kTrash:
+                Settings::TrashJunkKeyValue() = keyCode;
+                break;
             default:
                 break;
         }
@@ -1053,5 +1131,28 @@ namespace JunkIt {
         g_capture = CaptureSlot::kNone;
         SkyPromptIntegration::GetSingleton().RefreshPrompts();
         return true;
+    }
+
+    void UI::CloseFrameworkOverlay() {
+        auto* module = SKSEMenuFrameworkModule();
+        if (!module) {
+            SKSE::log::warn("SKSE Menu Framework is not loaded; cannot close overlay");
+            return;
+        }
+
+        using CloseFn = void (*)();
+        constexpr const char* kCloseExports[] = {
+            "CloseMenu",
+            "Close"
+        };
+        for (const char* name : kCloseExports) {
+            if (auto* fn = reinterpret_cast<CloseFn>(GetProcAddress(module, name))) {
+                fn();
+                SKSE::log::info("Closed SKSE Menu Framework overlay via {}", name);
+                return;
+            }
+        }
+
+        SKSE::log::warn("SKSE Menu Framework has no close export; trash container will still open");
     }
 }

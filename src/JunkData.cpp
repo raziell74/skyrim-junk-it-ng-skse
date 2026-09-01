@@ -1,4 +1,6 @@
 #include "JunkData.h"
+#include "InventoryWalk.h"
+#include "junk.h"
 #include "util.h"
 #include <json/json.h>
 #include <algorithm>
@@ -15,6 +17,8 @@ namespace JunkIt {
         constexpr std::uint32_t kJunkRecordVersion = 3;
         constexpr std::uint32_t kAutoJunkRecord = 'AJNK';
         constexpr std::uint32_t kAutoJunkRecordVersion = 1;
+        constexpr std::uint32_t kTrashRecord = 'TRSH';
+        constexpr std::uint32_t kTrashRecordVersion = 1;
         constexpr std::uint32_t kJsonJunkVersion = 2;
         constexpr auto kJsonJunkPath = "Data/SKSE/Plugins/JunkIt/junklist.json";
         const std::regex kCanonicalIdentityRegex(
@@ -322,24 +326,23 @@ namespace JunkIt {
             return result;
         }
 
-        auto playerInventory = player->GetInventory();
         std::unordered_map<std::string, int32_t> counts;
         std::unordered_map<std::string, std::string> names;
 
-        for (const auto& [obj, data] : playerInventory) {
-            if (!obj || data.first <= 0) {
-                continue;
+        ForEachInventoryEntry(player, [&](RE::InventoryEntryData* entryData) {
+            if (!entryData || !entryData->object) {
+                return;
             }
 
-            auto* entryData = data.second.get();
-            if (!entryData || !entryData->extraLists || entryData->extraLists->empty()) {
-                const std::string displayName = entryData ? entryData->GetDisplayName() : obj->GetName();
+            auto* obj = entryData->object;
+            if (!entryData->extraLists || entryData->extraLists->empty()) {
+                const std::string displayName = entryData->GetDisplayName();
                 const auto identity = BuildIdentity(obj, nullptr, displayName);
-                if (IsJunk(identity)) {
-                    counts[identity] += data.first;
+                if (IsJunk(identity) && entryData->countDelta > 0) {
+                    counts[identity] += entryData->countDelta;
                     names.try_emplace(identity, GetDisplayNameFromIdentity(identity));
                 }
-                continue;
+                return;
             }
 
             for (auto* extraList : *entryData->extraLists) {
@@ -355,7 +358,7 @@ namespace JunkIt {
                 counts[identity] += extraList->GetCount();
                 names.try_emplace(identity, GetDisplayNameFromIdentity(identity));
             }
-        }
+        });
 
         result.reserve(counts.size());
         for (const auto& [identity, count] : counts) {
@@ -736,6 +739,12 @@ namespace JunkIt {
             return;
         }
         GetSingleton().SaveAutoJunk(intfc);
+
+        if (!intfc->OpenRecord(kTrashRecord, kTrashRecordVersion)) {
+            SKSE::log::error("Failed to open TRSH record for save");
+            return;
+        }
+        JunkHandler::SaveTrashState(intfc);
     }
 
     void JunkDataManager::OnLoad(SKSE::SerializationInterface* intfc) {
@@ -757,6 +766,8 @@ namespace JunkIt {
                 GetSingleton().Load(intfc, version);
             } else if (type == kAutoJunkRecord) {
                 GetSingleton().LoadAutoJunk(intfc, version);
+            } else if (type == kTrashRecord) {
+                JunkHandler::LoadTrashState(intfc, version);
             }
         }
         std::lock_guard<std::mutex> guard(GetSingleton().lock);
@@ -765,5 +776,6 @@ namespace JunkIt {
 
     void JunkDataManager::OnRevert(SKSE::SerializationInterface* intfc) {
         GetSingleton().Revert(intfc);
+        JunkHandler::RevertTrashState();
     }
 }

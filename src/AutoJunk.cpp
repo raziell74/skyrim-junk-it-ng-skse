@@ -1,6 +1,7 @@
 #include "AutoJunk.h"
 
 #include "I4Integration.h"
+#include "InventoryWalk.h"
 #include "JunkData.h"
 #include "SkyPromptIntegration.h"
 #include "junk.h"
@@ -931,16 +932,19 @@ namespace JunkIt {
             return manager.AddJunkIdentity(identity, true).has_value();
         }
 
-        bool ApplyToInventoryMap(auto& inventory) {
+        bool ApplyToReference(RE::TESObjectREFR* container) {
+            if (!container) {
+                return false;
+            }
             bool marked = false;
-            for (auto& [object, data] : inventory) {
-                if (!object || data.first <= 0 || !data.second) {
-                    continue;
+            ForEachInventoryEntry(container, [&](RE::InventoryEntryData* entry) {
+                if (!entry || !entry->object) {
+                    return;
                 }
-                if (AutoJunk::TryMarkEntry(data.second.get())) {
+                if (AutoJunk::TryMarkEntry(entry)) {
                     marked = true;
                 }
-            }
+            });
             return marked;
         }
 
@@ -997,23 +1001,22 @@ namespace JunkIt {
                 return;
             }
 
-            auto inventory = player->GetInventory();
-            auto it = inventory.find(object);
-            if (it == inventory.end() || !it->second.second) {
-                if (!isRetry) {
-                    SchedulePickupRetry(baseObj, uniqueID);
-                }
-                return;
-            }
-
-            auto* entry = it->second.second.get();
-            if (uniqueID == 0) {
-                AutoJunk::TryMarkEntry(entry);
-                return;
-            }
-
+            bool found = false;
             bool marked = false;
-            if (entry->extraLists) {
+            ForEachInventoryEntry(player, [&](RE::InventoryEntryData* entry) {
+                if (!entry || entry->object != object) {
+                    return;
+                }
+                found = true;
+                if (uniqueID == 0) {
+                    if (AutoJunk::TryMarkEntry(entry)) {
+                        marked = true;
+                    }
+                    return;
+                }
+                if (!entry->extraLists) {
+                    return;
+                }
                 for (auto* extraList : *entry->extraLists) {
                     if (ExtraListMatchesUniqueID(extraList, uniqueID)) {
                         if (TryMarkExtra(entry, extraList)) {
@@ -1021,9 +1024,21 @@ namespace JunkIt {
                         }
                     }
                 }
+            });
+
+            if (!found) {
+                if (!isRetry) {
+                    SchedulePickupRetry(baseObj, uniqueID);
+                }
+                return;
             }
-            if (!marked) {
-                AutoJunk::TryMarkEntry(entry);
+
+            if (uniqueID != 0 && !marked) {
+                ForEachInventoryEntry(player, [&](RE::InventoryEntryData* entry) {
+                    if (entry && entry->object == object) {
+                        AutoJunk::TryMarkEntry(entry);
+                    }
+                });
             }
         }
 
@@ -1113,16 +1128,14 @@ namespace JunkIt {
         if (!player) {
             return false;
         }
-        auto inventory = player->GetInventory();
-        return ApplyToInventoryMap(inventory);
+        return ApplyToReference(player);
     }
 
     bool AutoJunk::ApplyToReferenceInventory(RE::TESObjectREFR* container) {
         if (!container) {
             return false;
         }
-        auto inventory = container->GetInventory();
-        return ApplyToInventoryMap(inventory);
+        return ApplyToReference(container);
     }
 
     bool AutoJunk::ApplyToOpenMenus() {

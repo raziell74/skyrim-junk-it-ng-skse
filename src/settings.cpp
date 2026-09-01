@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -17,7 +18,11 @@ namespace JunkIt {
             std::uint32_t markJunkKey = 50;
             std::uint32_t transferJunkKey = 49;
             std::uint32_t gamepadJunkKey = 270;
+            std::uint32_t trashJunkKey = 48;
             std::int32_t gamepadTransferHoldTime = 2;
+            bool enableTrash = false;
+            std::int32_t trashHoldSeconds = 0;
+            std::int32_t trashExpireDays = 7;
 
             bool confirmTransfer = true;
             bool confirmSell = true;
@@ -58,6 +63,7 @@ namespace JunkIt {
             bool diiiInstalled = false;
             bool skyPromptInstalled = false;
             RE::TESObjectMISC* gold001 = nullptr;
+            RE::TESObjectREFR* trashContainer = nullptr;
         };
 
         Values g_values;
@@ -211,7 +217,11 @@ namespace JunkIt {
             complete &= ReadUInt(ini, "Hotkey", {}, "iJunkKey", g_values.markJunkKey);
             complete &= ReadUInt(ini, "Hotkey", {}, "iTransferJunkKey", g_values.transferJunkKey);
             complete &= ReadUInt(ini, "Hotkey", {}, "iGamepadJunkKey", g_values.gamepadJunkKey);
+            complete &= ReadUInt(ini, "Hotkey", {}, "iTrashJunkKey", g_values.trashJunkKey);
             complete &= ReadInt(ini, "Hotkey", {}, "iGamepadTransferHoldTime", g_values.gamepadTransferHoldTime);
+            complete &= ReadBool(ini, "Trash", {}, "bEnableTrash", g_values.enableTrash);
+            complete &= ReadInt(ini, "Trash", {}, "iTrashHoldSeconds", g_values.trashHoldSeconds);
+            complete &= ReadInt(ini, "Trash", {}, "iTrashExpireDays", g_values.trashExpireDays);
 
             complete &= ReadBool(ini, "Confirmation", {}, "bConfirmTransfer", g_values.confirmTransfer);
             complete &= ReadBool(ini, "Confirmation", {}, "bConfirmSell", g_values.confirmSell);
@@ -291,11 +301,17 @@ namespace JunkIt {
                 g_values.notifyOnJunkTransfer,
                 g_values.notifyOnJunkSell);
             SKSE::log::info(
-                "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {}",
+                "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {} | TrashJunkKey: {}",
                 g_values.markJunkKey,
                 g_values.transferJunkKey,
                 g_values.gamepadJunkKey,
-                g_values.gamepadTransferHoldTime);
+                g_values.gamepadTransferHoldTime,
+                g_values.trashJunkKey);
+            SKSE::log::info(
+                "Trash Settings | Enabled: {} | HoldSeconds: {} | ExpireDays: {}",
+                g_values.enableTrash,
+                g_values.trashHoldSeconds,
+                g_values.trashExpireDays);
             SKSE::log::info(
                 "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
                 g_values.aggressiveRefresh,
@@ -343,6 +359,8 @@ namespace JunkIt {
 
     void Settings::ClampValues() {
         g_values.gamepadTransferHoldTime = std::clamp(g_values.gamepadTransferHoldTime, 2, 30);
+        g_values.trashHoldSeconds = std::clamp(g_values.trashHoldSeconds, 0, 10);
+        g_values.trashExpireDays = std::clamp(g_values.trashExpireDays, 0, 30);
         g_values.transferPriority = std::clamp(g_values.transferPriority, 0, 6);
         g_values.sellPriority = std::clamp(g_values.sellPriority, 0, 6);
         g_values.heavyLoadDelayMultiplier = std::clamp(g_values.heavyLoadDelayMultiplier, 0.5f, 5.0f);
@@ -420,7 +438,13 @@ namespace JunkIt {
             out << "iJunkKey=" << g_values.markJunkKey << "\n";
             out << "iTransferJunkKey=" << g_values.transferJunkKey << "\n";
             out << "iGamepadJunkKey=" << g_values.gamepadJunkKey << "\n";
+            out << "iTrashJunkKey=" << g_values.trashJunkKey << "\n";
             out << "iGamepadTransferHoldTime=" << g_values.gamepadTransferHoldTime << "\n\n";
+
+            out << "[Trash]\n";
+            out << "bEnableTrash=" << (g_values.enableTrash ? 1 : 0) << "\n";
+            out << "iTrashHoldSeconds=" << g_values.trashHoldSeconds << "\n";
+            out << "iTrashExpireDays=" << g_values.trashExpireDays << "\n\n";
 
             out << "[Confirmation]\n";
             out << "bConfirmTransfer=" << (g_values.confirmTransfer ? 1 : 0) << "\n";
@@ -506,6 +530,31 @@ namespace JunkIt {
             SKSE::log::error("Failed to lookup Gold001 (0xF)");
         }
 
+        g_values.trashContainer = nullptr;
+        auto* dataHandler = RE::TESDataHandler::GetSingleton();
+        const bool trashPluginLoaded = dataHandler && dataHandler->LookupModByName(kTrashContainerPlugin);
+        if (!trashPluginLoaded) {
+            SKSE::log::info("{} is not loaded; trash disabled", kTrashContainerPlugin);
+        } else if (kTrashContainerFormID == 0) {
+            SKSE::log::warn(
+                "Trash container FormID is unset in settings.h; trash disabled until the JunkIt.esp REFR is assigned");
+        } else {
+            g_values.trashContainer = dataHandler->LookupForm<RE::TESObjectREFR>(
+                kTrashContainerFormID,
+                kTrashContainerPlugin);
+            if (g_values.trashContainer) {
+                SKSE::log::info(
+                    "Resolved trash container {:08X} from {}",
+                    g_values.trashContainer->GetFormID(),
+                    kTrashContainerPlugin);
+            } else {
+                SKSE::log::warn(
+                    "Trash container {:X} not found in {}; trash disabled",
+                    kTrashContainerFormID,
+                    kTrashContainerPlugin);
+            }
+        }
+
         ApplyIntegrationGuards();
     }
 
@@ -527,6 +576,11 @@ namespace JunkIt {
     float Settings::GetTransferJunkKey() { return static_cast<float>(g_values.transferJunkKey); }
     float Settings::GetGamepadJunkKey() { return static_cast<float>(g_values.gamepadJunkKey); }
     float Settings::GetGamepadTransferHoldTime() { return static_cast<float>(g_values.gamepadTransferHoldTime); }
+    float Settings::GetTrashJunkKey() { return static_cast<float>(g_values.trashJunkKey); }
+    std::int32_t Settings::GetTrashHoldSeconds() { return g_values.trashHoldSeconds; }
+    std::int32_t Settings::GetTrashExpireDays() { return g_values.trashExpireDays; }
+    RE::TESObjectREFR* Settings::GetTrashContainer() { return g_values.trashContainer; }
+    bool Settings::IsTrashAvailable() { return g_values.enableTrash && g_values.trashContainer != nullptr; }
 
     bool Settings::GetNotifyOnMarkUnmark() { return g_values.notifyOnMarkUnmark; }
     bool Settings::GetNotifyOnJunkTransfer() { return g_values.notifyOnJunkTransfer; }
@@ -635,7 +689,11 @@ namespace JunkIt {
     std::uint32_t& Settings::MarkJunkKeyValue() { return g_values.markJunkKey; }
     std::uint32_t& Settings::TransferJunkKeyValue() { return g_values.transferJunkKey; }
     std::uint32_t& Settings::GamepadJunkKeyValue() { return g_values.gamepadJunkKey; }
+    std::uint32_t& Settings::TrashJunkKeyValue() { return g_values.trashJunkKey; }
     std::int32_t& Settings::GamepadTransferHoldTimeValue() { return g_values.gamepadTransferHoldTime; }
+    bool& Settings::EnableTrashValue() { return g_values.enableTrash; }
+    std::int32_t& Settings::TrashHoldSecondsValue() { return g_values.trashHoldSeconds; }
+    std::int32_t& Settings::TrashExpireDaysValue() { return g_values.trashExpireDays; }
 
     bool& Settings::ConfirmTransferValue() { return g_values.confirmTransfer; }
     bool& Settings::ConfirmSellValue() { return g_values.confirmSell; }

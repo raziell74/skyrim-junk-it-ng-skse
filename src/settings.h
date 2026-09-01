@@ -24,6 +24,10 @@ namespace JunkIt {
                 kLowerRight = 1
             };
 
+            // Update after placing the trash container in JunkIt.esp (placed REFR local FormID, not the CONT base).
+            static constexpr RE::FormID kTrashContainerFormID = 0x829;
+            static constexpr std::string_view kTrashContainerPlugin = "JunkIt.esp";
+
             static void LoadFromIni();
             static bool SaveToIni();
             static void ResetToDefaults();
@@ -43,6 +47,11 @@ namespace JunkIt {
             [[nodiscard]] static float GetTransferJunkKey();
             [[nodiscard]] static float GetGamepadJunkKey();
             [[nodiscard]] static float GetGamepadTransferHoldTime();
+            [[nodiscard]] static float GetTrashJunkKey();
+            [[nodiscard]] static std::int32_t GetTrashHoldSeconds();
+            [[nodiscard]] static std::int32_t GetTrashExpireDays();
+            [[nodiscard]] static RE::TESObjectREFR* GetTrashContainer();
+            [[nodiscard]] static bool IsTrashAvailable();
 
             [[nodiscard]] static bool GetNotifyOnMarkUnmark();
             [[nodiscard]] static bool GetNotifyOnJunkTransfer();
@@ -84,7 +93,11 @@ namespace JunkIt {
             static std::uint32_t& MarkJunkKeyValue();
             static std::uint32_t& TransferJunkKeyValue();
             static std::uint32_t& GamepadJunkKeyValue();
+            static std::uint32_t& TrashJunkKeyValue();
             static std::int32_t& GamepadTransferHoldTimeValue();
+            static bool& EnableTrashValue();
+            static std::int32_t& TrashHoldSecondsValue();
+            static std::int32_t& TrashExpireDaysValue();
 
             static bool& ConfirmTransferValue();
             static bool& ConfirmSellValue();

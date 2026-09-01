@@ -55,6 +55,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::Translation::Load();
 			JunkIt::UI::Register();
 			JunkIt::InputEventHandler::Install();
+			JunkIt::JunkHandler::Install();
 			JunkIt::SkyPromptIntegration::GetSingleton().Install();
 			JunkIt::AutoJunk::Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
@@ -62,10 +63,12 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 		case SKSE::MessagingInterface::kPostLoadGame:
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			JunkIt::Settings::LoadGameForms();
+			JunkIt::JunkHandler::TryExpireTrash();
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			JunkIt::Settings::LoadGameForms();
+			JunkIt::JunkHandler::RevertTrashState();
 			if (JunkIt::Settings::GetAutoImport()) {
 				SKSE::log::info("Auto-import: loading junk list from file");
 				if (JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true)) {

@@ -26,6 +26,8 @@ namespace JunkIt {
         void OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned);
         void SyncPromptLabels();
         void ScheduleLabelSync();
+        void UpdateMarkHoldVisual(float heldDuration);
+        void ResetMarkHoldVisual();
 
         void ProcessEvent(SkyPromptAPI::PromptEvent event) const override;
         std::span<const SkyPromptAPI::Prompt> GetPrompts() const override;
@@ -49,13 +51,15 @@ namespace JunkIt {
 
         enum class PromptEventID : SkyPromptAPI::EventID {
             kMark = 0,
-            kTransfer = 1
+            kTransfer = 1,
+            kTrash = 2
         };
 
         enum class PromptActionID : SkyPromptAPI::ActionID {
             kMark = 0,
             kTransfer = 1,
-            kSell = 2
+            kSell = 2,
+            kTrash = 3
         };
 
         SkyPromptIntegration() = default;
@@ -71,6 +75,8 @@ namespace JunkIt {
         static bool HasSelectedItem();
         static bool SelectedItemIsJunk();
         static const char* MarkPromptText();
+        static bool MarkHoldTrashEnabled();
+        SkyPromptAPI::Prompt* FindMarkPrompt();
         std::string FormatTransferPrompt();
         std::string FormatSellPrompt();
         void RebuildPrompts(MenuKind menu);
@@ -115,8 +121,10 @@ namespace JunkIt {
         } selectedProtection_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> markKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> transferKeys_;
+        std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> trashKeys_;
         std::vector<SkyPromptAPI::Prompt> prompts_;
         std::string transferLabel_;
         std::string sellLabel_;
+        bool markHoldVisualActive_{ false };
     };
 }

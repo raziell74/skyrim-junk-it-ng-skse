@@ -9,10 +9,15 @@
 
 #include <SKSE/API.h>
 #include <fmt/format.h>
+#include <algorithm>
 #include <vector>
 
 namespace JunkIt {
     namespace {
+        constexpr float kMarkHoldTrashDelay = 0.5f;
+        constexpr float kMarkHoldProgressMin = 0.01f;
+        constexpr float kMarkHoldProgressMax = 0.99f;
+
         std::int32_t ClampNonNegative(std::int32_t value) {
             return value < 0 ? 0 : value;
         }
@@ -163,6 +168,9 @@ namespace JunkIt {
         if (event.type == SkyPromptAPI::PromptEventType::kAccepted) {
             switch (static_cast<PromptActionID>(event.prompt.actionID)) {
                 case PromptActionID::kMark:
+                    if (MarkHoldTrashEnabled()) {
+                        return;
+                    }
                     InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
                     self.ScheduleLabelSync();
                     return;
@@ -172,6 +180,9 @@ namespace JunkIt {
                 case PromptActionID::kSell:
                     InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
                     break;
+                case PromptActionID::kTrash:
+                    InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
+                    break;
                 default:
                     break;
             }
@@ -179,8 +190,18 @@ namespace JunkIt {
             return;
         }
 
+        if (event.type == SkyPromptAPI::PromptEventType::kDeclined &&
+            static_cast<PromptActionID>(event.prompt.actionID) == PromptActionID::kMark &&
+            MarkHoldTrashEnabled()) {
+            return;
+        }
+
         if (event.type == SkyPromptAPI::PromptEventType::kTimingOut ||
             event.type == SkyPromptAPI::PromptEventType::kTimeout) {
+            if (static_cast<PromptActionID>(event.prompt.actionID) == PromptActionID::kMark &&
+                MarkHoldTrashEnabled()) {
+                return;
+            }
             self.RefreshPrompts();
         }
     }
@@ -412,6 +433,79 @@ namespace JunkIt {
         return SelectedItemIsJunk() ? "$JunkIt_Prompt_Unmark" : "$JunkIt_Prompt_Mark";
     }
 
+    bool SkyPromptIntegration::MarkHoldTrashEnabled() {
+        return Settings::IsTrashAvailable() && Settings::GetTrashHoldSeconds() > 0;
+    }
+
+    SkyPromptAPI::Prompt* SkyPromptIntegration::FindMarkPrompt() {
+        const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
+        for (auto& prompt : prompts_) {
+            if (prompt.actionID == markAction) {
+                return &prompt;
+            }
+        }
+        return nullptr;
+    }
+
+    void SkyPromptIntegration::UpdateMarkHoldVisual(float heldDuration) {
+        if (!IsEnabled() || !MarkHoldTrashEnabled()) {
+            return;
+        }
+
+        auto* markPrompt = FindMarkPrompt();
+        if (!markPrompt) {
+            return;
+        }
+
+        const char* wantedText = MarkPromptText();
+        float wantedProgress = 0.f;
+        bool visualActive = false;
+
+        if (heldDuration >= kMarkHoldTrashDelay) {
+            wantedText = "$JunkIt_Prompt_TrashItem";
+            visualActive = true;
+            const float span = static_cast<float>(Settings::GetTrashHoldSeconds()) - kMarkHoldTrashDelay;
+            const float t = span <= 0.f ? kMarkHoldProgressMax : (heldDuration - kMarkHoldTrashDelay) / span;
+            wantedProgress = std::clamp(t, kMarkHoldProgressMin, kMarkHoldProgressMax);
+        }
+
+        if (!wantedText) {
+            return;
+        }
+
+        markHoldVisualActive_ = visualActive;
+        if (markPrompt->text == wantedText && markPrompt->progress == wantedProgress) {
+            return;
+        }
+
+        markPrompt->text = wantedText;
+        markPrompt->progress = wantedProgress;
+        Send();
+    }
+
+    void SkyPromptIntegration::ResetMarkHoldVisual() {
+        markHoldVisualActive_ = false;
+
+        auto* markPrompt = FindMarkPrompt();
+        if (!markPrompt) {
+            return;
+        }
+
+        const char* wantedText = MarkPromptText();
+        bool changed = false;
+        if (wantedText && markPrompt->text != wantedText) {
+            markPrompt->text = wantedText;
+            changed = true;
+        }
+        if (markPrompt->progress != 0.f) {
+            markPrompt->progress = 0.f;
+            changed = true;
+        }
+        if (changed) {
+            Send();
+        }
+    }
+
     std::string SkyPromptIntegration::FormatTransferPrompt() {
         bool storeView = false;
         const auto ui = RE::UI::GetSingleton();
@@ -511,9 +605,18 @@ namespace JunkIt {
 
         bool changed = false;
         for (auto& prompt : prompts_) {
-            if (prompt.actionID == markAction && prompt.text != wantedMark) {
-                prompt.text = wantedMark;
-                changed = true;
+            if (prompt.actionID == markAction) {
+                if (markHoldVisualActive_) {
+                    continue;
+                }
+                if (prompt.text != wantedMark) {
+                    prompt.text = wantedMark;
+                    changed = true;
+                }
+                if (prompt.progress != 0.f) {
+                    prompt.progress = 0.f;
+                    changed = true;
+                }
             } else if (prompt.actionID == transferAction && prompt.text != wantedTransfer) {
                 transferLabel_ = std::move(wantedTransfer);
                 prompt.text = transferLabel_;
@@ -533,6 +636,7 @@ namespace JunkIt {
     void SkyPromptIntegration::RebuildPrompts(MenuKind menu) {
         markKeys_.clear();
         transferKeys_.clear();
+        trashKeys_.clear();
         prompts_.clear();
 
         if (auto markButton = ToSkyPromptButton(static_cast<std::uint32_t>(Settings::GetMarkJunkKey()))) {
@@ -541,22 +645,44 @@ namespace JunkIt {
         if (auto transferButton = ToSkyPromptButton(static_cast<std::uint32_t>(Settings::GetTransferJunkKey()))) {
             transferKeys_.push_back(*transferButton);
         }
+        const auto trashKey = static_cast<std::uint32_t>(Settings::GetTrashJunkKey());
+        if (Settings::IsTrashAvailable() && trashKey != 0) {
+            if (auto trashButton = ToSkyPromptButton(trashKey)) {
+                trashKeys_.push_back(*trashButton);
+            }
+        }
 
         const auto attachRefId = PromptAttachRefID();
 
         if (!markKeys_.empty()) {
             if (const char* markText = MarkPromptText()) {
+                const auto markType = MarkHoldTrashEnabled()
+                    ? SkyPromptAPI::PromptType::kHint
+                    : SkyPromptAPI::PromptType::kSinglePress;
                 prompts_.emplace_back(
                     markText,
                     static_cast<SkyPromptAPI::EventID>(PromptEventID::kMark),
                     static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark),
-                    SkyPromptAPI::PromptType::kSinglePress,
+                    markType,
                     attachRefId,
                     markKeys_);
             }
         }
 
-        if (menu == MenuKind::kInventory || transferKeys_.empty()) {
+        if (menu == MenuKind::kInventory) {
+            if (!trashKeys_.empty()) {
+                prompts_.emplace_back(
+                    "$JunkIt_Prompt_Trash",
+                    static_cast<SkyPromptAPI::EventID>(PromptEventID::kTrash),
+                    static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTrash),
+                    SkyPromptAPI::PromptType::kSinglePress,
+                    attachRefId,
+                    trashKeys_);
+            }
+            return;
+        }
+
+        if (transferKeys_.empty()) {
             return;
         }
 
@@ -610,8 +736,10 @@ namespace JunkIt {
         prompts_.clear();
         markKeys_.clear();
         transferKeys_.clear();
+        trashKeys_.clear();
         transferLabel_.clear();
         sellLabel_.clear();
+        markHoldVisualActive_ = false;
     }
 
     void SkyPromptIntegration::InvalidatePreviews() {

@@ -1,7 +1,10 @@
 #pragma once 
 #include "settings.h"
+#include "InventoryWalk.h"
 #include <atomic>
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -51,6 +54,15 @@ namespace JunkIt {
 
         static void TransferJunk();
         static void SellJunk();
+        static void TrashSelectedItem();
+        static void TrashAllJunk();
+        static void TryExpireTrash();
+        static void OpenTrashContainer();
+        static void Install();
+
+        static void SaveTrashState(SKSE::SerializationInterface* intfc);
+        static void LoadTrashState(SKSE::SerializationInterface* intfc, std::uint32_t recordVersion);
+        static void RevertTrashState();
 
         struct ContainerPreviewCounts {
             std::int32_t storeCount = 0;
@@ -88,7 +100,11 @@ namespace JunkIt {
             if (cInventoryContainerId == a_container->GetFormID()) return &cInventoryCountMap;
             
             cInventoryCountMap.clear();
-            cInventoryCountMap = a_container->GetInventoryCounts();
+            ForEachInventoryCount(a_container, [&](TESBoundObject* obj, Count count) {
+                if (obj) {
+                    cInventoryCountMap[obj] = count;
+                }
+            });
             cInventoryContainerId = a_container->GetFormID();
             return &cInventoryCountMap;
         }
@@ -138,6 +154,18 @@ namespace JunkIt {
         static void ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView);
         static void ExecuteSell(std::vector<std::pair<InventoryEntryData*, std::int32_t>> itemsToSell, TESObjectREFR* vendorActor, TESObjectREFR* vendorContainer, std::int32_t totalSellValue, std::int32_t totalToSell, std::int32_t totalPossibleToSell, float vendorGoldDisplay);
 
+        static TESObjectREFR* PrepareTrashContainer();
+        static bool TrashContainerIsEmpty(TESObjectREFR* chest);
+        static void EmptyTrashContainer(TESObjectREFR* chest);
+        static void NoteTrashDeposit();
+        static void ClearTrashStampIfEmpty();
+        static std::vector<InventoryEntryData*> BuildInventoryTrashList();
+        static void TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to);
+        static void ExecuteTrash(TESObjectREFR* from, TESBoundObject* item, Count count, ExtraDataList* extraList);
+        static void ExecuteBulkTrash(std::vector<InventoryEntryData*> trashList);
+        static void HideOpenInventoryMenus();
+        static void ScheduleActivateTrash(int framesRemaining);
+
         struct SellWorkItem {
             FormID formId = 0;
             Count count = 0;
@@ -163,5 +191,8 @@ namespace JunkIt {
         static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
+
+        static inline float trashFilledGameDays = 0.0f;
+        static inline bool trashStampPending = false;
     };
 }

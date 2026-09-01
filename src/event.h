@@ -9,7 +9,9 @@ namespace JunkIt {
         kNone = 0,
         kMark = 1,
         kTransfer = 2,
-        kSell = 3
+        kSell = 3,
+        kTrash = 4,
+        kTrashBulk = 5
     };
 
     struct AtomicGuard {
@@ -67,5 +69,11 @@ namespace JunkIt {
         ActiveMenuType GetActiveMenu();
         void HandleKeyDown(uint32_t keyCode, ActiveMenuType activeMenu);
         void HandleGamepadKeyUp(float holdTime, ActiveMenuType activeMenu);
+        void HandleMarkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu, bool skyPromptShowing);
+        void HandleGamepadJunkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu);
+
+        bool markHoldArmed{ false };
+        bool markTrashFired{ false };
+        bool gamepadTrashFired{ false };
     };
 }
