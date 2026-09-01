@@ -676,40 +676,6 @@ namespace JunkIt {
                     SkyPromptIntegration::GetSingleton().RefreshPrompts();
                 }
                 ImGui::BeginDisabled(!trashAvailable);
-                const char* holdHelp = !trashResolved
-                    ? "$JunkIt_TrashRequiresEsp"
-                    : (trashAvailable ? "$JunkIt_TrashHoldSeconds_Help" : "$JunkIt_EnableTrash_Help");
-                const bool holdChanged = SliderIntRow(
-                    "$JunkIt_TrashHoldSeconds",
-                    holdHelp,
-                    Settings::TrashHoldSecondsValue(),
-                    0,
-                    10);
-                SaveIfChanged(holdChanged);
-                if (holdChanged) {
-                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
-                }
-                const char* gamepadTrashHelp = !trashResolved
-                    ? "$JunkIt_TrashRequiresEsp"
-                    : (trashAvailable ? "$JunkIt_GamepadTrashHoldSeconds_Help" : "$JunkIt_EnableTrash_Help");
-                const bool gamepadTrashChanged = SliderIntRow(
-                    "$JunkIt_GamepadTrashHoldSeconds",
-                    gamepadTrashHelp,
-                    Settings::GamepadTrashHoldSecondsValue(),
-                    Settings::GamepadTransferHoldTimeValue(),
-                    30);
-                SaveIfChanged(gamepadTrashChanged);
-                if (gamepadTrashChanged) {
-                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
-                }
-                const char* trashKeyHelp = !trashResolved
-                    ? "$JunkIt_TrashRequiresEsp"
-                    : (trashAvailable ? "$JunkIt_TrashJunkKey_Help" : "$JunkIt_EnableTrash_Help");
-                KeyBindRow(
-                    "$JunkIt_TrashJunkKey",
-                    trashKeyHelp,
-                    Settings::TrashJunkKeyValue(),
-                    CaptureSlot::kTrash);
                 const char* expireHelp = !trashResolved
                     ? "$JunkIt_TrashRequiresEsp"
                     : (trashAvailable ? "$JunkIt_TrashExpireDays_Help" : "$JunkIt_EnableTrash_Help");
@@ -721,21 +687,6 @@ namespace JunkIt {
                     30));
                 ImGui::EndDisabled();
                 ImGui::EndTable();
-            }
-
-            const bool worldReady = JunkHandler::IsGameWorldReady();
-            if (trashResolved && !worldReady) {
-                ImGui::BeginDisabled();
-            }
-            if (IconButton(kIconTrash, "$JunkIt_OpenTrash")) {
-                JunkHandler::OpenTrashContainer();
-            }
-            const char* openHelp = !trashResolved
-                ? "$JunkIt_TrashRequiresEsp"
-                : (worldReady ? "$JunkIt_OpenTrash_Help" : "$JunkIt_OpenTrash_MainMenu");
-            HelpMarker(openHelp);
-            if (trashResolved && !worldReady) {
-                ImGui::EndDisabled();
             }
             if (!trashResolved) {
                 ImGui::EndDisabled();
@@ -770,9 +721,38 @@ namespace JunkIt {
                 ImGui::TextUnformatted(itemsText.c_str());
                 ImGui::EndTable();
             }
+
+            ImGui::Spacing();
+            const bool worldReady = JunkHandler::IsGameWorldReady();
+            const bool openDisabled = !trashResolved || !worldReady;
+            if (openDisabled) {
+                ImGui::BeginDisabled();
+            }
+            const std::string openLabel =
+                FontAwesome::UnicodeToUtf8(kIconTrash) + "  " + Translation::Get("$JunkIt_OpenTrash");
+            FontAwesome::PushSolid();
+            const ImVec2 openTextSize = ImGui::CalcTextSize(openLabel.c_str());
+            FontAwesome::Pop();
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const float openButtonW = openTextSize.x + style.FramePadding.x * 2.0f;
+            const float openGroupW =
+                openButtonW + style.ItemSpacing.x + ImGui::CalcTextSize("(?)").x;
+            const float openAvailX = ImGui::GetContentRegionAvail().x;
+            if (openAvailX > openGroupW) {
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (openAvailX - openGroupW) * 0.5f);
+            }
+            if (IconButton(kIconTrash, "$JunkIt_OpenTrash")) {
+                JunkHandler::OpenTrashContainer();
+            }
+            const char* openHelp = !trashResolved
+                ? "$JunkIt_TrashRequiresEsp"
+                : (worldReady ? "$JunkIt_OpenTrash_Help" : "$JunkIt_OpenTrash_MainMenu");
+            HelpMarker(openHelp);
+            if (openDisabled) {
+                ImGui::EndDisabled();
+            }
             ImGui::EndChild();
 
-            PollKeyCapture();
             RenderStatus();
             PopBrandColors();
         }
@@ -781,10 +761,37 @@ namespace JunkIt {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_Hotkeys");
 
+            const bool trashResolved = Settings::GetTrashContainer() != nullptr;
+            const bool trashAvailable = Settings::IsTrashAvailable();
+            const char* trashDisabledHelp = !trashResolved
+                ? "$JunkIt_TrashRequiresEsp"
+                : "$JunkIt_EnableTrash_Help";
+
             ImGui::SeparatorText(Translation::Get("$JunkIt_HotkeyHeader").c_str());
             if (BeginSettingsTable("hotkeysKeyboard")) {
                 KeyBindRow("$JunkIt_Text_Hotkey", "$JunkIt_Help_Hotkey", Settings::MarkJunkKeyValue(), CaptureSlot::kMark);
+                ImGui::BeginDisabled(!trashAvailable);
+                const char* holdHelp = trashAvailable ? "$JunkIt_TrashHoldSeconds_Help" : trashDisabledHelp;
+                const bool holdChanged = SliderIntRow(
+                    "$JunkIt_TrashHoldSeconds",
+                    holdHelp,
+                    Settings::TrashHoldSecondsValue(),
+                    0,
+                    10);
+                SaveIfChanged(holdChanged);
+                if (holdChanged) {
+                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+                ImGui::EndDisabled();
                 KeyBindRow("$JunkIt_Transfer_Hotkey", "$JunkIt_Transfer_Hotkey_Help", Settings::TransferJunkKeyValue(), CaptureSlot::kTransfer);
+                ImGui::BeginDisabled(!trashAvailable);
+                const char* trashKeyHelp = trashAvailable ? "$JunkIt_TrashJunkKey_Help" : trashDisabledHelp;
+                KeyBindRow(
+                    "$JunkIt_TrashJunkKey",
+                    trashKeyHelp,
+                    Settings::TrashJunkKeyValue(),
+                    CaptureSlot::kTrash);
+                ImGui::EndDisabled();
                 ImGui::EndTable();
             }
 
@@ -797,6 +804,21 @@ namespace JunkIt {
                     Settings::GamepadTransferHoldTimeValue(),
                     2,
                     30));
+                ImGui::BeginDisabled(!trashAvailable);
+                const char* gamepadTrashHelp = trashAvailable
+                    ? "$JunkIt_GamepadTrashHoldSeconds_Help"
+                    : trashDisabledHelp;
+                const bool gamepadTrashChanged = SliderIntRow(
+                    "$JunkIt_GamepadTrashHoldSeconds",
+                    gamepadTrashHelp,
+                    Settings::GamepadTrashHoldSecondsValue(),
+                    Settings::GamepadTransferHoldTimeValue(),
+                    30);
+                SaveIfChanged(gamepadTrashChanged);
+                if (gamepadTrashChanged) {
+                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+                ImGui::EndDisabled();
                 ImGui::EndTable();
             }
 
@@ -1367,9 +1389,9 @@ namespace JunkIt {
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_General"), RenderGeneral);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Hotkeys"), RenderHotkeys);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Trash"), RenderTrash);
-        SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Integrations"), RenderIntegrations);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_AutoJunk"), RenderAutoJunk);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_JunkList_Page"), RenderJunkList);
+        SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Integrations"), RenderIntegrations);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Advanced"), RenderAdvanced);
         registered = true;
         SKSE::log::info("Registered SKSE Menu Framework pages");

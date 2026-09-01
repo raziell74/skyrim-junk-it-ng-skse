@@ -82,6 +82,7 @@ namespace JunkIt {
 
         static MenuKind GetActiveMenu();
         [[nodiscard]] bool IsEnabled() const;
+        static bool IsGamepadInputActive();
         static RE::FormID PromptAttachRefID();
         static std::optional<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> ToSkyPromptButton(std::uint32_t keyCode);
         static bool HasSelectedItem();

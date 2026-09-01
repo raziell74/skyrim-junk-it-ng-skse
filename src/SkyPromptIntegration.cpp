@@ -88,6 +88,11 @@ namespace JunkIt {
         return clientID_ != 0 && Settings::GetSkyPromptEnabled();
     }
 
+    bool SkyPromptIntegration::IsGamepadInputActive() {
+        auto* mgr = RE::BSInputDeviceManager::GetSingleton();
+        return mgr && mgr->IsGamepadEnabled();
+    }
+
     RE::FormID SkyPromptIntegration::PromptAttachRefID() {
         if (Settings::GetSkyPromptButtonPlacement() == Settings::SkyPromptButtonPlacement::kLowerRight) {
             return 0;
@@ -810,20 +815,21 @@ namespace JunkIt {
         const auto gamepadAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kGamepad);
         const auto wantedRefId = PromptAttachRefID();
 
-        const char* wantedMark = MarkPromptText();
+        const bool gamepadInput = IsGamepadInputActive();
+        const char* wantedMark = gamepadInput ? nullptr : MarkPromptText();
         const auto wantedMarkType = MarkHoldTrashEnabled()
             ? SkyPromptAPI::PromptType::kHint
             : SkyPromptAPI::PromptType::kSinglePress;
-        const bool wantedTrash = ShouldShowTrashPrompt(menu);
+        const bool wantedTrash = !gamepadInput && ShouldShowTrashPrompt(menu);
         const auto wantedTrashType = KeyboardTrashPromptType();
         const auto gamepadKey = static_cast<std::uint32_t>(Settings::GetGamepadJunkKey());
-        const bool wantedGamepad = gamepadKey != 0 && ToSkyPromptButton(gamepadKey).has_value();
+        const bool wantedGamepad = gamepadInput && gamepadKey != 0 && ToSkyPromptButton(gamepadKey).has_value();
         std::string wantedTransfer;
-        if (menu == MenuKind::kContainer) {
+        if (!gamepadInput && menu == MenuKind::kContainer) {
             wantedTransfer = FormatTransferPrompt();
         }
         std::string wantedSell;
-        if (menu == MenuKind::kBarter) {
+        if (!gamepadInput && menu == MenuKind::kBarter) {
             wantedSell = FormatSellPrompt();
         }
 
@@ -955,8 +961,9 @@ namespace JunkIt {
         }
 
         const auto attachRefId = PromptAttachRefID();
+        const bool gamepadInput = IsGamepadInputActive();
 
-        if (!markKeys_.empty()) {
+        if (!gamepadInput && !markKeys_.empty()) {
             if (const char* markText = MarkPromptText()) {
                 const auto markType = MarkHoldTrashEnabled()
                     ? SkyPromptAPI::PromptType::kHint
@@ -971,7 +978,7 @@ namespace JunkIt {
             }
         }
 
-        if (ShouldShowTrashPrompt(menu) && !trashKeys_.empty()) {
+        if (!gamepadInput && ShouldShowTrashPrompt(menu) && !trashKeys_.empty()) {
             prompts_.emplace_back(
                 "$JunkIt_Prompt_Trash",
                 static_cast<SkyPromptAPI::EventID>(PromptEventID::kTrash),
@@ -981,7 +988,7 @@ namespace JunkIt {
                 trashKeys_);
         }
 
-        if (!transferKeys_.empty()) {
+        if (!gamepadInput && !transferKeys_.empty()) {
             if (menu == MenuKind::kContainer) {
                 transferLabel_ = FormatTransferPrompt();
                 if (!transferLabel_.empty()) {
@@ -1007,7 +1014,7 @@ namespace JunkIt {
             }
         }
 
-        if (!gamepadKeys_.empty()) {
+        if (gamepadInput && !gamepadKeys_.empty()) {
             const char* gamepadText = MarkPromptText();
             if (!gamepadText) {
                 gamepadText = "$JunkIt_Prompt_Mark";
