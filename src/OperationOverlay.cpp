@@ -25,6 +25,8 @@ namespace JunkIt {
         constexpr float kSettleTimeoutSeconds = 3.0f;
         constexpr ImVec4 kSplashTint{ 1.0f, 1.0f, 1.0f, 0.25f };
         constexpr const wchar_t* kSplashPath = L"Data\\Interface\\JunkIt\\JunkIt_splash_512x512.png";
+        constexpr const char* kFontPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
+        constexpr float kFontRasterSize = 96.0f;
 
         using InitD3D_t = void();
         using Present_t = void(std::uint32_t);
@@ -92,6 +94,11 @@ namespace JunkIt {
             io.IniFilename = nullptr;
             io.LogFilename = nullptr;
             io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+
+            if (!io.Fonts->AddFontFromFileTTF(kFontPath, kFontRasterSize)) {
+                SKSE::log::warn("Operation overlay font failed to load, using default");
+                io.Fonts->AddFontDefault();
+            }
 
             ImGui_ImplDX11_Init(device, context);
 
@@ -236,7 +243,7 @@ namespace JunkIt {
             }
 
             const float baseSize = ImGui::GetFontSize();
-            const float fontSize = std::clamp(io.DisplaySize.y * 0.05f, 32.0f, 72.0f);
+            const float fontSize = std::clamp(io.DisplaySize.y * 0.065f, 42.0f, 96.0f);
             ImGui::SetWindowFontScale(fontSize / baseSize);
             const ImVec2 textSize = ImGui::CalcTextSize(g_label.c_str());
             const float textX = (io.DisplaySize.x - textSize.x) * 0.5f;
