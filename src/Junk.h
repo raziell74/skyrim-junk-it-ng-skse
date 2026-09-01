@@ -136,6 +136,8 @@ namespace JunkIt {
             return (ceiling - number > 0.5f) ? static_cast<std::int32_t>(std::floor(number)) : static_cast<std::int32_t>(ceiling);
         }
 
+        static Count ComputeUnitSellPrice(InventoryEntryData* entry, float sellMult);
+
         static Count GetItemCount(TESObjectREFR* a_container, TESBoundObject* a_item);
         static void MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList = nullptr);
         static Count GetSellableJunkCount(InventoryEntryData* a_entry);

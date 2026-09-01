@@ -490,13 +490,27 @@ namespace JunkIt {
         return true;
     }
 
+    Count JunkHandler::ComputeUnitSellPrice(InventoryEntryData* entry, float sellMult) {
+        if (!entry) {
+            return 0;
+        }
+
+        const Count menuValue = GetMenuItemValue(entry);
+        const float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entry->GetValue());
+        const Count unitPrice = RoundNumber(itemGoldValue * sellMult);
+        return unitPrice > 0 ? unitPrice : 0;
+    }
+
     JunkHandler::SellTotals JunkHandler::ComputeSellTotals(
         const std::vector<std::pair<InventoryEntryData*, Count>>& sellList,
         float vendorGold,
         float sellMult) {
         SellTotals totals;
-        float calculatedVendorGold = vendorGold;
-        float totalSellValue = 0.0f;
+        Count remainingVendorGold = RoundNumber(vendorGold);
+        if (remainingVendorGold < 0) {
+            remainingVendorGold = 0;
+        }
+        Count totalSellValue = 0;
 
         for (auto& [entryData, itemCount] : sellList) {
             if (!entryData || !entryData->object || itemCount <= 0) {
@@ -506,29 +520,26 @@ namespace JunkIt {
             Count iCount = itemCount;
             totals.totalPossibleToSell += iCount;
 
-            Count menuValue = GetMenuItemValue(entryData);
-            float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entryData->GetValue());
-            float sellValue = itemGoldValue * sellMult;
-
-            if (sellValue <= 0.0f) {
+            const Count unitPrice = ComputeUnitSellPrice(entryData, sellMult);
+            if (unitPrice <= 0) {
                 totals.totalToSell += iCount;
                 totals.itemsToSell.push_back({entryData, iCount});
                 continue;
             }
 
-            while (iCount > 0 && RoundNumber(sellValue * static_cast<float>(iCount)) > RoundNumber(calculatedVendorGold)) {
+            while (iCount > 0 && unitPrice * iCount > remainingVendorGold) {
                 iCount -= 1;
             }
 
             if (iCount > 0) {
-                calculatedVendorGold -= sellValue * static_cast<float>(iCount);
-                totalSellValue += sellValue * static_cast<float>(iCount);
+                remainingVendorGold -= unitPrice * iCount;
+                totalSellValue += unitPrice * iCount;
                 totals.totalToSell += iCount;
                 totals.itemsToSell.push_back({entryData, iCount});
             }
         }
 
-        totals.roundedSellValue = RoundNumber(totalSellValue);
+        totals.roundedSellValue = totalSellValue;
         return totals;
     }
 
@@ -783,14 +794,7 @@ namespace JunkIt {
         if (!entry || count <= 0) {
             return 0;
         }
-
-        const Count menuValue = GetMenuItemValue(entry);
-        const float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entry->GetValue());
-        const float sellValue = itemGoldValue * sellMult;
-        if (sellValue <= 0.0f) {
-            return 0;
-        }
-        return RoundNumber(sellValue * static_cast<float>(count));
+        return ComputeUnitSellPrice(entry, sellMult) * count;
     }
 
     std::optional<std::int32_t> JunkHandler::ComputeMovedItemSellGold(

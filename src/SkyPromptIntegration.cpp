@@ -566,7 +566,7 @@ namespace JunkIt {
 
     SkyPromptAPI::PromptType SkyPromptIntegration::KeyboardTrashPromptType() {
         return Settings::GetTrashHoldSeconds() > 0
-            ? SkyPromptAPI::PromptType::kHintHold
+            ? SkyPromptAPI::PromptType::kHint
             : SkyPromptAPI::PromptType::kSinglePress;
     }
 
