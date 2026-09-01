@@ -59,7 +59,9 @@ namespace JunkIt {
         }
 
         if (type == JUNKIT_EVENT_TYPE::kMark) {
-            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
+            auto& skyPrompt = SkyPromptIntegration::GetSingleton();
+            skyPrompt.SyncPromptLabels();
+            skyPrompt.ScheduleLabelSync();
         }
     }
 
@@ -303,8 +305,11 @@ namespace JunkIt {
         }
 
         if (sawOtherInput || !sawHoldRepeat) {
-            SkyPromptIntegration::GetSingleton().SyncPromptLabels();
-            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
+            auto& skyPrompt = SkyPromptIntegration::GetSingleton();
+            if (skyPrompt.SelectionIdentityChanged()) {
+                skyPrompt.SyncPromptLabels();
+            }
+            skyPrompt.ScheduleLabelSync();
         }
 
         return Result::kContinue;

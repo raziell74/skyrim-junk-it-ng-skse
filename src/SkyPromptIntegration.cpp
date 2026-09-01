@@ -156,20 +156,27 @@ namespace JunkIt {
         }
 
         const auto menu = GetActiveMenu();
+        if (menu == MenuKind::kNone) {
+            RefreshPrompts();
+            return;
+        }
+
         if (menu == MenuKind::kContainer) {
             previewMenu_ = MenuKind::kContainer;
             CaptureContainerPreview();
             if (!containerPreview_.valid) {
                 ScheduleLabelSync();
+                return;
             }
         } else if (menu == MenuKind::kBarter) {
             previewMenu_ = MenuKind::kBarter;
             CaptureSellPreview();
             if (!sellPreview_.valid) {
                 ScheduleLabelSync();
+                return;
             }
         }
-        RefreshPrompts();
+        SyncPromptLabels();
     }
 
     void SkyPromptIntegration::ScheduleFullRefresh(int framesRemaining) {
@@ -229,7 +236,10 @@ namespace JunkIt {
                 default:
                     break;
             }
-            self.RefreshPrompts();
+            self.ScheduleLabelSync();
+            if (!self.prompts_.empty()) {
+                self.Send();
+            }
             return;
         }
 
@@ -250,7 +260,11 @@ namespace JunkIt {
                 action == PromptActionID::kGamepad) {
                 return;
             }
-            self.RefreshPrompts();
+            if (!self.prompts_.empty()) {
+                self.Send();
+            } else {
+                self.RefreshPrompts();
+            }
         }
     }
 
@@ -268,7 +282,16 @@ namespace JunkIt {
         const auto& name = a_event->menuName;
         if (name == "MessageBoxMenu") {
             if (GetActiveMenu() != MenuKind::kNone) {
-                RefreshPrompts();
+                if (a_event->opening) {
+                    if (!prompts_.empty()) {
+                        Send();
+                    }
+                } else {
+                    ScheduleLabelSync();
+                    if (!prompts_.empty()) {
+                        Send();
+                    }
+                }
             }
             return RE::BSEventNotifyControl::kContinue;
         }
@@ -315,11 +338,13 @@ namespace JunkIt {
             previewMenu_ = MenuKind::kNone;
         }
 
-        RefreshPrompts();
-        if (a_event->opening &&
+        const bool deferAttachRefresh = a_event->opening &&
             Settings::GetSkyPromptButtonPlacement() == Settings::SkyPromptButtonPlacement::kAttachToItemModel &&
-            Inventory3DModelPending()) {
+            Inventory3DModelPending();
+        if (deferAttachRefresh) {
             ScheduleLabelSync();
+        } else {
+            RefreshPrompts();
         }
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -528,6 +553,26 @@ namespace JunkIt {
         }
 
         return SelectedItemIsJunk() ? "$JunkIt_Prompt_Unmark" : "$JunkIt_Prompt_Mark";
+    }
+
+    SkyPromptIntegration::SelectedPromptIdentity SkyPromptIntegration::ReadSelectedPromptIdentity() const {
+        SelectedPromptIdentity identity;
+        auto* itemList = UIUtil::ItemList::GetOpenList();
+        auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+        if (!selected || !selected->data.objDesc || !selected->data.objDesc->object) {
+            return identity;
+        }
+
+        identity.hasSelection = true;
+        identity.formId = selected->data.objDesc->object->GetFormID();
+        identity.owner = selected->data.owner;
+        identity.playerSide = SelectedRowIsPlayerSide();
+        identity.isJunk = JunkDataManager::GetSingleton().IsJunk(selected->data.objDesc);
+        return identity;
+    }
+
+    bool SkyPromptIntegration::SelectionIdentityChanged() const {
+        return ReadSelectedPromptIdentity() != lastSyncedSelection_;
     }
 
     bool SkyPromptIntegration::MarkHoldTrashEnabled() const {
@@ -850,6 +895,7 @@ namespace JunkIt {
             return;
         }
 
+        lastSyncedSelection_ = ReadSelectedPromptIdentity();
         TryEnsurePreview();
         ApplySelectedFavoriteChange();
 
@@ -1072,6 +1118,8 @@ namespace JunkIt {
                 attachRefId,
                 gamepadKeys_);
         }
+
+        lastSyncedSelection_ = ReadSelectedPromptIdentity();
     }
 
     void SkyPromptIntegration::Send() {
@@ -1106,6 +1154,7 @@ namespace JunkIt {
         markHoldVisualActive_ = false;
         trashHoldVisualActive_ = false;
         gamepadHoldVisualActive_ = false;
+        lastSyncedSelection_ = {};
     }
 
     void SkyPromptIntegration::InvalidatePreviews() {
@@ -1145,7 +1194,7 @@ namespace JunkIt {
         sellPreview_ = {};
         sellRecapturePending_ = false;
         sellRecaptureRebuild_ = false;
-        RefreshPrompts();
+        SyncPromptLabels();
     }
 
     void SkyPromptIntegration::CaptureSellPreview() {

@@ -29,6 +29,7 @@ namespace JunkIt {
         void OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned);
         void SyncPromptLabels();
         void ScheduleLabelSync();
+        [[nodiscard]] bool SelectionIdentityChanged() const;
         void UpdateMarkHoldVisual(float heldDuration);
         void ResetMarkHoldVisual();
         void UpdateTrashHoldVisual(float heldDuration);
@@ -93,6 +94,16 @@ namespace JunkIt {
         static const char* MarkPromptText();
         static bool ShouldShowTrashPrompt(MenuKind menu);
         static SkyPromptAPI::PromptType KeyboardTrashPromptType();
+        struct SelectedPromptIdentity {
+            RE::FormID formId = 0;
+            std::uint32_t owner = 0;
+            bool playerSide = false;
+            bool hasSelection = false;
+            bool isJunk = false;
+
+            bool operator==(const SelectedPromptIdentity&) const = default;
+        };
+        [[nodiscard]] SelectedPromptIdentity ReadSelectedPromptIdentity() const;
         SkyPromptAPI::Prompt* FindMarkPrompt();
         SkyPromptAPI::Prompt* FindTrashPrompt();
         SkyPromptAPI::Prompt* FindGamepadPrompt();
@@ -143,6 +154,7 @@ namespace JunkIt {
             bool favorited = false;
             bool valid = false;
         } selectedProtection_;
+        SelectedPromptIdentity lastSyncedSelection_{};
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> markKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> transferKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> trashKeys_;

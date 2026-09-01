@@ -350,7 +350,9 @@ namespace JunkIt {
             auto* secondary = LookupRefr(secondaryId);
             if (primary || secondary) {
                 ApplyInventoryUIRefresh(primary, secondary);
-                SkyPromptIntegration::GetSingleton().RecapturePreviews();
+                if (!operationInProgress.load()) {
+                    SkyPromptIntegration::GetSingleton().RecapturePreviews();
+                }
             }
 
             if (!onComplete) {
@@ -423,7 +425,6 @@ namespace JunkIt {
         ScheduleInventoryUIRefresh(primaryId, secondaryId, drainFrames, std::move(finish));
 
         StartAggressiveRefresh();
-        SkyPromptIntegration::GetSingleton().ScheduleFullRefresh(std::max(3, drainFrames));
     }
 
     void JunkHandler::CompleteOperation() {
@@ -1266,7 +1267,7 @@ namespace JunkIt {
                             });
                         } else {
                             SKSE::log::info("User cancelled retrieval");
-                            SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
                             operationInProgress.store(false);
                         }
                     });
@@ -1299,7 +1300,7 @@ namespace JunkIt {
                             });
                         } else {
                             SKSE::log::info("User cancelled transfer");
-                            SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
                             operationInProgress.store(false);
                         }
                     });
@@ -2361,7 +2362,7 @@ namespace JunkIt {
                         ExecuteBulkTrash(BuildInventoryTrashList());
                     });
                 } else {
-                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                    SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
                     operationInProgress.store(false);
                 }
             });
