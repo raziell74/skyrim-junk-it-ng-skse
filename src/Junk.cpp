@@ -490,7 +490,7 @@ namespace JunkIt {
         return true;
     }
 
-    Count JunkHandler::ComputeUnitSellPrice(InventoryEntryData* entry, float sellMult) {
+    JunkHandler::Count JunkHandler::ComputeUnitSellPrice(InventoryEntryData* entry, float sellMult) {
         if (!entry) {
             return 0;
         }
@@ -1636,8 +1636,44 @@ namespace JunkIt {
         Count totalPossibleToSell,
         std::size_t uniqueTypes) {
         if (auto* playerActor = player ? player->As<PlayerCharacter>() : nullptr) {
-            SKSE::log::info("Adding {} Speech experience", totalSellValue);
+            const float speechBefore = playerActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kSpeech);
+            float xpBefore = 0.0f;
+            float thresholdBefore = 0.0f;
+            if (auto* skills = playerActor->GetPlayerRuntimeData().skills; skills && skills->data) {
+                const auto& speech = skills->data->skills[PlayerCharacter::PlayerSkills::Data::Skill::kSpeech];
+                xpBefore = speech.xp;
+                thresholdBefore = speech.levelThreshold;
+            }
+
+            SKSE::log::info(
+                "Adding {} Speech experience for {} sold items (Speech {:.0f}, XP {:.2f}/{:.2f})",
+                totalSellValue,
+                totalToSell,
+                speechBefore,
+                xpBefore,
+                thresholdBefore);
+
             playerActor->AddSkillExperience(RE::ActorValue::kSpeech, static_cast<float>(totalSellValue));
+
+            const float speechAfter = playerActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kSpeech);
+            float xpAfter = 0.0f;
+            float thresholdAfter = 0.0f;
+            if (auto* skills = playerActor->GetPlayerRuntimeData().skills; skills && skills->data) {
+                const auto& speech = skills->data->skills[PlayerCharacter::PlayerSkills::Data::Skill::kSpeech];
+                xpAfter = speech.xp;
+                thresholdAfter = speech.levelThreshold;
+            }
+
+            SKSE::log::info(
+                "Speech experience applied (Speech {:.0f} -> {:.0f}, XP {:.2f}/{:.2f} -> {:.2f}/{:.2f})",
+                speechBefore,
+                speechAfter,
+                xpBefore,
+                thresholdBefore,
+                xpAfter,
+                thresholdAfter);
+        } else {
+            SKSE::log::error("Speech experience skipped: player character is missing");
         }
 
         if (totalToSell >= totalPossibleToSell) {
