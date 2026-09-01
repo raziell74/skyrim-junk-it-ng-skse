@@ -18,6 +18,11 @@ namespace JunkIt {
     namespace {
         constexpr float kSplashSize = 512.0f;
         constexpr float kFadeSeconds = 0.4f;
+        constexpr float kFadeDtClamp = 0.05f;
+        constexpr float kMinHoldSeconds = 0.25f;
+        constexpr float kSettleFrameSeconds = 0.05f;
+        constexpr int kSettleFastFrames = 4;
+        constexpr float kSettleTimeoutSeconds = 3.0f;
         constexpr ImVec4 kSplashTint{ 1.0f, 1.0f, 1.0f, 0.25f };
         constexpr const wchar_t* kSplashPath = L"Data\\Interface\\JunkIt\\JunkIt_splash_512x512.png";
 
@@ -25,14 +30,26 @@ namespace JunkIt {
         using Present_t = void(std::uint32_t);
         using Clock = std::chrono::steady_clock;
 
+        enum class Phase {
+            Hidden,
+            FadeIn,
+            Holding,
+            Settling,
+            FadeOut
+        };
+
         std::mutex g_mutex;
         std::atomic<bool> g_hooksInstalled{ false };
         bool g_imguiReady = false;
         bool g_visible = false;
+        Phase g_phase = Phase::Hidden;
         float g_fade = 0.0f;
+        int g_fastFrames = 0;
         Clock::time_point g_lastPresent{};
+        Clock::time_point g_settleStart{};
         std::string g_label;
         std::function<void()> g_pendingWork;
+        std::function<void()> g_onHidden;
         ID3D11DeviceContext* g_context = nullptr;
         ID3D11ShaderResourceView* g_splash = nullptr;
         InitD3D_t* g_initD3D = nullptr;
@@ -92,16 +109,80 @@ namespace JunkIt {
         void BeginVisible(OperationOverlay::Action action) {
             g_label = Translation::Get(TranslationKey(action));
             g_visible = true;
+            g_phase = Phase::FadeIn;
             g_fade = 0.0f;
+            g_fastFrames = 0;
+            g_settleStart = {};
             g_lastPresent = Clock::now();
+            g_onHidden = {};
         }
 
-        void AdvanceFade() {
+        void ClearVisibleState() {
+            g_visible = false;
+            g_phase = Phase::Hidden;
+            g_fade = 0.0f;
+            g_fastFrames = 0;
+            g_pendingWork = {};
+        }
+
+        void QueueCallback(std::function<void()> callback) {
+            if (!callback) {
+                return;
+            }
+            if (auto* tasks = SKSE::GetTaskInterface()) {
+                tasks->AddTask(std::move(callback));
+            } else {
+                callback();
+            }
+        }
+
+        void TickOverlay(std::function<void()>& work, std::function<void()>& onHidden) {
             const auto now = Clock::now();
-            float dt = std::chrono::duration<float>(now - g_lastPresent).count();
+            const float rawDt = std::chrono::duration<float>(now - g_lastPresent).count();
             g_lastPresent = now;
-            dt = std::clamp(dt, 0.0f, 0.05f);
-            g_fade = std::min(1.0f, g_fade + dt / kFadeSeconds);
+            const float fadeDt = std::clamp(rawDt, 0.0f, kFadeDtClamp);
+
+            switch (g_phase) {
+                case Phase::FadeIn:
+                    g_fade = std::min(1.0f, g_fade + fadeDt / kFadeSeconds);
+                    if (g_fade >= 1.0f) {
+                        g_phase = Phase::Holding;
+                        work = std::move(g_pendingWork);
+                    }
+                    break;
+                case Phase::Holding:
+                    g_fade = 1.0f;
+                    if (g_pendingWork) {
+                        work = std::move(g_pendingWork);
+                    }
+                    break;
+                case Phase::Settling: {
+                    g_fade = 1.0f;
+                    if (g_pendingWork) {
+                        work = std::move(g_pendingWork);
+                    }
+                    if (rawDt < kSettleFrameSeconds) {
+                        ++g_fastFrames;
+                    } else {
+                        g_fastFrames = 0;
+                    }
+                    const float held = std::chrono::duration<float>(now - g_settleStart).count();
+                    if (held >= kMinHoldSeconds && (g_fastFrames >= kSettleFastFrames || held >= kSettleTimeoutSeconds)) {
+                        g_phase = Phase::FadeOut;
+                    }
+                    break;
+                }
+                case Phase::FadeOut:
+                    g_fade = std::max(0.0f, g_fade - fadeDt / kFadeSeconds);
+                    if (g_fade <= 0.0f) {
+                        onHidden = std::move(g_onHidden);
+                        ClearVisibleState();
+                    }
+                    break;
+                case Phase::Hidden:
+                    ClearVisibleState();
+                    break;
+            }
         }
 
         void DrawOverlay() {
@@ -187,29 +268,25 @@ namespace JunkIt {
 
         void PresentHook(std::uint32_t a_timer) {
             std::function<void()> work;
+            std::function<void()> onHidden;
             {
                 std::lock_guard lock(g_mutex);
                 if (g_visible) {
                     if (TryInitImGui()) {
-                        AdvanceFade();
-                        DrawOverlay();
-                        if (g_fade >= 1.0f) {
-                            work = std::move(g_pendingWork);
+                        TickOverlay(work, onHidden);
+                        if (g_visible) {
+                            DrawOverlay();
                         }
                     } else {
-                        g_visible = false;
                         work = std::move(g_pendingWork);
+                        onHidden = std::move(g_onHidden);
+                        ClearVisibleState();
                     }
                 }
             }
 
-            if (work) {
-                if (auto* tasks = SKSE::GetTaskInterface()) {
-                    tasks->AddTask(std::move(work));
-                } else {
-                    work();
-                }
-            }
+            QueueCallback(std::move(work));
+            QueueCallback(std::move(onHidden));
 
             if (g_present) {
                 g_present(a_timer);
@@ -259,10 +336,36 @@ namespace JunkIt {
     }
 
     void OperationOverlay::Hide() {
-        std::lock_guard lock(g_mutex);
-        g_visible = false;
-        g_fade = 0.0f;
-        g_pendingWork = {};
+        std::function<void()> onHidden;
+        {
+            std::lock_guard lock(g_mutex);
+            onHidden = std::move(g_onHidden);
+            ClearVisibleState();
+        }
+        if (onHidden) {
+            onHidden();
+        }
+    }
+
+    void OperationOverlay::NotifyWorkComplete(std::function<void()> onHidden) {
+        std::function<void()> immediate;
+        {
+            std::lock_guard lock(g_mutex);
+            if (!g_visible || g_phase == Phase::Hidden) {
+                immediate = std::move(onHidden);
+            } else {
+                g_onHidden = std::move(onHidden);
+                if (g_phase == Phase::FadeIn || g_phase == Phase::Holding) {
+                    g_fade = 1.0f;
+                    g_phase = Phase::Settling;
+                    g_settleStart = Clock::now();
+                    g_fastFrames = 0;
+                }
+            }
+        }
+        if (immediate) {
+            immediate();
+        }
     }
 
     void OperationOverlay::RunWithOverlay(Action action, std::function<void()> work) {
