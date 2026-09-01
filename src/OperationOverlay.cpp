@@ -23,6 +23,7 @@ namespace JunkIt {
         constexpr float kSettleFrameSeconds = 0.05f;
         constexpr int kSettleFastFrames = 4;
         constexpr float kSettleTimeoutSeconds = 3.0f;
+        constexpr float kDoneHoldSeconds = 0.4f;
         constexpr ImVec4 kSplashTint{ 1.0f, 1.0f, 1.0f, 0.25f };
         constexpr const wchar_t* kSplashPath = L"Data\\Interface\\JunkIt\\JunkIt_splash_512x512.png";
         constexpr const char* kFontPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
@@ -37,6 +38,7 @@ namespace JunkIt {
             FadeIn,
             Holding,
             Settling,
+            Done,
             FadeOut
         };
 
@@ -175,6 +177,16 @@ namespace JunkIt {
                     }
                     const float held = std::chrono::duration<float>(now - g_settleStart).count();
                     if (held >= kMinHoldSeconds && (g_fastFrames >= kSettleFastFrames || held >= kSettleTimeoutSeconds)) {
+                        g_label = Translation::Get("$JunkIt_Overlay_Done");
+                        g_phase = Phase::Done;
+                        g_settleStart = now;
+                    }
+                    break;
+                }
+                case Phase::Done: {
+                    g_fade = 1.0f;
+                    const float held = std::chrono::duration<float>(now - g_settleStart).count();
+                    if (held >= kDoneHoldSeconds) {
                         g_phase = Phase::FadeOut;
                     }
                     break;
