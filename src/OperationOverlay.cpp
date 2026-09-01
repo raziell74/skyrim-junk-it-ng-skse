@@ -205,7 +205,7 @@ namespace JunkIt {
 
             if (work) {
                 if (auto* tasks = SKSE::GetTaskInterface()) {
-                    tasks->AddUITask(std::move(work));
+                    tasks->AddTask(std::move(work));
                 } else {
                     work();
                 }

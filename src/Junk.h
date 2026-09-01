@@ -195,7 +195,6 @@ namespace JunkIt {
         static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {});
         static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
         static void CompleteOperation();
-        static void CompleteOperationAfterFrames(int framesRemaining);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
 

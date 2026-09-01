@@ -731,13 +731,17 @@ namespace JunkIt {
             const std::string openLabel =
                 FontAwesome::UnicodeToUtf8(kIconTrash) + "  " + Translation::Get("$JunkIt_OpenTrash");
             FontAwesome::PushSolid();
-            const ImVec2 openTextSize = ImGui::CalcTextSize(openLabel.c_str());
+            ImVec2 openTextSize{};
+            ImGui::CalcTextSize(&openTextSize, openLabel.c_str(), nullptr, false, -1.0f);
             FontAwesome::Pop();
-            const ImGuiStyle& style = ImGui::GetStyle();
-            const float openButtonW = openTextSize.x + style.FramePadding.x * 2.0f;
-            const float openGroupW =
-                openButtonW + style.ItemSpacing.x + ImGui::CalcTextSize("(?)").x;
-            const float openAvailX = ImGui::GetContentRegionAvail().x;
+            const ImGuiStyle* style = ImGui::GetStyle();
+            const float openButtonW = openTextSize.x + style->FramePadding.x * 2.0f;
+            ImVec2 helpSize{};
+            ImGui::CalcTextSize(&helpSize, "(?)", nullptr, false, -1.0f);
+            const float openGroupW = openButtonW + style->ItemSpacing.x + helpSize.x;
+            ImVec2 openAvail{};
+            ImGui::GetContentRegionAvail(&openAvail);
+            const float openAvailX = openAvail.x;
             if (openAvailX > openGroupW) {
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (openAvailX - openGroupW) * 0.5f);
             }

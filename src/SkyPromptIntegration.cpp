@@ -88,9 +88,36 @@ namespace JunkIt {
         return clientID_ != 0 && Settings::GetSkyPromptEnabled();
     }
 
-    bool SkyPromptIntegration::IsGamepadInputActive() {
+    bool SkyPromptIntegration::IsGamepadInputActive() const {
+        if (gamepadInput_) {
+            return *gamepadInput_;
+        }
         auto* mgr = RE::BSInputDeviceManager::GetSingleton();
         return mgr && mgr->IsGamepadEnabled();
+    }
+
+    void SkyPromptIntegration::NoteInputDevice(RE::INPUT_DEVICE device) {
+        bool gamepad = false;
+        switch (device) {
+            case RE::INPUT_DEVICE::kGamepad:
+                gamepad = true;
+                break;
+            case RE::INPUT_DEVICE::kKeyboard:
+            case RE::INPUT_DEVICE::kMouse:
+                gamepad = false;
+                break;
+            default:
+                return;
+        }
+
+        if (gamepadInput_ && *gamepadInput_ == gamepad) {
+            return;
+        }
+
+        gamepadInput_ = gamepad;
+        if (IsEnabled() && GetActiveMenu() != MenuKind::kNone) {
+            RefreshPrompts();
+        }
     }
 
     RE::FormID SkyPromptIntegration::PromptAttachRefID() {

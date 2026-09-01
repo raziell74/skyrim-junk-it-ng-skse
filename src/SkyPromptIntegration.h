@@ -20,6 +20,7 @@ namespace JunkIt {
 
         void Install();
         [[nodiscard]] bool IsShowing() const;
+        void NoteInputDevice(RE::INPUT_DEVICE device);
         void RefreshPrompts();
         void RecapturePreviews();
         void ScheduleFullRefresh(int framesRemaining);
@@ -82,7 +83,7 @@ namespace JunkIt {
 
         static MenuKind GetActiveMenu();
         [[nodiscard]] bool IsEnabled() const;
-        static bool IsGamepadInputActive();
+        [[nodiscard]] bool IsGamepadInputActive() const;
         static RE::FormID PromptAttachRefID();
         static std::optional<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> ToSkyPromptButton(std::uint32_t keyCode);
         static bool HasSelectedItem();
@@ -113,6 +114,7 @@ namespace JunkIt {
 
         SkyPromptAPI::ClientID clientID_{ 0 };
         bool showing_{ false };
+        std::optional<bool> gamepadInput_;
         MenuKind previewMenu_{ MenuKind::kNone };
         RE::FormID previewPlayerId_{ 0 };
         RE::FormID previewContainerId_{ 0 };

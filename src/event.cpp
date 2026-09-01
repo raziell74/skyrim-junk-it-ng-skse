@@ -235,6 +235,9 @@ namespace JunkIt {
 
         for (auto event = *a_event; event; event = event->next) {
             auto buttonEvent = event->AsButtonEvent();
+            if (buttonEvent && !buttonEvent->IsUp()) {
+                SkyPromptIntegration::GetSingleton().NoteInputDevice(buttonEvent->GetDevice());
+            }
             if (!buttonEvent || !buttonEvent->IsDown()) {
                 continue;
             }

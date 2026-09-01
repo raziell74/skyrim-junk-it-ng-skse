@@ -292,6 +292,22 @@ namespace JunkIt {
         int HeavyLoadDeferredFrames() {
             return std::clamp(static_cast<int>(std::lround(2.0f * Settings::GetHeavyLoadDelayMultiplier())), 1, 10);
         }
+
+        constexpr int kUiMessageQueueSize = 64;
+
+        int BulkRefreshDrainFrames(std::size_t uniqueTypes, std::int32_t totalItems, bool largeOp) {
+            if (!largeOp) {
+                return 1;
+            }
+
+            int drainFrames = HeavyLoadDeferredFrames();
+            const auto pressure = std::max(uniqueTypes, static_cast<std::size_t>(std::max(0, totalItems)));
+            if (pressure > kUiMessageQueueSize) {
+                const int extra = static_cast<int>((pressure - kUiMessageQueueSize + kUiMessageQueueSize - 1) / kUiMessageQueueSize);
+                drainFrames = std::clamp(drainFrames + extra, 1, 20);
+            }
+            return drainFrames;
+        }
     }
 
     void JunkHandler::ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary) {
@@ -380,52 +396,39 @@ namespace JunkIt {
     }
 
     void JunkHandler::RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems) {
-        const bool largeOp = uniqueTypes >= Settings::GetLargeUniqueTypes() || totalItems >= Settings::GetLargeTotalItems();
-        int deferredFrames = 1;
-        if (largeOp) {
-            deferredFrames = HeavyLoadDeferredFrames();
-        }
+        const bool largeOp = uniqueTypes >= static_cast<std::size_t>(kUiMessageQueueSize) || totalItems >= kUiMessageQueueSize
+            || uniqueTypes >= Settings::GetLargeUniqueTypes()
+            || totalItems >= Settings::GetLargeTotalItems();
+        const int drainFrames = BulkRefreshDrainFrames(uniqueTypes, totalItems, largeOp);
 
         SKSE::log::info(
-            "Bulk UI refresh | uniqueTypes={} totalItems={} large={} deferFrames={}",
+            "Bulk UI refresh | uniqueTypes={} totalItems={} large={} drainFrames={}",
             uniqueTypes,
             totalItems,
             largeOp,
-            deferredFrames);
+            drainFrames);
 
-        ApplyInventoryUIRefresh(primary, secondary);
+        if (!largeOp) {
+            ApplyInventoryUIRefresh(primary, secondary);
+        }
 
         const FormID primaryId = primary ? primary->GetFormID() : 0;
         const FormID secondaryId = secondary ? secondary->GetFormID() : 0;
-        const int settleFrames = std::max(3, deferredFrames) + 2;
-        auto finish = [settleFrames] { CompleteOperationAfterFrames(settleFrames); };
+        auto finish = [primaryId, secondaryId] {
+            ScheduleInventoryUIRefresh(primaryId, secondaryId, 0, [] {
+                CompleteOperation();
+            });
+        };
 
-        if (largeOp && deferredFrames > 1) {
-            ScheduleInventoryUIRefresh(primaryId, secondaryId, 0);
-            ScheduleInventoryUIRefresh(primaryId, secondaryId, deferredFrames - 1, std::move(finish));
-        } else {
-            ScheduleInventoryUIRefresh(primaryId, secondaryId, 0, std::move(finish));
-        }
+        ScheduleInventoryUIRefresh(primaryId, secondaryId, drainFrames, std::move(finish));
 
         StartAggressiveRefresh();
-        SkyPromptIntegration::GetSingleton().ScheduleFullRefresh(std::max(3, deferredFrames));
+        SkyPromptIntegration::GetSingleton().ScheduleFullRefresh(std::max(3, drainFrames));
     }
 
     void JunkHandler::CompleteOperation() {
         OperationOverlay::Hide();
         operationInProgress.store(false);
-    }
-
-    void JunkHandler::CompleteOperationAfterFrames(int framesRemaining) {
-        auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks || framesRemaining <= 0) {
-            CompleteOperation();
-            return;
-        }
-
-        tasks->AddUITask([framesRemaining]() {
-            CompleteOperationAfterFrames(framesRemaining - 1);
-        });
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
