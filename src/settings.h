@@ -49,6 +49,7 @@ namespace JunkIt {
             [[nodiscard]] static float GetGamepadTransferHoldTime();
             [[nodiscard]] static float GetTrashJunkKey();
             [[nodiscard]] static std::int32_t GetTrashHoldSeconds();
+            [[nodiscard]] static std::int32_t GetGamepadTrashHoldSeconds();
             [[nodiscard]] static std::int32_t GetTrashExpireDays();
             [[nodiscard]] static RE::TESObjectREFR* GetTrashContainer();
             [[nodiscard]] static bool IsTrashAvailable();
@@ -97,6 +98,7 @@ namespace JunkIt {
             static std::int32_t& GamepadTransferHoldTimeValue();
             static bool& EnableTrashValue();
             static std::int32_t& TrashHoldSecondsValue();
+            static std::int32_t& GamepadTrashHoldSecondsValue();
             static std::int32_t& TrashExpireDaysValue();
 
             static bool& ConfirmTransferValue();

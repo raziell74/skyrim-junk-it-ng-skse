@@ -12,6 +12,7 @@
 #include "AutoJunk.h"
 #include "PluginAPI.h"
 #include "Papyrus.h"
+#include "OperationOverlay.h"
 
 SKSE_EXPORT constinit SKSE::PluginVersionData SKSEPlugin_Version = []() noexcept {
 	SKSE::PluginVersionData v;
@@ -44,6 +45,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 	switch (a_msg->type) {
 		case SKSE::MessagingInterface::kInputLoaded:
 			JunkIt::I4MovieHook::Install();
+			JunkIt::OperationOverlay::Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
@@ -95,7 +97,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 	const auto* plugin = SKSE::PluginVersionData::GetSingleton();
 	SKSE::log::info("{} loaded (game {})", plugin->GetPluginName(), skse->RuntimeVersion().string("."));
 
-	SKSE::AllocTrampoline(64);
+	SKSE::AllocTrampoline(256);
 
 	JunkIt::Settings::LoadFromIni();
 	JunkIt::Translation::Load();

@@ -14,7 +14,6 @@
 
 namespace JunkIt {
     namespace {
-        constexpr float kMarkHoldTrashDelay = 0.5f;
         constexpr float kMarkHoldProgressMin = 0.01f;
         constexpr float kMarkHoldProgressMax = 0.99f;
 
@@ -181,8 +180,13 @@ namespace JunkIt {
                     InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
                     break;
                 case PromptActionID::kTrash:
+                    if (self.KeyboardTrashHoldEnabled()) {
+                        return;
+                    }
                     InputEventHandler::GetSingleton()->ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
                     break;
+                case PromptActionID::kGamepad:
+                    return;
                 default:
                     break;
             }
@@ -190,16 +194,21 @@ namespace JunkIt {
             return;
         }
 
-        if (event.type == SkyPromptAPI::PromptEventType::kDeclined &&
-            static_cast<PromptActionID>(event.prompt.actionID) == PromptActionID::kMark &&
-            MarkHoldTrashEnabled()) {
-            return;
+        if (event.type == SkyPromptAPI::PromptEventType::kDeclined) {
+            const auto action = static_cast<PromptActionID>(event.prompt.actionID);
+            if ((action == PromptActionID::kMark && MarkHoldTrashEnabled()) ||
+                (action == PromptActionID::kTrash && self.KeyboardTrashHoldEnabled()) ||
+                action == PromptActionID::kGamepad) {
+                return;
+            }
         }
 
         if (event.type == SkyPromptAPI::PromptEventType::kTimingOut ||
             event.type == SkyPromptAPI::PromptEventType::kTimeout) {
-            if (static_cast<PromptActionID>(event.prompt.actionID) == PromptActionID::kMark &&
-                MarkHoldTrashEnabled()) {
+            const auto action = static_cast<PromptActionID>(event.prompt.actionID);
+            if ((action == PromptActionID::kMark && MarkHoldTrashEnabled()) ||
+                (action == PromptActionID::kTrash && self.KeyboardTrashHoldEnabled()) ||
+                action == PromptActionID::kGamepad) {
                 return;
             }
             self.RefreshPrompts();
@@ -398,6 +407,44 @@ namespace JunkIt {
             return std::pair{ RE::INPUT_DEVICE::kMouse, mouseIndex };
         }
 
+        using Off = KeyUtil::GAMEPAD_OFFSETS;
+        switch (static_cast<Off>(keyCode)) {
+            case Off::kGamepadButtonOffset_DPAD_UP:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kUp) };
+            case Off::kGamepadButtonOffset_DPAD_DOWN:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kDown) };
+            case Off::kGamepadButtonOffset_DPAD_LEFT:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kLeft) };
+            case Off::kGamepadButtonOffset_DPAD_RIGHT:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kRight) };
+            case Off::kGamepadButtonOffset_START:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kStart) };
+            case Off::kGamepadButtonOffset_BACK:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kBack) };
+            case Off::kGamepadButtonOffset_LEFT_THUMB:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kLeftThumb) };
+            case Off::kGamepadButtonOffset_RIGHT_THUMB:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kRightThumb) };
+            case Off::kGamepadButtonOffset_LEFT_SHOULDER:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kLeftShoulder) };
+            case Off::kGamepadButtonOffset_RIGHT_SHOULDER:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kRightShoulder) };
+            case Off::kGamepadButtonOffset_A:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kA) };
+            case Off::kGamepadButtonOffset_B:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kB) };
+            case Off::kGamepadButtonOffset_X:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kX) };
+            case Off::kGamepadButtonOffset_Y:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kY) };
+            case Off::kGamepadButtonOffset_LT:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kLeftTrigger) };
+            case Off::kGamepadButtonOffset_RT:
+                return std::pair{ RE::INPUT_DEVICE::kGamepad, static_cast<SkyPromptAPI::ButtonID>(RE::BSWin32GamepadDevice::Key::kRightTrigger) };
+            default:
+                break;
+        }
+
         return std::nullopt;
     }
 
@@ -433,14 +480,88 @@ namespace JunkIt {
         return SelectedItemIsJunk() ? "$JunkIt_Prompt_Unmark" : "$JunkIt_Prompt_Mark";
     }
 
-    bool SkyPromptIntegration::MarkHoldTrashEnabled() {
+    bool SkyPromptIntegration::MarkHoldTrashEnabled() const {
+        if (!Settings::IsTrashAvailable() || Settings::GetTrashHoldSeconds() <= 0) {
+            return false;
+        }
+        return GetActiveMenu() != MenuKind::kBarter || SelectedRowIsPlayerSide();
+    }
+
+    bool SkyPromptIntegration::KeyboardTrashHoldEnabled() const {
         return Settings::IsTrashAvailable() && Settings::GetTrashHoldSeconds() > 0;
+    }
+
+    bool SkyPromptIntegration::ContainerMenuIsPlayerSegment() {
+        const auto ui = RE::UI::GetSingleton();
+        auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
+        if (!menu || !menu->uiMovie) {
+            return false;
+        }
+
+        RE::GFxValue result;
+        if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") &&
+            result.IsNumber()) {
+            return static_cast<int>(result.GetNumber()) != 0;
+        }
+        return false;
+    }
+
+    bool SkyPromptIntegration::IsPlayerInventoryView() {
+        switch (GetActiveMenu()) {
+            case MenuKind::kInventory:
+                return true;
+            case MenuKind::kContainer:
+                return ContainerMenuIsPlayerSegment();
+            default:
+                return false;
+        }
+    }
+
+    bool SkyPromptIntegration::ShouldShowTrashPrompt(MenuKind menu) {
+        if (!Settings::IsTrashAvailable()) {
+            return false;
+        }
+        const auto trashKey = static_cast<std::uint32_t>(Settings::GetTrashJunkKey());
+        if (trashKey == 0 || !ToSkyPromptButton(trashKey)) {
+            return false;
+        }
+        if (menu != MenuKind::kInventory &&
+            (menu != MenuKind::kContainer || !ContainerMenuIsPlayerSegment())) {
+            return false;
+        }
+        return JunkHandler::HasTrashablePlayerJunk();
+    }
+
+    SkyPromptAPI::PromptType SkyPromptIntegration::KeyboardTrashPromptType() {
+        return Settings::GetTrashHoldSeconds() > 0
+            ? SkyPromptAPI::PromptType::kHintHold
+            : SkyPromptAPI::PromptType::kSinglePress;
     }
 
     SkyPromptAPI::Prompt* SkyPromptIntegration::FindMarkPrompt() {
         const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
         for (auto& prompt : prompts_) {
             if (prompt.actionID == markAction) {
+                return &prompt;
+            }
+        }
+        return nullptr;
+    }
+
+    SkyPromptAPI::Prompt* SkyPromptIntegration::FindTrashPrompt() {
+        const auto trashAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTrash);
+        for (auto& prompt : prompts_) {
+            if (prompt.actionID == trashAction) {
+                return &prompt;
+            }
+        }
+        return nullptr;
+    }
+
+    SkyPromptAPI::Prompt* SkyPromptIntegration::FindGamepadPrompt() {
+        const auto gamepadAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kGamepad);
+        for (auto& prompt : prompts_) {
+            if (prompt.actionID == gamepadAction) {
                 return &prompt;
             }
         }
@@ -506,16 +627,139 @@ namespace JunkIt {
         }
     }
 
-    std::string SkyPromptIntegration::FormatTransferPrompt() {
-        bool storeView = false;
-        const auto ui = RE::UI::GetSingleton();
-        auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
-        if (menu && menu->uiMovie) {
-            RE::GFxValue result;
-            if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
-                storeView = static_cast<int>(result.GetNumber()) != 0;
+    void SkyPromptIntegration::UpdateTrashHoldVisual(float heldDuration) {
+        if (!IsEnabled() || !KeyboardTrashHoldEnabled()) {
+            return;
+        }
+
+        auto* trashPrompt = FindTrashPrompt();
+        if (!trashPrompt) {
+            return;
+        }
+
+        const float span = static_cast<float>(Settings::GetTrashHoldSeconds());
+        const float t = span <= 0.f ? kMarkHoldProgressMax : heldDuration / span;
+        const float wantedProgress = std::clamp(t, kMarkHoldProgressMin, kMarkHoldProgressMax);
+
+        trashHoldVisualActive_ = true;
+        if (trashPrompt->progress == wantedProgress) {
+            return;
+        }
+
+        trashPrompt->progress = wantedProgress;
+        Send();
+    }
+
+    void SkyPromptIntegration::ResetTrashHoldVisual() {
+        trashHoldVisualActive_ = false;
+
+        auto* trashPrompt = FindTrashPrompt();
+        if (!trashPrompt) {
+            return;
+        }
+
+        if (trashPrompt->progress != 0.f) {
+            trashPrompt->progress = 0.f;
+            Send();
+        }
+    }
+
+    void SkyPromptIntegration::UpdateGamepadHoldVisual(float heldDuration) {
+        if (!IsEnabled()) {
+            return;
+        }
+
+        auto* gamepadPrompt = FindGamepadPrompt();
+        if (!gamepadPrompt) {
+            return;
+        }
+
+        const auto menu = GetActiveMenu();
+        const float transferHoldRaw = Settings::GetGamepadTransferHoldTime() - 1.0f;
+        const float transferHold = transferHoldRaw > 0.01f ? transferHoldRaw : 0.01f;
+        const float trashHold = Settings::IsTrashAvailable()
+            ? static_cast<float>(Settings::GetGamepadTrashHoldSeconds())
+            : 0.f;
+        const bool canTrash = IsPlayerInventoryView() && trashHold > 0.f && JunkHandler::HasTrashablePlayerJunk();
+
+        const char* wantedText = MarkPromptText();
+        float wantedProgress = 0.f;
+        bool visualActive = false;
+
+        if (menu == MenuKind::kInventory) {
+            if (canTrash && heldDuration >= kMarkHoldTrashDelay) {
+                wantedText = "$JunkIt_Prompt_TrashingJunk";
+                visualActive = true;
+                const float span = trashHold - kMarkHoldTrashDelay;
+                const float t = span <= 0.f ? kMarkHoldProgressMax : (heldDuration - kMarkHoldTrashDelay) / span;
+                wantedProgress = std::clamp(t, kMarkHoldProgressMin, kMarkHoldProgressMax);
+            }
+        } else if (menu == MenuKind::kContainer || menu == MenuKind::kBarter) {
+            const char* opText = menu == MenuKind::kBarter
+                ? "$JunkIt_Prompt_SellingJunk"
+                : (ContainerMenuIsPlayerSegment()
+                    ? "$JunkIt_Prompt_StoringJunk"
+                    : "$JunkIt_Prompt_RetrievingJunk");
+            if (heldDuration < transferHold) {
+                wantedText = opText;
+                visualActive = true;
+                wantedProgress = std::clamp(heldDuration / transferHold, kMarkHoldProgressMin, kMarkHoldProgressMax);
+            } else if (canTrash) {
+                wantedText = "$JunkIt_Prompt_TrashingJunk";
+                visualActive = true;
+                const float span = trashHold - transferHold;
+                const float t = span <= 0.f ? kMarkHoldProgressMax : (heldDuration - transferHold) / span;
+                wantedProgress = std::clamp(t, kMarkHoldProgressMin, kMarkHoldProgressMax);
+            } else {
+                wantedText = opText;
+                visualActive = true;
+                wantedProgress = kMarkHoldProgressMax;
             }
         }
+
+        if (!wantedText) {
+            wantedText = "$JunkIt_Prompt_Mark";
+        }
+
+        gamepadHoldVisualActive_ = visualActive;
+        if (gamepadPrompt->text == wantedText && gamepadPrompt->progress == wantedProgress) {
+            return;
+        }
+
+        gamepadPrompt->text = wantedText;
+        gamepadPrompt->progress = wantedProgress;
+        Send();
+    }
+
+    void SkyPromptIntegration::ResetGamepadHoldVisual() {
+        gamepadHoldVisualActive_ = false;
+
+        auto* gamepadPrompt = FindGamepadPrompt();
+        if (!gamepadPrompt) {
+            return;
+        }
+
+        const char* wantedText = MarkPromptText();
+        if (!wantedText) {
+            wantedText = "$JunkIt_Prompt_Mark";
+        }
+
+        bool changed = false;
+        if (gamepadPrompt->text != wantedText) {
+            gamepadPrompt->text = wantedText;
+            changed = true;
+        }
+        if (gamepadPrompt->progress != 0.f) {
+            gamepadPrompt->progress = 0.f;
+            changed = true;
+        }
+        if (changed) {
+            Send();
+        }
+    }
+
+    std::string SkyPromptIntegration::FormatTransferPrompt() {
+        const bool storeView = ContainerMenuIsPlayerSegment();
 
         const char* key = storeView ? "$JunkIt_Prompt_Store" : "$JunkIt_Prompt_Retrieve";
         if (!Settings::GetSkyPromptShowCounts()) {
@@ -562,26 +806,18 @@ namespace JunkIt {
         const auto markAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark);
         const auto transferAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer);
         const auto sellAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell);
+        const auto trashAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTrash);
+        const auto gamepadAction = static_cast<SkyPromptAPI::ActionID>(PromptActionID::kGamepad);
         const auto wantedRefId = PromptAttachRefID();
 
-        bool hasMark = false;
-        bool hasTransfer = false;
-        bool hasSell = false;
-        bool refidMismatch = false;
-        for (const auto& prompt : prompts_) {
-            if (prompt.actionID == markAction) {
-                hasMark = true;
-            } else if (prompt.actionID == transferAction) {
-                hasTransfer = true;
-            } else if (prompt.actionID == sellAction) {
-                hasSell = true;
-            }
-            if (prompt.refid != wantedRefId) {
-                refidMismatch = true;
-            }
-        }
-
         const char* wantedMark = MarkPromptText();
+        const auto wantedMarkType = MarkHoldTrashEnabled()
+            ? SkyPromptAPI::PromptType::kHint
+            : SkyPromptAPI::PromptType::kSinglePress;
+        const bool wantedTrash = ShouldShowTrashPrompt(menu);
+        const auto wantedTrashType = KeyboardTrashPromptType();
+        const auto gamepadKey = static_cast<std::uint32_t>(Settings::GetGamepadJunkKey());
+        const bool wantedGamepad = gamepadKey != 0 && ToSkyPromptButton(gamepadKey).has_value();
         std::string wantedTransfer;
         if (menu == MenuKind::kContainer) {
             wantedTransfer = FormatTransferPrompt();
@@ -591,10 +827,45 @@ namespace JunkIt {
             wantedSell = FormatSellPrompt();
         }
 
+        bool hasMark = false;
+        bool hasTransfer = false;
+        bool hasSell = false;
+        bool hasTrash = false;
+        bool hasGamepad = false;
+        bool refidMismatch = false;
+        bool markTypeMismatch = false;
+        bool trashTypeMismatch = false;
+        for (const auto& prompt : prompts_) {
+            if (prompt.actionID == markAction) {
+                hasMark = true;
+                if (prompt.type != wantedMarkType) {
+                    markTypeMismatch = true;
+                }
+            } else if (prompt.actionID == transferAction) {
+                hasTransfer = true;
+            } else if (prompt.actionID == sellAction) {
+                hasSell = true;
+            } else if (prompt.actionID == trashAction) {
+                hasTrash = true;
+                if (prompt.type != wantedTrashType) {
+                    trashTypeMismatch = true;
+                }
+            } else if (prompt.actionID == gamepadAction) {
+                hasGamepad = true;
+            }
+            if (prompt.refid != wantedRefId) {
+                refidMismatch = true;
+            }
+        }
+
         if (hasMark != (wantedMark != nullptr) ||
             hasTransfer != !wantedTransfer.empty() ||
             hasSell != !wantedSell.empty() ||
-            refidMismatch) {
+            hasTrash != wantedTrash ||
+            hasGamepad != wantedGamepad ||
+            refidMismatch ||
+            markTypeMismatch ||
+            trashTypeMismatch) {
             RefreshPrompts();
             return;
         }
@@ -611,6 +882,30 @@ namespace JunkIt {
                 }
                 if (prompt.text != wantedMark) {
                     prompt.text = wantedMark;
+                    changed = true;
+                }
+                if (prompt.progress != 0.f) {
+                    prompt.progress = 0.f;
+                    changed = true;
+                }
+            } else if (prompt.actionID == trashAction) {
+                if (trashHoldVisualActive_) {
+                    continue;
+                }
+                if (prompt.progress != 0.f) {
+                    prompt.progress = 0.f;
+                    changed = true;
+                }
+            } else if (prompt.actionID == gamepadAction) {
+                if (gamepadHoldVisualActive_) {
+                    continue;
+                }
+                const char* wantedGamepadText = MarkPromptText();
+                if (!wantedGamepadText) {
+                    wantedGamepadText = "$JunkIt_Prompt_Mark";
+                }
+                if (prompt.text != wantedGamepadText) {
+                    prompt.text = wantedGamepadText;
                     changed = true;
                 }
                 if (prompt.progress != 0.f) {
@@ -637,6 +932,7 @@ namespace JunkIt {
         markKeys_.clear();
         transferKeys_.clear();
         trashKeys_.clear();
+        gamepadKeys_.clear();
         prompts_.clear();
 
         if (auto markButton = ToSkyPromptButton(static_cast<std::uint32_t>(Settings::GetMarkJunkKey()))) {
@@ -649,6 +945,12 @@ namespace JunkIt {
         if (Settings::IsTrashAvailable() && trashKey != 0) {
             if (auto trashButton = ToSkyPromptButton(trashKey)) {
                 trashKeys_.push_back(*trashButton);
+            }
+        }
+        const auto gamepadKey = static_cast<std::uint32_t>(Settings::GetGamepadJunkKey());
+        if (gamepadKey != 0) {
+            if (auto gamepadButton = ToSkyPromptButton(gamepadKey)) {
+                gamepadKeys_.push_back(*gamepadButton);
             }
         }
 
@@ -669,45 +971,54 @@ namespace JunkIt {
             }
         }
 
-        if (menu == MenuKind::kInventory) {
-            if (!trashKeys_.empty()) {
-                prompts_.emplace_back(
-                    "$JunkIt_Prompt_Trash",
-                    static_cast<SkyPromptAPI::EventID>(PromptEventID::kTrash),
-                    static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTrash),
-                    SkyPromptAPI::PromptType::kSinglePress,
-                    attachRefId,
-                    trashKeys_);
-            }
-            return;
+        if (ShouldShowTrashPrompt(menu) && !trashKeys_.empty()) {
+            prompts_.emplace_back(
+                "$JunkIt_Prompt_Trash",
+                static_cast<SkyPromptAPI::EventID>(PromptEventID::kTrash),
+                static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTrash),
+                KeyboardTrashPromptType(),
+                attachRefId,
+                trashKeys_);
         }
 
-        if (transferKeys_.empty()) {
-            return;
+        if (!transferKeys_.empty()) {
+            if (menu == MenuKind::kContainer) {
+                transferLabel_ = FormatTransferPrompt();
+                if (!transferLabel_.empty()) {
+                    prompts_.emplace_back(
+                        transferLabel_,
+                        static_cast<SkyPromptAPI::EventID>(PromptEventID::kTransfer),
+                        static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer),
+                        SkyPromptAPI::PromptType::kHold,
+                        attachRefId,
+                        transferKeys_);
+                }
+            } else if (menu == MenuKind::kBarter) {
+                sellLabel_ = FormatSellPrompt();
+                if (!sellLabel_.empty()) {
+                    prompts_.emplace_back(
+                        sellLabel_,
+                        static_cast<SkyPromptAPI::EventID>(PromptEventID::kTransfer),
+                        static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell),
+                        SkyPromptAPI::PromptType::kHold,
+                        attachRefId,
+                        transferKeys_);
+                }
+            }
         }
 
-        if (menu == MenuKind::kContainer) {
-            transferLabel_ = FormatTransferPrompt();
-            if (!transferLabel_.empty()) {
-                prompts_.emplace_back(
-                    transferLabel_,
-                    static_cast<SkyPromptAPI::EventID>(PromptEventID::kTransfer),
-                    static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTransfer),
-                    SkyPromptAPI::PromptType::kHold,
-                    attachRefId,
-                    transferKeys_);
+        if (!gamepadKeys_.empty()) {
+            const char* gamepadText = MarkPromptText();
+            if (!gamepadText) {
+                gamepadText = "$JunkIt_Prompt_Mark";
             }
-        } else if (menu == MenuKind::kBarter) {
-            sellLabel_ = FormatSellPrompt();
-            if (!sellLabel_.empty()) {
-                prompts_.emplace_back(
-                    sellLabel_,
-                    static_cast<SkyPromptAPI::EventID>(PromptEventID::kTransfer),
-                    static_cast<SkyPromptAPI::ActionID>(PromptActionID::kSell),
-                    SkyPromptAPI::PromptType::kHold,
-                    attachRefId,
-                    transferKeys_);
-            }
+            prompts_.emplace_back(
+                gamepadText,
+                static_cast<SkyPromptAPI::EventID>(PromptEventID::kGamepad),
+                static_cast<SkyPromptAPI::ActionID>(PromptActionID::kGamepad),
+                SkyPromptAPI::PromptType::kHint,
+                attachRefId,
+                gamepadKeys_);
         }
     }
 
@@ -737,9 +1048,12 @@ namespace JunkIt {
         markKeys_.clear();
         transferKeys_.clear();
         trashKeys_.clear();
+        gamepadKeys_.clear();
         transferLabel_.clear();
         sellLabel_.clear();
         markHoldVisualActive_ = false;
+        trashHoldVisualActive_ = false;
+        gamepadHoldVisualActive_ = false;
     }
 
     void SkyPromptIntegration::InvalidatePreviews() {
@@ -911,6 +1225,14 @@ namespace JunkIt {
         }
 
         if (previewMenu_ == MenuKind::kBarter) {
+            const auto ui = RE::UI::GetSingleton();
+            auto menu = ui ? ui->GetMenu<RE::BarterMenu>() : nullptr;
+            if (menu && menu->uiMovie) {
+                RE::GFxValue result;
+                if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
+                    return static_cast<int>(result.GetNumber()) != 0;
+                }
+            }
             return false;
         }
 

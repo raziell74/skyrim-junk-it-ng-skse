@@ -70,10 +70,13 @@ namespace JunkIt {
         void HandleKeyDown(uint32_t keyCode, ActiveMenuType activeMenu);
         void HandleGamepadKeyUp(float holdTime, ActiveMenuType activeMenu);
         void HandleMarkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu, bool skyPromptShowing);
+        void HandleTrashKey(RE::ButtonEvent* buttonEvent);
         void HandleGamepadJunkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu);
 
         bool markHoldArmed{ false };
         bool markTrashFired{ false };
+        bool trashHoldArmed{ false };
+        bool trashBulkFired{ false };
         bool gamepadTrashFired{ false };
     };
 }

@@ -13,4 +13,5 @@ set(sources ${sources}
     src/SkyPromptIntegration.cpp
     src/PluginAPI.cpp
     src/Papyrus.cpp
+    src/OperationOverlay.cpp
 )

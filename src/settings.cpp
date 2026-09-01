@@ -20,8 +20,9 @@ namespace JunkIt {
             std::uint32_t gamepadJunkKey = 270;
             std::uint32_t trashJunkKey = 48;
             std::int32_t gamepadTransferHoldTime = 2;
-            bool enableTrash = false;
-            std::int32_t trashHoldSeconds = 0;
+            bool enableTrash = true;
+            std::int32_t trashHoldSeconds = 5;
+            std::int32_t gamepadTrashHoldSeconds = 5;
             std::int32_t trashExpireDays = 7;
 
             bool confirmTransfer = true;
@@ -221,6 +222,7 @@ namespace JunkIt {
             complete &= ReadInt(ini, "Hotkey", {}, "iGamepadTransferHoldTime", g_values.gamepadTransferHoldTime);
             complete &= ReadBool(ini, "Trash", {}, "bEnableTrash", g_values.enableTrash);
             complete &= ReadInt(ini, "Trash", {}, "iTrashHoldSeconds", g_values.trashHoldSeconds);
+            complete &= ReadInt(ini, "Trash", {}, "iGamepadTrashHoldSeconds", g_values.gamepadTrashHoldSeconds);
             complete &= ReadInt(ini, "Trash", {}, "iTrashExpireDays", g_values.trashExpireDays);
 
             complete &= ReadBool(ini, "Confirmation", {}, "bConfirmTransfer", g_values.confirmTransfer);
@@ -308,9 +310,10 @@ namespace JunkIt {
                 g_values.gamepadTransferHoldTime,
                 g_values.trashJunkKey);
             SKSE::log::info(
-                "Trash Settings | Enabled: {} | HoldSeconds: {} | ExpireDays: {}",
+                "Trash Settings | Enabled: {} | HoldSeconds: {} | GamepadTrashHoldSeconds: {} | ExpireDays: {}",
                 g_values.enableTrash,
                 g_values.trashHoldSeconds,
+                g_values.gamepadTrashHoldSeconds,
                 g_values.trashExpireDays);
             SKSE::log::info(
                 "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
@@ -359,6 +362,13 @@ namespace JunkIt {
 
     void Settings::ClampValues() {
         g_values.gamepadTransferHoldTime = std::clamp(g_values.gamepadTransferHoldTime, 2, 30);
+        if (g_values.gamepadTrashHoldSeconds < g_values.gamepadTransferHoldTime) {
+            g_values.gamepadTrashHoldSeconds = g_values.gamepadTransferHoldTime;
+        }
+        g_values.gamepadTrashHoldSeconds = std::clamp(
+            g_values.gamepadTrashHoldSeconds,
+            g_values.gamepadTransferHoldTime,
+            30);
         g_values.trashHoldSeconds = std::clamp(g_values.trashHoldSeconds, 0, 10);
         g_values.trashExpireDays = std::clamp(g_values.trashExpireDays, 0, 30);
         g_values.transferPriority = std::clamp(g_values.transferPriority, 0, 6);
@@ -444,6 +454,7 @@ namespace JunkIt {
             out << "[Trash]\n";
             out << "bEnableTrash=" << (g_values.enableTrash ? 1 : 0) << "\n";
             out << "iTrashHoldSeconds=" << g_values.trashHoldSeconds << "\n";
+            out << "iGamepadTrashHoldSeconds=" << g_values.gamepadTrashHoldSeconds << "\n";
             out << "iTrashExpireDays=" << g_values.trashExpireDays << "\n\n";
 
             out << "[Confirmation]\n";
@@ -578,6 +589,7 @@ namespace JunkIt {
     float Settings::GetGamepadTransferHoldTime() { return static_cast<float>(g_values.gamepadTransferHoldTime); }
     float Settings::GetTrashJunkKey() { return static_cast<float>(g_values.trashJunkKey); }
     std::int32_t Settings::GetTrashHoldSeconds() { return g_values.trashHoldSeconds; }
+    std::int32_t Settings::GetGamepadTrashHoldSeconds() { return g_values.gamepadTrashHoldSeconds; }
     std::int32_t Settings::GetTrashExpireDays() { return g_values.trashExpireDays; }
     RE::TESObjectREFR* Settings::GetTrashContainer() { return g_values.trashContainer; }
     bool Settings::IsTrashAvailable() { return g_values.enableTrash && g_values.trashContainer != nullptr; }
@@ -693,6 +705,7 @@ namespace JunkIt {
     std::int32_t& Settings::GamepadTransferHoldTimeValue() { return g_values.gamepadTransferHoldTime; }
     bool& Settings::EnableTrashValue() { return g_values.enableTrash; }
     std::int32_t& Settings::TrashHoldSecondsValue() { return g_values.trashHoldSeconds; }
+    std::int32_t& Settings::GamepadTrashHoldSecondsValue() { return g_values.gamepadTrashHoldSeconds; }
     std::int32_t& Settings::TrashExpireDaysValue() { return g_values.trashExpireDays; }
 
     bool& Settings::ConfirmTransferValue() { return g_values.confirmTransfer; }

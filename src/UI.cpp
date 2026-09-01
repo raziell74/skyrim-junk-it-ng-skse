@@ -8,6 +8,7 @@
 #include "settings.h"
 #include "util.h"
 
+#define ImGui SKSEMenuImGui
 #include "SKSEMenuFramework.h"
 
 #include <cstdint>
@@ -34,6 +35,11 @@ namespace JunkIt {
         };
 
         CaptureSlot g_capture = CaptureSlot::kNone;
+        bool g_captureWaitMouseUp = false;
+        bool g_prevKeyCtrl = false;
+        bool g_prevKeyShift = false;
+        bool g_prevKeyAlt = false;
+        bool g_prevKeySuper = false;
         char g_junkFilter[128] = {};
         char g_customAutoJunkType[64] = {};
         char g_customAutoJunkMaterial[64] = {};
@@ -170,6 +176,208 @@ namespace JunkIt {
             static char fallback[32];
             std::snprintf(fallback, sizeof(fallback), "Key %u", keyCode);
             return fallback;
+        }
+
+        std::uint32_t ImGuiKeyToSkyrimKeycode(ImGuiKey key) {
+            using KeyboardKey = RE::BSKeyboardDevice::Key;
+            using GamepadOffset = KeyUtil::GAMEPAD_OFFSETS;
+            constexpr auto kMouseOffset = static_cast<std::uint32_t>(KeyUtil::KBM_OFFSETS::kMacro_MouseButtonOffset);
+
+            switch (key) {
+                case ImGuiKey_Tab: return KeyboardKey::kTab;
+                case ImGuiKey_LeftArrow: return KeyboardKey::kLeft;
+                case ImGuiKey_RightArrow: return KeyboardKey::kRight;
+                case ImGuiKey_UpArrow: return KeyboardKey::kUp;
+                case ImGuiKey_DownArrow: return KeyboardKey::kDown;
+                case ImGuiKey_PageUp: return KeyboardKey::kPageUp;
+                case ImGuiKey_PageDown: return KeyboardKey::kPageDown;
+                case ImGuiKey_Home: return KeyboardKey::kHome;
+                case ImGuiKey_End: return KeyboardKey::kEnd;
+                case ImGuiKey_Insert: return KeyboardKey::kInsert;
+                case ImGuiKey_Delete: return KeyboardKey::kDelete;
+                case ImGuiKey_Backspace: return KeyboardKey::kBackspace;
+                case ImGuiKey_Space: return KeyboardKey::kSpacebar;
+                case ImGuiKey_Enter: return KeyboardKey::kEnter;
+                case ImGuiKey_Escape: return KeyboardKey::kEscape;
+                case ImGuiKey_LeftCtrl: return KeyboardKey::kLeftControl;
+                case ImGuiKey_LeftShift: return KeyboardKey::kLeftShift;
+                case ImGuiKey_LeftAlt: return KeyboardKey::kLeftAlt;
+                case ImGuiKey_LeftSuper: return KeyboardKey::kLeftWin;
+                case ImGuiKey_RightCtrl: return KeyboardKey::kRightControl;
+                case ImGuiKey_RightShift: return KeyboardKey::kRightShift;
+                case ImGuiKey_RightAlt: return KeyboardKey::kRightAlt;
+                case ImGuiKey_RightSuper: return KeyboardKey::kRightWin;
+                case ImGuiKey_0: return KeyboardKey::kNum0;
+                case ImGuiKey_1: return KeyboardKey::kNum1;
+                case ImGuiKey_2: return KeyboardKey::kNum2;
+                case ImGuiKey_3: return KeyboardKey::kNum3;
+                case ImGuiKey_4: return KeyboardKey::kNum4;
+                case ImGuiKey_5: return KeyboardKey::kNum5;
+                case ImGuiKey_6: return KeyboardKey::kNum6;
+                case ImGuiKey_7: return KeyboardKey::kNum7;
+                case ImGuiKey_8: return KeyboardKey::kNum8;
+                case ImGuiKey_9: return KeyboardKey::kNum9;
+                case ImGuiKey_A: return KeyboardKey::kA;
+                case ImGuiKey_B: return KeyboardKey::kB;
+                case ImGuiKey_C: return KeyboardKey::kC;
+                case ImGuiKey_D: return KeyboardKey::kD;
+                case ImGuiKey_E: return KeyboardKey::kE;
+                case ImGuiKey_F: return KeyboardKey::kF;
+                case ImGuiKey_G: return KeyboardKey::kG;
+                case ImGuiKey_H: return KeyboardKey::kH;
+                case ImGuiKey_I: return KeyboardKey::kI;
+                case ImGuiKey_J: return KeyboardKey::kJ;
+                case ImGuiKey_K: return KeyboardKey::kK;
+                case ImGuiKey_L: return KeyboardKey::kL;
+                case ImGuiKey_M: return KeyboardKey::kM;
+                case ImGuiKey_N: return KeyboardKey::kN;
+                case ImGuiKey_O: return KeyboardKey::kO;
+                case ImGuiKey_P: return KeyboardKey::kP;
+                case ImGuiKey_Q: return KeyboardKey::kQ;
+                case ImGuiKey_R: return KeyboardKey::kR;
+                case ImGuiKey_S: return KeyboardKey::kS;
+                case ImGuiKey_T: return KeyboardKey::kT;
+                case ImGuiKey_U: return KeyboardKey::kU;
+                case ImGuiKey_V: return KeyboardKey::kV;
+                case ImGuiKey_W: return KeyboardKey::kW;
+                case ImGuiKey_X: return KeyboardKey::kX;
+                case ImGuiKey_Y: return KeyboardKey::kY;
+                case ImGuiKey_Z: return KeyboardKey::kZ;
+                case ImGuiKey_F1: return KeyboardKey::kF1;
+                case ImGuiKey_F2: return KeyboardKey::kF2;
+                case ImGuiKey_F3: return KeyboardKey::kF3;
+                case ImGuiKey_F4: return KeyboardKey::kF4;
+                case ImGuiKey_F5: return KeyboardKey::kF5;
+                case ImGuiKey_F6: return KeyboardKey::kF6;
+                case ImGuiKey_F7: return KeyboardKey::kF7;
+                case ImGuiKey_F8: return KeyboardKey::kF8;
+                case ImGuiKey_F9: return KeyboardKey::kF9;
+                case ImGuiKey_F10: return KeyboardKey::kF10;
+                case ImGuiKey_F11: return KeyboardKey::kF11;
+                case ImGuiKey_F12: return KeyboardKey::kF12;
+                case ImGuiKey_Apostrophe: return KeyboardKey::kApostrophe;
+                case ImGuiKey_Comma: return KeyboardKey::kComma;
+                case ImGuiKey_Minus: return KeyboardKey::kMinus;
+                case ImGuiKey_Period: return KeyboardKey::kPeriod;
+                case ImGuiKey_Slash: return KeyboardKey::kSlash;
+                case ImGuiKey_Semicolon: return KeyboardKey::kSemicolon;
+                case ImGuiKey_Equal: return KeyboardKey::kEquals;
+                case ImGuiKey_LeftBracket: return KeyboardKey::kBracketLeft;
+                case ImGuiKey_Backslash: return KeyboardKey::kBackslash;
+                case ImGuiKey_RightBracket: return KeyboardKey::kBracketRight;
+                case ImGuiKey_GraveAccent: return KeyboardKey::kTilde;
+                case ImGuiKey_CapsLock: return KeyboardKey::kCapsLock;
+                case ImGuiKey_ScrollLock: return KeyboardKey::kScrollLock;
+                case ImGuiKey_NumLock: return KeyboardKey::kNumLock;
+                case ImGuiKey_PrintScreen: return KeyboardKey::kPrintScreen;
+                case ImGuiKey_Pause: return KeyboardKey::kPause;
+                case ImGuiKey_Keypad0: return KeyboardKey::kKP_0;
+                case ImGuiKey_Keypad1: return KeyboardKey::kKP_1;
+                case ImGuiKey_Keypad2: return KeyboardKey::kKP_2;
+                case ImGuiKey_Keypad3: return KeyboardKey::kKP_3;
+                case ImGuiKey_Keypad4: return KeyboardKey::kKP_4;
+                case ImGuiKey_Keypad5: return KeyboardKey::kKP_5;
+                case ImGuiKey_Keypad6: return KeyboardKey::kKP_6;
+                case ImGuiKey_Keypad7: return KeyboardKey::kKP_7;
+                case ImGuiKey_Keypad8: return KeyboardKey::kKP_8;
+                case ImGuiKey_Keypad9: return KeyboardKey::kKP_9;
+                case ImGuiKey_KeypadDecimal: return KeyboardKey::kKP_Decimal;
+                case ImGuiKey_KeypadDivide: return KeyboardKey::kKP_Divide;
+                case ImGuiKey_KeypadMultiply: return KeyboardKey::kKP_Multiply;
+                case ImGuiKey_KeypadSubtract: return KeyboardKey::kKP_Subtract;
+                case ImGuiKey_KeypadAdd: return KeyboardKey::kKP_Plus;
+                case ImGuiKey_KeypadEnter: return KeyboardKey::kKP_Enter;
+                case ImGuiKey_MouseLeft: return kMouseOffset + 0;
+                case ImGuiKey_MouseRight: return kMouseOffset + 1;
+                case ImGuiKey_MouseMiddle: return kMouseOffset + 2;
+                case ImGuiKey_MouseX1: return kMouseOffset + 3;
+                case ImGuiKey_MouseX2: return kMouseOffset + 4;
+                case ImGuiKey_GamepadDpadUp: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_DPAD_UP);
+                case ImGuiKey_GamepadDpadDown: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_DPAD_DOWN);
+                case ImGuiKey_GamepadDpadLeft: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_DPAD_LEFT);
+                case ImGuiKey_GamepadDpadRight: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_DPAD_RIGHT);
+                case ImGuiKey_GamepadStart: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_START);
+                case ImGuiKey_GamepadBack: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_BACK);
+                case ImGuiKey_GamepadL3: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_LEFT_THUMB);
+                case ImGuiKey_GamepadR3: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_RIGHT_THUMB);
+                case ImGuiKey_GamepadL1: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_LEFT_SHOULDER);
+                case ImGuiKey_GamepadR1: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_RIGHT_SHOULDER);
+                case ImGuiKey_GamepadFaceDown: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_A);
+                case ImGuiKey_GamepadFaceRight: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_B);
+                case ImGuiKey_GamepadFaceLeft: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_X);
+                case ImGuiKey_GamepadFaceUp: return static_cast<std::uint32_t>(GamepadOffset::kGamepadButtonOffset_Y);
+                default: return 0;
+            }
+        }
+
+        bool TryConsumeImGuiKey(ImGuiKey key) {
+            if (!ImGui::IsKeyPressed(key, false)) {
+                return false;
+            }
+            const std::uint32_t keyCode = ImGuiKeyToSkyrimKeycode(key);
+            if (keyCode == 0) {
+                return false;
+            }
+            UI::ConsumeKeyCapture(keyCode);
+            return true;
+        }
+
+        void PollKeyCapture() {
+            ImGuiIO* io = ImGui::GetIO();
+            const bool ctrl = io && io->KeyCtrl;
+            const bool shift = io && io->KeyShift;
+            const bool alt = io && io->KeyAlt;
+            const bool super = io && io->KeySuper;
+
+            auto storeModEdges = [&]() {
+                g_prevKeyCtrl = ctrl;
+                g_prevKeyShift = shift;
+                g_prevKeyAlt = alt;
+                g_prevKeySuper = super;
+            };
+
+            if (g_capture == CaptureSlot::kNone) {
+                g_captureWaitMouseUp = false;
+                storeModEdges();
+                return;
+            }
+
+            if (g_captureWaitMouseUp) {
+                if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                    g_captureWaitMouseUp = false;
+                }
+                storeModEdges();
+                return;
+            }
+
+            if (ctrl && !g_prevKeyCtrl) {
+                storeModEdges();
+                UI::ConsumeKeyCapture(RE::BSKeyboardDevice::Key::kLeftControl);
+                return;
+            }
+            if (shift && !g_prevKeyShift) {
+                storeModEdges();
+                UI::ConsumeKeyCapture(RE::BSKeyboardDevice::Key::kLeftShift);
+                return;
+            }
+            if (alt && !g_prevKeyAlt) {
+                storeModEdges();
+                UI::ConsumeKeyCapture(RE::BSKeyboardDevice::Key::kLeftAlt);
+                return;
+            }
+            if (super && !g_prevKeySuper) {
+                storeModEdges();
+                UI::ConsumeKeyCapture(RE::BSKeyboardDevice::Key::kLeftWin);
+                return;
+            }
+
+            storeModEdges();
+
+            for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; ++key) {
+                if (TryConsumeImGuiKey(static_cast<ImGuiKey>(key))) {
+                    return;
+                }
+            }
         }
 
         void HelpMarker(const char* helpKey) {
@@ -340,6 +548,7 @@ namespace JunkIt {
             ImGui::PopID();
             if (clicked) {
                 g_capture = slot;
+                g_captureWaitMouseUp = true;
             }
             return clicked;
         }
@@ -433,14 +642,31 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
-            ImGui::SeparatorText(Translation::Get("$JunkIt_TrashHeader").c_str());
+            RenderStatus();
+            PopBrandColors();
+        }
+
+        void RenderTrash() {
+            PushBrandColors();
+            RenderPageHeader("$JunkIt_Page_Trash");
+
+            ImVec2 avail{};
+            ImGui::GetContentRegionAvail(&avail);
+            const float leftWidth = avail.x * 0.52f;
+
+            ImGui::BeginChild(
+                "trashLeft",
+                ImVec2(leftWidth, 0.0f),
+                ImGuiChildFlags_Border,
+                ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
             const bool trashResolved = Settings::GetTrashContainer() != nullptr;
             const bool trashAvailable = Settings::IsTrashAvailable();
             if (!trashResolved) {
                 ImGui::TextWrapped("%s", Translation::Get("$JunkIt_TrashRequiresEsp").c_str());
                 ImGui::BeginDisabled();
             }
-            if (BeginSettingsTable("generalTrash")) {
+            if (BeginSettingsTable("trashSettings")) {
                 const bool enableChanged = CheckboxRow(
                     "$JunkIt_EnableTrash",
                     "$JunkIt_EnableTrash_Help",
@@ -463,6 +689,27 @@ namespace JunkIt {
                 if (holdChanged) {
                     SkyPromptIntegration::GetSingleton().RefreshPrompts();
                 }
+                const char* gamepadTrashHelp = !trashResolved
+                    ? "$JunkIt_TrashRequiresEsp"
+                    : (trashAvailable ? "$JunkIt_GamepadTrashHoldSeconds_Help" : "$JunkIt_EnableTrash_Help");
+                const bool gamepadTrashChanged = SliderIntRow(
+                    "$JunkIt_GamepadTrashHoldSeconds",
+                    gamepadTrashHelp,
+                    Settings::GamepadTrashHoldSecondsValue(),
+                    Settings::GamepadTransferHoldTimeValue(),
+                    30);
+                SaveIfChanged(gamepadTrashChanged);
+                if (gamepadTrashChanged) {
+                    SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+                const char* trashKeyHelp = !trashResolved
+                    ? "$JunkIt_TrashRequiresEsp"
+                    : (trashAvailable ? "$JunkIt_TrashJunkKey_Help" : "$JunkIt_EnableTrash_Help");
+                KeyBindRow(
+                    "$JunkIt_TrashJunkKey",
+                    trashKeyHelp,
+                    Settings::TrashJunkKeyValue(),
+                    CaptureSlot::kTrash);
                 const char* expireHelp = !trashResolved
                     ? "$JunkIt_TrashRequiresEsp"
                     : (trashAvailable ? "$JunkIt_TrashExpireDays_Help" : "$JunkIt_EnableTrash_Help");
@@ -476,14 +723,56 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
+            const bool worldReady = JunkHandler::IsGameWorldReady();
+            if (trashResolved && !worldReady) {
+                ImGui::BeginDisabled();
+            }
             if (IconButton(kIconTrash, "$JunkIt_OpenTrash")) {
                 JunkHandler::OpenTrashContainer();
             }
-            HelpMarker(trashResolved ? "$JunkIt_OpenTrash_Help" : "$JunkIt_TrashRequiresEsp");
+            const char* openHelp = !trashResolved
+                ? "$JunkIt_TrashRequiresEsp"
+                : (worldReady ? "$JunkIt_OpenTrash_Help" : "$JunkIt_OpenTrash_MainMenu");
+            HelpMarker(openHelp);
+            if (trashResolved && !worldReady) {
+                ImGui::EndDisabled();
+            }
             if (!trashResolved) {
                 ImGui::EndDisabled();
             }
 
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+            ImGui::BeginChild("trashRight", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border);
+            ImGui::SeparatorText(Translation::Get("$JunkIt_TrashInfoHeader").c_str());
+            const auto itemCount = JunkHandler::GetTrashItemCount();
+            const auto daysRemaining = JunkHandler::GetTrashDaysRemaining();
+            const std::string& na = Translation::Get("$JunkIt_TrashInfoNA");
+            const std::string daysText = daysRemaining
+                ? fmt::format("{:.1f}", *daysRemaining)
+                : na;
+            const std::string itemsText = itemCount
+                ? fmt::format("{}", *itemCount)
+                : na;
+            if (BeginSettingsTable("trashInfo")) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(Translation::Get("$JunkIt_TrashInfoDays").c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(daysText.c_str());
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(Translation::Get("$JunkIt_TrashInfoItems").c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(itemsText.c_str());
+                ImGui::EndTable();
+            }
+            ImGui::EndChild();
+
+            PollKeyCapture();
             RenderStatus();
             PopBrandColors();
         }
@@ -496,22 +785,6 @@ namespace JunkIt {
             if (BeginSettingsTable("hotkeysKeyboard")) {
                 KeyBindRow("$JunkIt_Text_Hotkey", "$JunkIt_Help_Hotkey", Settings::MarkJunkKeyValue(), CaptureSlot::kMark);
                 KeyBindRow("$JunkIt_Transfer_Hotkey", "$JunkIt_Transfer_Hotkey_Help", Settings::TransferJunkKeyValue(), CaptureSlot::kTransfer);
-                const bool trashResolved = Settings::GetTrashContainer() != nullptr;
-                const bool trashAvailable = Settings::IsTrashAvailable();
-                const char* trashKeyHelp = !trashResolved
-                    ? "$JunkIt_TrashRequiresEsp"
-                    : (trashAvailable ? "$JunkIt_TrashJunkKey_Help" : "$JunkIt_EnableTrash_Help");
-                if (!trashAvailable) {
-                    ImGui::BeginDisabled();
-                }
-                KeyBindRow(
-                    "$JunkIt_TrashJunkKey",
-                    trashKeyHelp,
-                    Settings::TrashJunkKeyValue(),
-                    CaptureSlot::kTrash);
-                if (!trashAvailable) {
-                    ImGui::EndDisabled();
-                }
                 ImGui::EndTable();
             }
 
@@ -527,6 +800,7 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
+            PollKeyCapture();
             RenderStatus();
             PopBrandColors();
         }
@@ -1092,6 +1366,7 @@ namespace JunkIt {
         SKSEMenuFramework::SetSection("Junk It");
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_General"), RenderGeneral);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Hotkeys"), RenderHotkeys);
+        SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Trash"), RenderTrash);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_Integrations"), RenderIntegrations);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_Page_AutoJunk"), RenderAutoJunk);
         SKSEMenuFramework::AddSectionItem(Translation::Get("$JunkIt_JunkList_Page"), RenderJunkList);
@@ -1107,6 +1382,7 @@ namespace JunkIt {
 
         if (keyCode == 1) {
             g_capture = CaptureSlot::kNone;
+            g_captureWaitMouseUp = false;
             return true;
         }
 
@@ -1129,30 +1405,17 @@ namespace JunkIt {
 
         SaveSettings();
         g_capture = CaptureSlot::kNone;
+        g_captureWaitMouseUp = false;
         SkyPromptIntegration::GetSingleton().RefreshPrompts();
         return true;
     }
 
     void UI::CloseFrameworkOverlay() {
-        auto* module = SKSEMenuFrameworkModule();
-        if (!module) {
-            SKSE::log::warn("SKSE Menu Framework is not loaded; cannot close overlay");
+        auto* main = SKSEMenuFramework::GetMainWindow();
+        if (!main) {
+            SKSE::log::warn("SKSE Menu Framework has no GetMainWindow export; cannot close overlay");
             return;
         }
-
-        using CloseFn = void (*)();
-        constexpr const char* kCloseExports[] = {
-            "CloseMenu",
-            "Close"
-        };
-        for (const char* name : kCloseExports) {
-            if (auto* fn = reinterpret_cast<CloseFn>(GetProcAddress(module, name))) {
-                fn();
-                SKSE::log::info("Closed SKSE Menu Framework overlay via {}", name);
-                return;
-            }
-        }
-
-        SKSE::log::warn("SKSE Menu Framework has no close export; trash container will still open");
+        main->IsOpen = false;
     }
 }

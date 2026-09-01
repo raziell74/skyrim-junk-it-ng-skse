@@ -58,6 +58,10 @@ namespace JunkIt {
         static void TrashAllJunk();
         static void TryExpireTrash();
         static void OpenTrashContainer();
+        [[nodiscard]] static bool HasTrashablePlayerJunk();
+        [[nodiscard]] static bool IsGameWorldReady();
+        [[nodiscard]] static std::optional<std::int32_t> GetTrashItemCount();
+        [[nodiscard]] static std::optional<float> GetTrashDaysRemaining();
         static void Install();
 
         static void SaveTrashState(SKSE::SerializationInterface* intfc);
@@ -136,6 +140,7 @@ namespace JunkIt {
         static Count GetSellableJunkCount(InventoryEntryData* a_entry);
         static bool EntryIsFullyJunk(InventoryEntryData* a_entry);
         static bool EntryPassesPreviewFilters(InventoryEntryData* a_entry, bool sellFilters);
+        static bool EntryIsTrashable(InventoryEntryData* entry);
         static void SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count);
 
         struct SellTotals {
@@ -189,6 +194,8 @@ namespace JunkIt {
         static void ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary);
         static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {});
         static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
+        static void CompleteOperation();
+        static void CompleteOperationAfterFrames(int framesRemaining);
 
         static void ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback);
 

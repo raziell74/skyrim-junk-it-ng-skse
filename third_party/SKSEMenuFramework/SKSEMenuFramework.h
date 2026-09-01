@@ -34,6 +34,7 @@ namespace SKSEMenuFramework {
         typedef void(__stdcall* RenderFunction)();
         using ActionFunction = void (*)();
         using AddWindowFunction = Model::WindowInterface* (*)(RenderFunction);
+        using GetMainWindowFunction = Model::WindowInterface* (*)();
         using AddSectionItemFunction = void (*)(const char* path, RenderFunction rendererFunction);
     }
 
@@ -57,6 +58,14 @@ namespace SKSEMenuFramework {
         static auto func = Internal::GetFunction<Model::AddWindowFunction>("AddWindow");
         if (func) {
             return func(rendererFunction);
+        }
+        return nullptr;
+    }
+
+    inline Model::WindowInterface* GetMainWindow() {
+        static auto func = Internal::GetFunction<Model::GetMainWindowFunction>("GetMainWindow");
+        if (func) {
+            return func();
         }
         return nullptr;
     }

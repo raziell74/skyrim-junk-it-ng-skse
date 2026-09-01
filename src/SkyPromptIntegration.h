@@ -28,6 +28,16 @@ namespace JunkIt {
         void ScheduleLabelSync();
         void UpdateMarkHoldVisual(float heldDuration);
         void ResetMarkHoldVisual();
+        void UpdateTrashHoldVisual(float heldDuration);
+        void ResetTrashHoldVisual();
+        void UpdateGamepadHoldVisual(float heldDuration);
+        void ResetGamepadHoldVisual();
+        [[nodiscard]] bool MarkHoldTrashEnabled() const;
+        [[nodiscard]] bool KeyboardTrashHoldEnabled() const;
+        [[nodiscard]] static bool ContainerMenuIsPlayerSegment();
+        [[nodiscard]] static bool IsPlayerInventoryView();
+
+        static constexpr float kMarkHoldTrashDelay = 0.5f;
 
         void ProcessEvent(SkyPromptAPI::PromptEvent event) const override;
         std::span<const SkyPromptAPI::Prompt> GetPrompts() const override;
@@ -52,14 +62,16 @@ namespace JunkIt {
         enum class PromptEventID : SkyPromptAPI::EventID {
             kMark = 0,
             kTransfer = 1,
-            kTrash = 2
+            kTrash = 2,
+            kGamepad = 3
         };
 
         enum class PromptActionID : SkyPromptAPI::ActionID {
             kMark = 0,
             kTransfer = 1,
             kSell = 2,
-            kTrash = 3
+            kTrash = 3,
+            kGamepad = 4
         };
 
         SkyPromptIntegration() = default;
@@ -75,8 +87,11 @@ namespace JunkIt {
         static bool HasSelectedItem();
         static bool SelectedItemIsJunk();
         static const char* MarkPromptText();
-        static bool MarkHoldTrashEnabled();
+        static bool ShouldShowTrashPrompt(MenuKind menu);
+        static SkyPromptAPI::PromptType KeyboardTrashPromptType();
         SkyPromptAPI::Prompt* FindMarkPrompt();
+        SkyPromptAPI::Prompt* FindTrashPrompt();
+        SkyPromptAPI::Prompt* FindGamepadPrompt();
         std::string FormatTransferPrompt();
         std::string FormatSellPrompt();
         void RebuildPrompts(MenuKind menu);
@@ -122,9 +137,12 @@ namespace JunkIt {
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> markKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> transferKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> trashKeys_;
+        std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> gamepadKeys_;
         std::vector<SkyPromptAPI::Prompt> prompts_;
         std::string transferLabel_;
         std::string sellLabel_;
         bool markHoldVisualActive_{ false };
+        bool trashHoldVisualActive_{ false };
+        bool gamepadHoldVisualActive_{ false };
     };
 }

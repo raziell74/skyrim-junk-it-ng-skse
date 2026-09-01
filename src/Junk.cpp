@@ -1,6 +1,7 @@
 #include "junk.h"
 #include "InventoryWalk.h"
 #include "JunkData.h"
+#include "OperationOverlay.h"
 #include "SendUIMessage.h"
 #include "SkyPromptIntegration.h"
 #include "Translation.h"
@@ -396,15 +397,35 @@ namespace JunkIt {
 
         const FormID primaryId = primary ? primary->GetFormID() : 0;
         const FormID secondaryId = secondary ? secondary->GetFormID() : 0;
-
-        ScheduleInventoryUIRefresh(primaryId, secondaryId, 0);
+        const int settleFrames = std::max(3, deferredFrames) + 2;
+        auto finish = [settleFrames] { CompleteOperationAfterFrames(settleFrames); };
 
         if (largeOp && deferredFrames > 1) {
-            ScheduleInventoryUIRefresh(primaryId, secondaryId, deferredFrames - 1);
+            ScheduleInventoryUIRefresh(primaryId, secondaryId, 0);
+            ScheduleInventoryUIRefresh(primaryId, secondaryId, deferredFrames - 1, std::move(finish));
+        } else {
+            ScheduleInventoryUIRefresh(primaryId, secondaryId, 0, std::move(finish));
         }
 
         StartAggressiveRefresh();
         SkyPromptIntegration::GetSingleton().ScheduleFullRefresh(std::max(3, deferredFrames));
+    }
+
+    void JunkHandler::CompleteOperation() {
+        OperationOverlay::Hide();
+        operationInProgress.store(false);
+    }
+
+    void JunkHandler::CompleteOperationAfterFrames(int framesRemaining) {
+        auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks || framesRemaining <= 0) {
+            CompleteOperation();
+            return;
+        }
+
+        tasks->AddUITask([framesRemaining]() {
+            CompleteOperationAfterFrames(framesRemaining - 1);
+        });
     }
 
     void JunkHandler::ShowConfirmationMessageBox(const char* bodyText, std::vector<std::string> buttons, std::function<void(unsigned int)> callback) {
@@ -1196,17 +1217,20 @@ namespace JunkIt {
                     [transferList, transferContainer, containerMode, menuView](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed retrieval");
-                            ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                            OperationOverlay::RunWithOverlay(OperationOverlay::Action::Retrieve, [=] {
+                                ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                            });
                         } else {
                             SKSE::log::info("User cancelled retrieval");
                             SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                            operationInProgress.store(false);
                         }
-                        operationInProgress.store(false);
                     });
             } else {
                 SKSE::log::info("Confirmation disabled, proceeding with retrieval");
-                ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
-                operationInProgress.store(false);
+                OperationOverlay::RunWithOverlay(OperationOverlay::Action::Retrieve, [=] {
+                    ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                });
             }
         } else {
             SKSE::log::info("Transfer Direction: Transfer FROM player TO container");
@@ -1226,17 +1250,20 @@ namespace JunkIt {
                     [transferList, transferContainer, containerMode, menuView](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed transfer");
-                            ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                            OperationOverlay::RunWithOverlay(OperationOverlay::Action::Store, [=] {
+                                ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                            });
                         } else {
                             SKSE::log::info("User cancelled transfer");
                             SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                            operationInProgress.store(false);
                         }
-                        operationInProgress.store(false);
                     });
             } else {
                 SKSE::log::info("Confirmation disabled, proceeding with transfer");
-                ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
-                operationInProgress.store(false);
+                OperationOverlay::RunWithOverlay(OperationOverlay::Action::Store, [=] {
+                    ExecuteTransfer(transferList, transferContainer, containerMode, menuView);
+                });
             }
         }
         SKSE::log::info("==== Junk Transfer Operation Complete ====");
@@ -1453,7 +1480,9 @@ namespace JunkIt {
                 [itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay](unsigned int choice) {
                     if (choice == 0) {
                         SKSE::log::info("User confirmed sale");
-                        ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
+                        OperationOverlay::RunWithOverlay(OperationOverlay::Action::Sell, [=] {
+                            ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
+                        });
                     } else {
                         SKSE::log::info("User cancelled sale");
                         SkyPromptIntegration::GetSingleton().RefreshPrompts();
@@ -1462,7 +1491,9 @@ namespace JunkIt {
                 });
         } else {
             SKSE::log::info("Confirmation disabled, proceeding with sale");
-            ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
+            OperationOverlay::RunWithOverlay(OperationOverlay::Action::Sell, [=] {
+                ExecuteSell(itemsToSell, vendorActorRef, vendorContainer, roundedSellValue, totalToSell, totalPossibleToSell, vendorGoldDisplay);
+            });
         }
         SKSE::log::info("==== Junk Sell Operation Complete ====");
         SKSE::log::info(" ");
@@ -1540,7 +1571,7 @@ namespace JunkIt {
         auto* vendorContainer = LookupRefr(session.vendorContainerId);
         if (!player || !vendorActorRef || !vendorContainer) {
             SKSE::log::error("Chunked sale aborted: missing player or vendor reference");
-            operationInProgress.store(false);
+            CompleteOperation();
             return;
         }
 
@@ -1623,7 +1654,6 @@ namespace JunkIt {
             }
         }
         SKSE::log::info("---- Sale Execution Complete ----");
-        operationInProgress.store(false);
     }
 
     void JunkHandler::ExecuteSell(std::vector<std::pair<InventoryEntryData*, Count>> itemsToSell, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, float vendorGoldDisplay) {
@@ -2084,55 +2114,50 @@ namespace JunkIt {
         }
     }
 
-    std::vector<InventoryEntryData*> JunkHandler::BuildInventoryTrashList() {
-        std::vector<InventoryEntryData*> trashList;
-        const auto ui = RE::UI::GetSingleton();
-        auto menu = ui ? ui->GetMenu<InventoryMenu>() : nullptr;
-        ItemList* itemListMenu = menu ? menu->GetRuntimeData().itemList : nullptr;
-        if (!itemListMenu) {
-            return trashList;
+    bool JunkHandler::EntryIsTrashable(InventoryEntryData* entry) {
+        if (!entry || !entry->object) {
+            return false;
+        }
+        if (!EntryPassesPreviewFilters(entry, false)) {
+            return false;
+        }
+        return GetSellableJunkCount(entry) > 0;
+    }
+
+    bool JunkHandler::HasTrashablePlayerJunk() {
+        auto* player = PlayerCharacter::GetSingleton();
+        if (!player) {
+            return false;
         }
 
+        bool found = false;
+        ForEachInventoryEntry(player, [&](InventoryEntryData* entry) {
+            if (!found && EntryIsTrashable(entry)) {
+                found = true;
+            }
+        });
+        return found;
+    }
+
+    std::vector<InventoryEntryData*> JunkHandler::BuildInventoryTrashList() {
+        std::vector<InventoryEntryData*> trashList;
         auto* player = PlayerCharacter::GetSingleton();
         if (!player) {
             return trashList;
         }
-        const auto playerHandle = player->GetHandle().native_handle();
-        auto& junkManager = JunkDataManager::GetSingleton();
 
-        for (std::uint32_t i = 0, size = itemListMenu->items.size(); i < size; i++) {
-            ItemList::Item* entryItem = itemListMenu->items[i];
-            if (!entryItem || !entryItem->data.objDesc) {
-                continue;
+        ForEachInventoryEntry(player, [&](InventoryEntryData* entry) {
+            if (EntryIsTrashable(entry)) {
+                trashList.push_back(entry);
             }
-            if (entryItem->data.owner != playerHandle) {
-                continue;
-            }
-
-            InventoryEntryData* objDesc = entryItem->data.objDesc;
-            if (!objDesc->object || !junkManager.IsJunk(objDesc)) {
-                continue;
-            }
-            if (objDesc->IsQuestObject()) {
-                continue;
-            }
-            if (Settings::ProtectEquipped() && objDesc->IsWorn()) {
-                continue;
-            }
-            if (Settings::ProtectFavorites() && objDesc->IsFavorited()) {
-                continue;
-            }
-            if (GetSellableJunkCount(objDesc) <= 0) {
-                continue;
-            }
-            trashList.push_back(objDesc);
-        }
+        });
         return trashList;
     }
 
     void JunkHandler::ExecuteTrash(TESObjectREFR* from, TESBoundObject* item, Count count, ExtraDataList* extraList) {
         auto* chest = PrepareTrashContainer();
         if (!from || !item || !chest || count <= 0) {
+            CompleteOperation();
             return;
         }
         MoveItems(item, from, chest, ITEM_REMOVE_REASON::kStoreInContainer, count, extraList);
@@ -2145,6 +2170,7 @@ namespace JunkIt {
         auto* player = PlayerCharacter::GetSingleton();
         auto* chest = PrepareTrashContainer();
         if (!player || !chest) {
+            CompleteOperation();
             return;
         }
 
@@ -2233,12 +2259,15 @@ namespace JunkIt {
             { Translation::Get("$JunkIt_TrashConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
             [itemFormId, count, uniqueID](unsigned int choice) {
                 if (choice == 0) {
-                    auto* player = PlayerCharacter::GetSingleton();
-                    auto* item = LookupBoundObject(itemFormId);
-                    auto* extraList = FindExtraByUniqueID(player, item, uniqueID);
-                    ExecuteTrash(player, item, count, extraList);
+                    OperationOverlay::RunWithOverlay(OperationOverlay::Action::Trash, [itemFormId, count, uniqueID] {
+                        auto* player = PlayerCharacter::GetSingleton();
+                        auto* item = LookupBoundObject(itemFormId);
+                        auto* extraList = FindExtraByUniqueID(player, item, uniqueID);
+                        ExecuteTrash(player, item, count, extraList);
+                    });
+                } else {
+                    operationInProgress.store(false);
                 }
-                operationInProgress.store(false);
             });
     }
 
@@ -2274,11 +2303,13 @@ namespace JunkIt {
             { Translation::Get("$JunkIt_TrashConfirmYes"), Translation::Get("$JunkIt_ConfirmNo") },
             [](unsigned int choice) {
                 if (choice == 0) {
-                    ExecuteBulkTrash(BuildInventoryTrashList());
+                    OperationOverlay::RunWithOverlay(OperationOverlay::Action::Trash, [] {
+                        ExecuteBulkTrash(BuildInventoryTrashList());
+                    });
                 } else {
                     SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                    operationInProgress.store(false);
                 }
-                operationInProgress.store(false);
             });
     }
 
@@ -2333,7 +2364,61 @@ namespace JunkIt {
         });
     }
 
+    bool JunkHandler::IsGameWorldReady() {
+        auto* ui = RE::UI::GetSingleton();
+        auto* strings = RE::InterfaceStrings::GetSingleton();
+        if (ui && strings && ui->IsMenuOpen(strings->mainMenu)) {
+            return false;
+        }
+
+        auto* player = PlayerCharacter::GetSingleton();
+        return player && player->GetParentCell();
+    }
+
+    std::optional<std::int32_t> JunkHandler::GetTrashItemCount() {
+        if (!IsGameWorldReady()) {
+            return std::nullopt;
+        }
+
+        auto* chest = Settings::GetTrashContainer();
+        if (!chest) {
+            return std::nullopt;
+        }
+
+        chest->InitInventoryIfRequired();
+        Count total = 0;
+        for (const auto& [obj, data] : chest->GetInventory()) {
+            if (obj && data.first > 0) {
+                total += data.first;
+            }
+        }
+        return total;
+    }
+
+    std::optional<float> JunkHandler::GetTrashDaysRemaining() {
+        if (!IsGameWorldReady() || !Settings::GetTrashContainer()) {
+            return std::nullopt;
+        }
+
+        const auto expireDays = Settings::GetTrashExpireDays();
+        if (expireDays <= 0 || trashFilledGameDays <= 0.0f) {
+            return std::nullopt;
+        }
+
+        auto* calendar = RE::Calendar::GetSingleton();
+        if (!calendar) {
+            return std::nullopt;
+        }
+
+        const float remaining = static_cast<float>(expireDays) - (calendar->GetDaysPassed() - trashFilledGameDays);
+        return remaining > 0.0f ? remaining : 0.0f;
+    }
+
     void JunkHandler::OpenTrashContainer() {
+        if (!IsGameWorldReady()) {
+            return;
+        }
+
         TryExpireTrash();
         auto* chest = PrepareTrashContainer();
         if (!chest) {

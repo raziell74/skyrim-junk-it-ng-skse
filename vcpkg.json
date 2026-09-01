@@ -5,6 +5,12 @@
     "dependencies": [
         "commonlibsse-ng",
         "jsoncpp",
-        "skyprompt-api"
+        "skyprompt-api",
+        {
+            "name": "imgui",
+            "features": [
+                "dx11-binding"
+            ]
+        }
     ]
 }

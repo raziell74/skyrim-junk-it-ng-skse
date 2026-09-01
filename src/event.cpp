@@ -95,40 +95,97 @@ namespace JunkIt {
         if (buttonEvent->IsUp()) {
             SkyPromptIntegration::GetSingleton().ResetMarkHoldVisual();
             if (markHoldArmed && !markTrashFired) {
-                SKSE::log::info("Mark/Unmark Junk key released before trash hold");
-                ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
+                if (buttonEvent->HeldDuration() < SkyPromptIntegration::kMarkHoldTrashDelay) {
+                    SKSE::log::info("Mark/Unmark Junk key released before trash hold");
+                    ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
+                } else {
+                    SKSE::log::info(
+                        "Mark key released after trash hold started ({:.2f}s); mark skipped",
+                        buttonEvent->HeldDuration());
+                }
             }
             markHoldArmed = false;
             markTrashFired = false;
         }
     }
 
-    void InputEventHandler::HandleGamepadJunkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu) {
-        const auto trashHold = Settings::IsTrashAvailable() ? Settings::GetTrashHoldSeconds() : 0;
-        if (activeMenu == ActiveMenuType::kInventory && trashHold > 0) {
-            if (buttonEvent->IsDown()) {
-                gamepadTrashFired = false;
-                return;
-            }
-            if (!gamepadTrashFired && buttonEvent->IsPressed() &&
-                buttonEvent->HeldDuration() >= static_cast<float>(trashHold)) {
-                gamepadTrashFired = true;
-                SKSE::log::info("Gamepad junk button held {:.2f}s in inventory; trashing", buttonEvent->HeldDuration());
-                ExecuteAction(JUNKIT_EVENT_TYPE::kTrash);
-                return;
-            }
+    void InputEventHandler::HandleTrashKey(RE::ButtonEvent* buttonEvent) {
+        auto& skyPrompt = SkyPromptIntegration::GetSingleton();
+        if (!SkyPromptIntegration::IsPlayerInventoryView()) {
             if (buttonEvent->IsUp()) {
-                if (!gamepadTrashFired) {
-                    SKSE::log::info("Gamepad Mark/Unmark Junk button released before trash hold");
-                    ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
-                }
-                gamepadTrashFired = false;
+                skyPrompt.ResetTrashHoldVisual();
+                trashHoldArmed = false;
+                trashBulkFired = false;
+            }
+            return;
+        }
+        const auto holdSeconds = Settings::IsTrashAvailable() ? Settings::GetTrashHoldSeconds() : 0;
+        if (holdSeconds <= 0) {
+            if (buttonEvent->IsDown()) {
+                SKSE::log::info("Trash Junk key pressed (KeyCode: 0x{:X})", buttonEvent->GetIDCode());
+                ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
+            }
+            return;
+        }
+
+        if (buttonEvent->IsDown()) {
+            trashHoldArmed = true;
+            trashBulkFired = false;
+            skyPrompt.ResetTrashHoldVisual();
+            return;
+        }
+
+        if (trashHoldArmed && !trashBulkFired && buttonEvent->IsPressed()) {
+            skyPrompt.UpdateTrashHoldVisual(buttonEvent->HeldDuration());
+            if (buttonEvent->HeldDuration() >= static_cast<float>(holdSeconds)) {
+                trashBulkFired = true;
+                SKSE::log::info("Trash Junk key held {:.2f}s; trashing all junk", buttonEvent->HeldDuration());
+                skyPrompt.ResetTrashHoldVisual();
+                ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
             }
             return;
         }
 
         if (buttonEvent->IsUp()) {
-            HandleGamepadKeyUp(buttonEvent->HeldDuration(), activeMenu);
+            skyPrompt.ResetTrashHoldVisual();
+            trashHoldArmed = false;
+            trashBulkFired = false;
+        }
+    }
+
+    void InputEventHandler::HandleGamepadJunkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu) {
+        auto& skyPrompt = SkyPromptIntegration::GetSingleton();
+        const float trashHold = Settings::IsTrashAvailable()
+            ? static_cast<float>(Settings::GetGamepadTrashHoldSeconds())
+            : 0.f;
+        const bool canTrash = SkyPromptIntegration::IsPlayerInventoryView() && trashHold > 0.f &&
+            JunkHandler::HasTrashablePlayerJunk();
+
+        if (buttonEvent->IsDown()) {
+            gamepadTrashFired = false;
+            skyPrompt.ResetGamepadHoldVisual();
+            return;
+        }
+
+        if (!gamepadTrashFired && buttonEvent->IsPressed()) {
+            skyPrompt.UpdateGamepadHoldVisual(buttonEvent->HeldDuration());
+            if (canTrash && buttonEvent->HeldDuration() >= trashHold) {
+                gamepadTrashFired = true;
+                SKSE::log::info(
+                    "Gamepad junk button held {:.2f}s; trashing all junk",
+                    buttonEvent->HeldDuration());
+                skyPrompt.ResetGamepadHoldVisual();
+                ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
+            }
+            return;
+        }
+
+        if (buttonEvent->IsUp()) {
+            skyPrompt.ResetGamepadHoldVisual();
+            if (!gamepadTrashFired) {
+                HandleGamepadKeyUp(buttonEvent->HeldDuration(), activeMenu);
+            }
+            gamepadTrashFired = false;
         }
     }
 
@@ -153,17 +210,15 @@ namespace JunkIt {
     void InputEventHandler::HandleGamepadKeyUp(float holdTime, ActiveMenuType activeMenu) {
         float holdThreshold = Settings::GetGamepadTransferHoldTime() - 1.0f;
 
-        if (holdTime < holdThreshold) {
+        if (holdTime < holdThreshold || activeMenu == ActiveMenuType::kInventory) {
             SKSE::log::info("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
             ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
-        } else {
-            if (activeMenu == ActiveMenuType::kContainer) {
-                SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
-                ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
-            } else if (activeMenu == ActiveMenuType::kBarter) {
-                SKSE::log::info("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
-                ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
-            }
+        } else if (activeMenu == ActiveMenuType::kContainer) {
+            SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
+            ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
+        } else if (activeMenu == ActiveMenuType::kBarter) {
+            SKSE::log::info("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
+            ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
         }
     }
 
@@ -205,7 +260,11 @@ namespace JunkIt {
         uint32_t trashKey = static_cast<uint32_t>(Settings::GetTrashJunkKey());
         const bool skyPromptShowing = SkyPromptIntegration::GetSingleton().IsShowing();
         const bool trashAvailable = Settings::IsTrashAvailable();
-        const bool nativeOwnsMark = (trashAvailable && Settings::GetTrashHoldSeconds() > 0) || !skyPromptShowing;
+        const bool nativeOwnsMark =
+            SkyPromptIntegration::GetSingleton().MarkHoldTrashEnabled() || !skyPromptShowing;
+        const bool nativeOwnsTrash =
+            trashAvailable && trashKey != 0 &&
+            (SkyPromptIntegration::GetSingleton().KeyboardTrashHoldEnabled() || !skyPromptShowing);
 
         bool sawHoldRepeat = false;
         bool sawOtherInput = false;
@@ -220,7 +279,7 @@ namespace JunkIt {
             }
 
             const bool heldRepeat = buttonEvent->IsPressed() && !buttonEvent->IsDown() && !buttonEvent->IsUp();
-            const bool holdKey = keyCode == markKey || keyCode == gamepadKey;
+            const bool holdKey = keyCode == markKey || keyCode == gamepadKey || keyCode == trashKey;
             if (heldRepeat && holdKey) {
                 sawHoldRepeat = true;
             } else {
@@ -235,11 +294,8 @@ namespace JunkIt {
                 if (buttonEvent->IsDown()) {
                     HandleKeyDown(keyCode, activeMenu);
                 }
-            } else if (trashAvailable && !skyPromptShowing && trashKey != 0 && keyCode == trashKey) {
-                if (buttonEvent->IsDown() && GetActiveMenu() == ActiveMenuType::kInventory) {
-                    SKSE::log::info("Trash Junk key pressed (KeyCode: 0x{:X}) in Inventory menu", keyCode);
-                    ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
-                }
+            } else if (nativeOwnsTrash && keyCode == trashKey) {
+                HandleTrashKey(buttonEvent);
             }
         }
 

@@ -18,4 +18,5 @@ set(headers ${headers}
     src/AutoJunk.h
     src/PluginAPI.h
     src/Papyrus.h
+    src/OperationOverlay.h
 )
