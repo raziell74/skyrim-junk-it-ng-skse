@@ -58,6 +58,7 @@ namespace JunkIt {
         static void TrashAllJunk();
         static void TryExpireTrash();
         static void OpenTrashContainer();
+        static void EmptyTrashBin();
         [[nodiscard]] static bool HasTrashablePlayerJunk();
         [[nodiscard]] static bool IsGameWorldReady();
         [[nodiscard]] static std::optional<std::int32_t> GetTrashItemCount();

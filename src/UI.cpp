@@ -561,6 +561,24 @@ namespace JunkIt {
             return clicked;
         }
 
+        void CenterIconButtonGroup(unsigned codepoint, const char* labelKey) {
+            const std::string label = FontAwesome::UnicodeToUtf8(codepoint) + "  " + Translation::Get(labelKey);
+            FontAwesome::PushSolid();
+            ImVec2 textSize{};
+            ImGui::CalcTextSize(&textSize, label.c_str(), nullptr, false, -1.0f);
+            FontAwesome::Pop();
+            const ImGuiStyle* style = ImGui::GetStyle();
+            const float buttonW = textSize.x + style->FramePadding.x * 2.0f;
+            ImVec2 helpSize{};
+            ImGui::CalcTextSize(&helpSize, "(?)", nullptr, false, -1.0f);
+            const float groupW = buttonW + style->ItemSpacing.x + helpSize.x;
+            ImVec2 avail{};
+            ImGui::GetContentRegionAvail(&avail);
+            if (avail.x > groupW) {
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail.x - groupW) * 0.5f);
+            }
+        }
+
         bool ConfirmPopup(const char* popupId, const char* titleKey, const char* bodyKey) {
             const std::string name = std::string(Translation::Get(titleKey)) + "###" + popupId;
             if (!ImGui::BeginPopupModal(name.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -654,14 +672,17 @@ namespace JunkIt {
             ImGui::GetContentRegionAvail(&avail);
             const float leftWidth = avail.x * 0.52f;
 
+            const bool trashResolved = Settings::GetTrashContainer() != nullptr;
+            const bool trashAvailable = Settings::IsTrashAvailable();
+            const bool worldReady = JunkHandler::IsGameWorldReady();
+            const auto itemCount = JunkHandler::GetTrashItemCount();
+
             ImGui::BeginChild(
                 "trashLeft",
                 ImVec2(leftWidth, 0.0f),
                 ImGuiChildFlags_Border,
                 ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
-            const bool trashResolved = Settings::GetTrashContainer() != nullptr;
-            const bool trashAvailable = Settings::IsTrashAvailable();
             if (!trashResolved) {
                 ImGui::TextWrapped("%s", Translation::Get("$JunkIt_TrashRequiresEsp").c_str());
                 ImGui::BeginDisabled();
@@ -688,6 +709,21 @@ namespace JunkIt {
                 ImGui::EndDisabled();
                 ImGui::EndTable();
             }
+
+            ImGui::Dummy(ImVec2(0.0f, 12.0f));
+            const bool emptyDisabled = !trashResolved || !worldReady || !itemCount || *itemCount <= 0;
+            if (emptyDisabled) {
+                ImGui::BeginDisabled();
+            }
+            CenterIconButtonGroup(kIconTrash, "$JunkIt_EmptyTrashBin");
+            const bool emptyClicked = IconButton(kIconTrash, "$JunkIt_EmptyTrashBin");
+            const char* emptyHelp = !trashResolved
+                ? "$JunkIt_TrashRequiresEsp"
+                : (worldReady ? "$JunkIt_EmptyTrashBin_Help" : "$JunkIt_EmptyTrashBin_MainMenu");
+            HelpMarker(emptyHelp);
+            if (emptyDisabled) {
+                ImGui::EndDisabled();
+            }
             if (!trashResolved) {
                 ImGui::EndDisabled();
             }
@@ -697,7 +733,6 @@ namespace JunkIt {
             ImGui::SameLine();
             ImGui::BeginChild("trashRight", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border);
             ImGui::SeparatorText(Translation::Get("$JunkIt_TrashInfoHeader").c_str());
-            const auto itemCount = JunkHandler::GetTrashItemCount();
             const auto daysRemaining = JunkHandler::GetTrashDaysRemaining();
             const std::string& na = Translation::Get("$JunkIt_TrashInfoNA");
             const std::string daysText = daysRemaining
@@ -722,29 +757,12 @@ namespace JunkIt {
                 ImGui::EndTable();
             }
 
-            ImGui::Spacing();
-            const bool worldReady = JunkHandler::IsGameWorldReady();
+            ImGui::Dummy(ImVec2(0.0f, 12.0f));
             const bool openDisabled = !trashResolved || !worldReady;
             if (openDisabled) {
                 ImGui::BeginDisabled();
             }
-            const std::string openLabel =
-                FontAwesome::UnicodeToUtf8(kIconTrash) + "  " + Translation::Get("$JunkIt_OpenTrash");
-            FontAwesome::PushSolid();
-            ImVec2 openTextSize{};
-            ImGui::CalcTextSize(&openTextSize, openLabel.c_str(), nullptr, false, -1.0f);
-            FontAwesome::Pop();
-            const ImGuiStyle* style = ImGui::GetStyle();
-            const float openButtonW = openTextSize.x + style->FramePadding.x * 2.0f;
-            ImVec2 helpSize{};
-            ImGui::CalcTextSize(&helpSize, "(?)", nullptr, false, -1.0f);
-            const float openGroupW = openButtonW + style->ItemSpacing.x + helpSize.x;
-            ImVec2 openAvail{};
-            ImGui::GetContentRegionAvail(&openAvail);
-            const float openAvailX = openAvail.x;
-            if (openAvailX > openGroupW) {
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (openAvailX - openGroupW) * 0.5f);
-            }
+            CenterIconButtonGroup(kIconTrash, "$JunkIt_OpenTrash");
             if (IconButton(kIconTrash, "$JunkIt_OpenTrash")) {
                 JunkHandler::OpenTrashContainer();
             }
@@ -756,6 +774,13 @@ namespace JunkIt {
                 ImGui::EndDisabled();
             }
             ImGui::EndChild();
+
+            if (emptyClicked) {
+                OpenConfirmPopup("EmptyTrashBin", "$JunkIt_EmptyTrashBin");
+            }
+            if (ConfirmPopup("EmptyTrashBin", "$JunkIt_EmptyTrashBin", "$JunkIt_EmptyTrashBinConfirm")) {
+                JunkHandler::EmptyTrashBin();
+            }
 
             RenderStatus();
             PopBrandColors();

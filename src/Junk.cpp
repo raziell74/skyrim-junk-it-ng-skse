@@ -2434,6 +2434,27 @@ namespace JunkIt {
         ScheduleActivateTrash(10);
     }
 
+    void JunkHandler::EmptyTrashBin() {
+        if (!IsGameWorldReady()) {
+            return;
+        }
+
+        auto empty = []() {
+            auto* chest = PrepareTrashContainer();
+            if (chest) {
+                EmptyTrashContainer(chest);
+            }
+        };
+
+        auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) {
+            empty();
+            return;
+        }
+
+        tasks->AddTask(std::move(empty));
+    }
+
     TESObjectREFR* JunkHandler::GetContainerMenuContainer() {
         SKSE::log::info(" ");
         SKSE::log::info("Getting Container target data ----");
