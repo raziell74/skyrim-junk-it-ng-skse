@@ -429,6 +429,7 @@ namespace JunkIt {
     void JunkHandler::CompleteOperation() {
         OperationOverlay::NotifyWorkComplete([] {
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
         });
     }
 
@@ -496,10 +497,47 @@ namespace JunkIt {
             return 0;
         }
 
-        const Count menuValue = GetMenuItemValue(entry);
-        const float itemGoldValue = menuValue >= 0 ? static_cast<float>(menuValue) : static_cast<float>(entry->GetValue());
-        const Count unitPrice = RoundNumber(itemGoldValue * sellMult);
+        const Count unitPrice = RoundNumber(static_cast<float>(entry->GetValue()) * sellMult);
         return unitPrice > 0 ? unitPrice : 0;
+    }
+
+    JunkHandler::Count JunkHandler::ComputePricedStackGold(
+        const std::vector<SellPreviewStack>& stacks,
+        float vendorGold) {
+        Count remainingVendorGold = RoundNumber(vendorGold);
+        if (remainingVendorGold < 0) {
+            remainingVendorGold = 0;
+        }
+
+        Count totalSellValue = 0;
+        for (const auto& stack : stacks) {
+            if (stack.count <= 0 || stack.unitPrice <= 0) {
+                continue;
+            }
+
+            Count take = stack.count;
+            const Count maxAfford = remainingVendorGold / stack.unitPrice;
+            if (take > maxAfford) {
+                take = maxAfford;
+            }
+            if (take <= 0) {
+                continue;
+            }
+
+            remainingVendorGold -= stack.unitPrice * take;
+            totalSellValue += stack.unitPrice * take;
+        }
+        return totalSellValue;
+    }
+
+    std::optional<std::int32_t> JunkHandler::ComputeSellPreviewGold(const std::vector<SellPreviewStack>& stacks) {
+        float vendorGold = 0.0f;
+        float sellMult = 0.0f;
+        if (!TryReadBarterPrices(vendorGold, sellMult)) {
+            return std::nullopt;
+        }
+        (void)sellMult;
+        return ComputePricedStackGold(stacks, vendorGold);
     }
 
     JunkHandler::SellTotals JunkHandler::ComputeSellTotals(
@@ -528,8 +566,9 @@ namespace JunkIt {
                 continue;
             }
 
-            while (iCount > 0 && unitPrice * iCount > remainingVendorGold) {
-                iCount -= 1;
+            const Count maxAfford = remainingVendorGold / unitPrice;
+            if (iCount > maxAfford) {
+                iCount = maxAfford;
             }
 
             if (iCount > 0) {
@@ -657,17 +696,57 @@ namespace JunkIt {
         }
         capture.sellMult = sellMult;
 
+        auto* player = PlayerCharacter::GetSingleton();
         const auto ui = RE::UI::GetSingleton();
         auto barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
         ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
-        if (!itemListMenu || itemListMenu->items.empty()) {
+        if (!player || !itemListMenu || itemListMenu->items.empty()) {
             return capture;
         }
 
         capture.pricesReady = true;
-        auto sellList = BuildSellList();
-        if (!sellList.empty()) {
-            capture.gold = ComputeSellTotals(sellList, vendorGold, sellMult).roundedSellValue;
+        const auto playerHandle = player->GetHandle().native_handle();
+        auto& junkManager = JunkDataManager::GetSingleton();
+        std::vector<PreviewStack> sortStacks;
+        const auto& items = itemListMenu->items;
+        for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
+            ItemList::Item* entryItem = items[i];
+            if (!entryItem || !entryItem->data.objDesc) {
+                continue;
+            }
+            if (entryItem->data.owner != playerHandle) {
+                continue;
+            }
+
+            InventoryEntryData* objDesc = entryItem->data.objDesc;
+            if (!objDesc->object || !EntryPassesPreviewFilters(objDesc, true)) {
+                continue;
+            }
+            if (!junkManager.IsAnyJunkForForm(objDesc->object)) {
+                continue;
+            }
+
+            Count count = GetSellableJunkCount(objDesc);
+            if (EntryIsFullyJunk(objDesc)) {
+                const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
+                if (uiCount > count) {
+                    count = uiCount;
+                }
+            }
+            if (count > 0) {
+                sortStacks.push_back({ objDesc, count });
+            }
+        }
+
+        SortPreviewStacks(sortStacks, Settings::GetSellPriority());
+        capture.stacks.reserve(sortStacks.size());
+        for (const auto& stack : sortStacks) {
+            capture.stacks.push_back({ stack.count, ComputeUnitSellPrice(stack.entry, sellMult) });
+        }
+
+        const Count roundedSellValue = ComputePricedStackGold(capture.stacks, vendorGold);
+        if (roundedSellValue > 0) {
+            capture.gold = roundedSellValue;
         }
         return capture;
     }
@@ -746,8 +825,7 @@ namespace JunkIt {
     std::optional<JunkHandler::JunkPreviewUnit> JunkHandler::LookupJunkPreviewUnit(
         TESObjectREFR* dest,
         FormID baseObj,
-        std::uint16_t uniqueID,
-        float sellMult) {
+        std::uint16_t uniqueID) {
         if (!dest) {
             return std::nullopt;
         }
@@ -785,52 +863,7 @@ namespace JunkIt {
         unit.favorited = entry->IsFavorited();
         unit.enchanted = entry->IsEnchanted();
         unit.worn = entry->IsWorn();
-        if (sellMult > 0.0f) {
-            unit.gold = ComputeSellGoldDelta(entry, count, sellMult);
-        }
         return unit;
-    }
-
-    std::int32_t JunkHandler::ComputeSellGoldDelta(InventoryEntryData* entry, std::int32_t count, float sellMult) {
-        if (!entry || count <= 0) {
-            return 0;
-        }
-        return ComputeUnitSellPrice(entry, sellMult) * count;
-    }
-
-    std::optional<std::int32_t> JunkHandler::ComputeMovedItemSellGold(
-        TESObjectREFR* dest,
-        FormID baseObj,
-        std::uint16_t uniqueID,
-        std::int32_t count,
-        float sellMult) {
-        if (!dest || count <= 0) {
-            return std::nullopt;
-        }
-
-        auto* form = TESForm::LookupByID(baseObj);
-        if (!form || !JunkDataManager::GetSingleton().IsAnyJunkForForm(form)) {
-            return std::nullopt;
-        }
-
-        auto* bound = LookupBoundObject(baseObj);
-        if (!bound) {
-            return std::nullopt;
-        }
-
-        InventoryEntryData* entry = nullptr;
-        ForEachInventoryEntry(dest, [&](InventoryEntryData* candidate) {
-            if (entry || !candidate || candidate->object != bound) {
-                return;
-            }
-            if (EntryPassesPreviewFilters(candidate, true) && EntryMatchesMovedUniqueID(candidate, uniqueID)) {
-                entry = candidate;
-            }
-        });
-        if (!entry) {
-            return std::nullopt;
-        }
-        return ComputeSellGoldDelta(entry, count, sellMult);
     }
 
     void JunkHandler::MoveItems(TESBoundObject* a_item, TESObjectREFR* a_from, TESObjectREFR* a_to, ITEM_REMOVE_REASON a_reason, Count a_count, ExtraDataList* a_extraList) {
@@ -846,6 +879,9 @@ namespace JunkIt {
         }
 
         auto& junkManager = JunkDataManager::GetSingleton();
+        if (!junkManager.IsAnyJunkForForm(a_entry->object)) {
+            return 0;
+        }
         if (!a_entry->extraLists || a_entry->extraLists->empty()) {
             if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
                 return 0;
@@ -1026,7 +1062,7 @@ namespace JunkIt {
         return transferList;
     }
 
-    std::vector<std::pair<InventoryEntryData*, std::int32_t>> JunkHandler::BuildSellList() {
+    std::vector<std::pair<InventoryEntryData*, std::int32_t>> JunkHandler::BuildSellList(bool allowUiCountBoost) {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Sellable Junk ----");
 
@@ -1087,7 +1123,7 @@ namespace JunkIt {
             }
 
             Count count = GetSellableJunkCount(objDesc);
-            if (EntryIsFullyJunk(objDesc)) {
+            if (allowUiCountBoost && EntryIsFullyJunk(objDesc)) {
                 const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
                 if (uiCount > count) {
                     count = uiCount;
@@ -1402,6 +1438,8 @@ namespace JunkIt {
             return;
         }
 
+        SkyPromptIntegration::GetSingleton().InvalidateSellPreview();
+
         auto& junkManager = JunkDataManager::GetSingleton();
         SKSE::log::info("Current Junk List Size: {}", junkManager.Size());
 
@@ -1409,6 +1447,7 @@ namespace JunkIt {
             SKSE::log::info("No items in junk list, aborting sell");
             RE::DebugMessageBox("No Junk to sell!");
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
             return;
         }
 
@@ -1421,6 +1460,7 @@ namespace JunkIt {
             SKSE::log::info("No sellable junk in inventory!");
             RE::DebugMessageBox("No Junk to sell!");
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
             return;
         }
 
@@ -1431,6 +1471,7 @@ namespace JunkIt {
             SKSE::log::error("Failed to get a valid vendor actor. Exiting Bulk Sale process.");
             RE::DebugMessageBox("JunkIt encountered an error attempting to sell items. Please report this on the JunkIt mod page.");
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
             return;
         }
 
@@ -1447,6 +1488,7 @@ namespace JunkIt {
         auto menu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
         if (!menu || !menu->uiMovie) {
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
             return;
         }
 
@@ -1454,6 +1496,7 @@ namespace JunkIt {
         float sellMult = 0.0f;
         if (!TryReadBarterPrices(vendorGoldDisplay, sellMult)) {
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
             return;
         }
 
@@ -1475,6 +1518,7 @@ namespace JunkIt {
                 RE::DebugMessageBox("Vendor cannot afford to buy any junk!");
             }
             operationInProgress.store(false);
+            SkyPromptIntegration::GetSingleton().RecapturePreviews();
             return;
         }
 
@@ -1493,8 +1537,8 @@ namespace JunkIt {
                         });
                     } else {
                         SKSE::log::info("User cancelled sale");
-                        SkyPromptIntegration::GetSingleton().RefreshPrompts();
                         operationInProgress.store(false);
+                        SkyPromptIntegration::GetSingleton().RecapturePreviews();
                     }
                 });
         } else {

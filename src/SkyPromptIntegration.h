@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SkyPrompt/API.hpp"
+#include "junk.h"
 
 #include <cstdint>
 #include <optional>
@@ -23,6 +24,7 @@ namespace JunkIt {
         void NoteInputDevice(RE::INPUT_DEVICE device);
         void RefreshPrompts();
         void RecapturePreviews();
+        void InvalidateSellPreview();
         void ScheduleFullRefresh(int framesRemaining);
         void OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned);
         void SyncPromptLabels();
@@ -102,12 +104,14 @@ namespace JunkIt {
         void CaptureContainerPreview();
         void CaptureSellPreview();
         void TryEnsurePreview();
+        void RequestSellRecapture(bool rebuildStacks);
+        void ScheduleSellPreviewUpdate(int framesRemaining);
+        void ApplyPendingSellRecapture();
+        void ApplyGoldOnlySellPreview();
         void ApplyContainerMove(const RE::TESContainerChangedEvent* a_event);
-        void ApplyBarterMove(const RE::TESContainerChangedEvent* a_event);
         void ApplySelectedFavoriteChange();
         void ApplyEquipChange(const RE::TESEquipEvent* a_event);
-        void ApplyTransferableDelta(std::int32_t sign, std::int32_t count, bool playerSide, std::int32_t goldDelta);
-        void ApplySellGoldDelta(std::int32_t goldDelta);
+        void ApplyTransferableDelta(std::int32_t sign, std::int32_t count, bool playerSide);
         [[nodiscard]] bool SelectedRowIsPlayerSide() const;
         void Send();
         void Remove();
@@ -127,9 +131,11 @@ namespace JunkIt {
         } containerPreview_;
         struct SellPreview {
             std::optional<std::int32_t> gold;
-            float sellMult = 0.5f;
+            std::vector<JunkHandler::SellPreviewStack> stacks;
             bool valid = false;
         } sellPreview_;
+        bool sellRecapturePending_{ false };
+        bool sellRecaptureRebuild_{ false };
         struct SelectedProtectionCache {
             RE::FormID formId = 0;
             std::uint32_t owner = 0;

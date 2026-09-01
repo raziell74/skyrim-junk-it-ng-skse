@@ -43,7 +43,7 @@ namespace JunkIt {
         static void StartAggressiveRefresh();
 
         static std::vector<InventoryEntryData*> BuildTransferList();
-        static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList();
+        static std::vector<std::pair<InventoryEntryData*, std::int32_t>> BuildSellList(bool allowUiCountBoost = true);
         static std::int32_t GetMenuItemValue(TESForm* a_form);
         static std::int32_t GetMenuItemValue(InventoryEntryData* a_entry);
 
@@ -74,21 +74,28 @@ namespace JunkIt {
             std::int32_t retrieveCount = 0;
         };
 
+        struct SellPreviewStack {
+            std::int32_t count = 0;
+            std::int32_t unitPrice = 0;
+        };
+
         struct SellPreviewCapture {
             std::optional<std::int32_t> gold;
             float sellMult = 0.5f;
             bool pricesReady = false;
+            std::vector<SellPreviewStack> stacks;
         };
 
         [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview();
         [[nodiscard]] static SellPreviewCapture CaptureSellPreview();
+        [[nodiscard]] static std::optional<std::int32_t> ComputeSellPreviewGold(
+            const std::vector<SellPreviewStack>& stacks);
         static void CollectEntryIdentities(InventoryEntryData* entry, std::vector<std::string>& out);
         [[nodiscard]] static std::int32_t CountPreviewIdentities(TESObjectREFR* container, const std::vector<std::string>& identities, bool sellFilters);
         [[nodiscard]] static bool MovedItemIsPreviewableJunk(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, bool sellFilters);
         [[nodiscard]] static std::int32_t CountJunkUnits(InventoryEntryData* entry);
         struct JunkPreviewUnit {
             std::int32_t count = 0;
-            std::int32_t gold = 0;
             bool favorited = false;
             bool enchanted = false;
             bool worn = false;
@@ -96,10 +103,7 @@ namespace JunkIt {
         [[nodiscard]] static std::optional<JunkPreviewUnit> LookupJunkPreviewUnit(
             TESObjectREFR* dest,
             FormID baseObj,
-            std::uint16_t uniqueID,
-            float sellMult = 0.0f);
-        [[nodiscard]] static std::int32_t ComputeSellGoldDelta(InventoryEntryData* entry, std::int32_t count, float sellMult);
-        [[nodiscard]] static std::optional<std::int32_t> ComputeMovedItemSellGold(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, std::int32_t count, float sellMult);
+            std::uint16_t uniqueID);
 
         [[nodiscard]] static InventoryCountMap* GetContainerInventoryCountMap(TESObjectREFR* a_container) {
             if (cInventoryContainerId == a_container->GetFormID()) return &cInventoryCountMap;
@@ -154,6 +158,7 @@ namespace JunkIt {
         };
 
         static bool TryReadBarterPrices(float& vendorGold, float& sellMult);
+        static Count ComputePricedStackGold(const std::vector<SellPreviewStack>& stacks, float vendorGold);
         static SellTotals ComputeSellTotals(
             const std::vector<std::pair<InventoryEntryData*, Count>>& sellList,
             float vendorGold,

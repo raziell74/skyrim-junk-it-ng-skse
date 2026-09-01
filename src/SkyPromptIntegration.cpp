@@ -148,6 +148,8 @@ namespace JunkIt {
     }
 
     void SkyPromptIntegration::RecapturePreviews() {
+        sellRecapturePending_ = false;
+        sellRecaptureRebuild_ = false;
         if (!IsEnabled()) {
             RefreshPrompts();
             return;
@@ -172,6 +174,8 @@ namespace JunkIt {
 
     void SkyPromptIntegration::ScheduleFullRefresh(int framesRemaining) {
         if (!IsEnabled()) {
+            sellRecapturePending_ = false;
+            sellRecaptureRebuild_ = false;
             return;
         }
 
@@ -189,6 +193,9 @@ namespace JunkIt {
             }
             if (GetActiveMenu() != MenuKind::kNone) {
                 self.RecapturePreviews();
+            } else {
+                self.sellRecapturePending_ = false;
+                self.sellRecaptureRebuild_ = false;
             }
         });
     }
@@ -267,7 +274,9 @@ namespace JunkIt {
         }
 
         if (name == "QuantityMenu") {
-            if (GetActiveMenu() != MenuKind::kNone) {
+            if (!a_event->opening && GetActiveMenu() == MenuKind::kBarter) {
+                RequestSellRecapture(true);
+            } else if (GetActiveMenu() != MenuKind::kNone) {
                 ScheduleLabelSync();
             }
             return RE::BSEventNotifyControl::kContinue;
@@ -330,18 +339,27 @@ namespace JunkIt {
             return RE::BSEventNotifyControl::kContinue;
         }
 
-        if (auto* gold = Settings::GetGold001(); gold && a_event->baseObj == gold->GetFormID()) {
+        if (!EventIsPlayerAndOpenTarget(a_event->oldContainer, a_event->newContainer)) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
-        if (!EventIsPlayerAndOpenTarget(a_event->oldContainer, a_event->newContainer)) {
+        if (previewMenu_ == MenuKind::kBarter) {
+            bool rebuildStacks = false;
+            if (auto* gold = Settings::GetGold001(); !gold || a_event->baseObj != gold->GetFormID()) {
+                if (auto* form = RE::TESForm::LookupByID(a_event->baseObj)) {
+                    rebuildStacks = JunkDataManager::GetSingleton().IsAnyJunkForForm(form);
+                }
+            }
+            RequestSellRecapture(rebuildStacks);
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        if (auto* gold = Settings::GetGold001(); gold && a_event->baseObj == gold->GetFormID()) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
         if (previewMenu_ == MenuKind::kContainer && containerPreview_.valid) {
             ApplyContainerMove(a_event);
-        } else if (previewMenu_ == MenuKind::kBarter && sellPreview_.valid) {
-            ApplyBarterMove(a_event);
         }
 
         ScheduleLabelSync();
@@ -815,7 +833,7 @@ namespace JunkIt {
             return Translation::Get("$JunkIt_Prompt_Sell");
         }
 
-        if (!sellPreview_.valid || !sellPreview_.gold) {
+        if (!sellPreview_.valid || !sellPreview_.gold || *sellPreview_.gold <= 0) {
             return {};
         }
 
@@ -1093,6 +1111,8 @@ namespace JunkIt {
     void SkyPromptIntegration::InvalidatePreviews() {
         containerPreview_ = {};
         sellPreview_ = {};
+        sellRecapturePending_ = false;
+        sellRecaptureRebuild_ = false;
         previewPlayerId_ = 0;
         previewContainerId_ = 0;
         previewVendorId_ = 0;
@@ -1121,27 +1141,41 @@ namespace JunkIt {
         containerPreview_.valid = true;
     }
 
-    void SkyPromptIntegration::CaptureSellPreview() {
+    void SkyPromptIntegration::InvalidateSellPreview() {
         sellPreview_ = {};
-        previewPlayerId_ = 0;
-        previewVendorId_ = 0;
-        previewMerchantId_ = 0;
+        sellRecapturePending_ = false;
+        sellRecaptureRebuild_ = false;
+        RefreshPrompts();
+    }
+
+    void SkyPromptIntegration::CaptureSellPreview() {
+        if (JunkHandler::operationInProgress.load()) {
+            sellPreview_ = {};
+            return;
+        }
+
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             previewPlayerId_ = player->GetFormID();
+        } else {
+            previewPlayerId_ = 0;
         }
         if (auto* vendor = JunkHandler::GetBarterMenuContainer()) {
             previewVendorId_ = vendor->GetFormID();
+        } else {
+            previewVendorId_ = 0;
         }
         if (auto* merchant = JunkHandler::GetBarterMenuMerchantContainer()) {
             previewMerchantId_ = merchant->GetFormID();
+        } else {
+            previewMerchantId_ = 0;
         }
 
         const auto captured = JunkHandler::CaptureSellPreview();
-        sellPreview_.sellMult = captured.sellMult;
         if (!captured.pricesReady) {
             return;
         }
 
+        sellPreview_.stacks = captured.stacks;
         sellPreview_.gold = captured.gold;
         sellPreview_.valid = true;
     }
@@ -1149,13 +1183,95 @@ namespace JunkIt {
     void SkyPromptIntegration::TryEnsurePreview() {
         if (previewMenu_ == MenuKind::kContainer && !containerPreview_.valid) {
             CaptureContainerPreview();
-        } else if (previewMenu_ == MenuKind::kBarter && !sellPreview_.valid) {
+        } else if (previewMenu_ == MenuKind::kBarter && !sellPreview_.valid && !sellRecapturePending_) {
             CaptureSellPreview();
+        }
+    }
+
+    void SkyPromptIntegration::RequestSellRecapture(bool rebuildStacks) {
+        if (!IsEnabled() || GetActiveMenu() != MenuKind::kBarter || JunkHandler::operationInProgress.load()) {
+            return;
+        }
+
+        if (!rebuildStacks && !sellPreview_.valid) {
+            rebuildStacks = true;
+        }
+
+        if (sellRecapturePending_) {
+            if (rebuildStacks) {
+                sellRecaptureRebuild_ = true;
+            }
+            return;
+        }
+
+        sellRecapturePending_ = true;
+        sellRecaptureRebuild_ = rebuildStacks;
+        ScheduleSellPreviewUpdate(1);
+    }
+
+    void SkyPromptIntegration::ScheduleSellPreviewUpdate(int framesRemaining) {
+        auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) {
+            ApplyPendingSellRecapture();
+            return;
+        }
+
+        tasks->AddUITask([framesRemaining]() {
+            auto& self = SkyPromptIntegration::GetSingleton();
+            if (framesRemaining > 0) {
+                self.ScheduleSellPreviewUpdate(framesRemaining - 1);
+                return;
+            }
+            self.ApplyPendingSellRecapture();
+        });
+    }
+
+    void SkyPromptIntegration::ApplyPendingSellRecapture() {
+        const bool rebuildStacks = sellRecaptureRebuild_;
+        sellRecapturePending_ = false;
+        sellRecaptureRebuild_ = false;
+
+        if (!IsEnabled() || GetActiveMenu() != MenuKind::kBarter || JunkHandler::operationInProgress.load()) {
+            return;
+        }
+
+        if (rebuildStacks) {
+            CaptureSellPreview();
+        } else {
+            ApplyGoldOnlySellPreview();
+        }
+        SyncPromptLabels();
+    }
+
+    void SkyPromptIntegration::ApplyGoldOnlySellPreview() {
+        if (!sellPreview_.valid) {
+            CaptureSellPreview();
+            return;
+        }
+
+        const auto gold = JunkHandler::ComputeSellPreviewGold(sellPreview_.stacks);
+        if (!gold) {
+            return;
+        }
+
+        if (*gold > 0) {
+            sellPreview_.gold = gold;
+        } else {
+            sellPreview_.gold.reset();
         }
     }
 
     void SkyPromptIntegration::OnJunkToggled(RE::InventoryEntryData* entry, bool nowJunk, bool playerOwned) {
         if (!entry || !IsEnabled()) {
+            return;
+        }
+
+        if (previewMenu_ == MenuKind::kBarter && playerOwned) {
+            RequestSellRecapture(true);
+            return;
+        }
+
+        if (previewMenu_ != MenuKind::kContainer || !containerPreview_.valid) {
             return;
         }
 
@@ -1166,23 +1282,15 @@ namespace JunkIt {
         }
 
         const std::int32_t sign = nowJunk ? 1 : -1;
-
-        if (previewMenu_ == MenuKind::kContainer && containerPreview_.valid) {
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            RE::TESObjectREFR* container = nullptr;
-            if (auto* form = RE::TESForm::LookupByID(previewContainerId_)) {
-                container = form->As<RE::TESObjectREFR>();
-            }
-            const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false);
-            const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false);
-            containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + sign * playerCount);
-            containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + sign * containerCount);
-        } else if (previewMenu_ == MenuKind::kBarter && sellPreview_.valid && playerOwned) {
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            const auto count = JunkHandler::CountPreviewIdentities(player, identities, true);
-            const auto goldDelta = JunkHandler::ComputeSellGoldDelta(entry, count, sellPreview_.sellMult);
-            ApplySellGoldDelta(sign * goldDelta);
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        RE::TESObjectREFR* container = nullptr;
+        if (auto* form = RE::TESForm::LookupByID(previewContainerId_)) {
+            container = form->As<RE::TESObjectREFR>();
         }
+        const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false);
+        const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false);
+        containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + sign * playerCount);
+        containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + sign * containerCount);
     }
 
     void SkyPromptIntegration::ApplyContainerMove(const RE::TESContainerChangedEvent* a_event) {
@@ -1209,36 +1317,6 @@ namespace JunkIt {
         } else {
             containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount - count);
             containerPreview_.retrieveCount += count;
-        }
-    }
-
-    void SkyPromptIntegration::ApplyBarterMove(const RE::TESContainerChangedEvent* a_event) {
-        if (!a_event || previewPlayerId_ == 0) {
-            return;
-        }
-
-        const bool fromPlayer = a_event->oldContainer == previewPlayerId_;
-        const bool toPlayer = a_event->newContainer == previewPlayerId_;
-        if (fromPlayer == toPlayer) {
-            return;
-        }
-
-        auto* dest = RE::TESForm::LookupByID(a_event->newContainer);
-        auto* destRef = dest ? dest->As<RE::TESObjectREFR>() : nullptr;
-        const auto goldDelta = JunkHandler::ComputeMovedItemSellGold(
-            destRef,
-            a_event->baseObj,
-            a_event->uniqueID,
-            a_event->itemCount,
-            sellPreview_.sellMult);
-        if (!goldDelta) {
-            return;
-        }
-
-        if (toPlayer) {
-            ApplySellGoldDelta(*goldDelta);
-        } else {
-            ApplySellGoldDelta(-*goldDelta);
         }
     }
 
@@ -1284,48 +1362,19 @@ namespace JunkIt {
         return true;
     }
 
-    void SkyPromptIntegration::ApplySellGoldDelta(std::int32_t goldDelta) {
-        if (goldDelta == 0 || !sellPreview_.valid) {
-            return;
-        }
-
-        if (goldDelta > 0) {
-            if (!sellPreview_.gold) {
-                sellPreview_.gold = goldDelta;
-            } else {
-                *sellPreview_.gold += goldDelta;
-                if (*sellPreview_.gold < 0) {
-                    *sellPreview_.gold = 0;
-                }
-            }
-            return;
-        }
-
-        if (sellPreview_.gold) {
-            *sellPreview_.gold = ClampNonNegative(*sellPreview_.gold + goldDelta);
-        }
-    }
-
     void SkyPromptIntegration::ApplyTransferableDelta(
         std::int32_t sign,
         std::int32_t count,
-        bool playerSide,
-        std::int32_t goldDelta) {
-        if (previewMenu_ == MenuKind::kContainer && containerPreview_.valid) {
-            if (count <= 0) {
-                return;
-            }
-            const auto delta = sign * count;
-            if (playerSide) {
-                containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + delta);
-            } else {
-                containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + delta);
-            }
+        bool playerSide) {
+        if (previewMenu_ != MenuKind::kContainer || !containerPreview_.valid || count <= 0) {
             return;
         }
 
-        if (previewMenu_ == MenuKind::kBarter && sellPreview_.valid && playerSide) {
-            ApplySellGoldDelta(sign * goldDelta);
+        const auto delta = sign * count;
+        if (playerSide) {
+            containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + delta);
+        } else {
+            containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + delta);
         }
     }
 
@@ -1359,11 +1408,12 @@ namespace JunkIt {
             const bool blockedByEnchant =
                 previewMenu_ == MenuKind::kBarter && Settings::ProtectEnchanted() && entry->IsEnchanted();
             if (!blockedByEquip && !blockedByEnchant) {
-                const auto count = JunkHandler::CountJunkUnits(entry);
-                const auto gold = previewMenu_ == MenuKind::kBarter
-                    ? JunkHandler::ComputeSellGoldDelta(entry, count, sellPreview_.sellMult)
-                    : 0;
-                ApplyTransferableDelta(favorited ? -1 : 1, count, playerSide, gold);
+                if (previewMenu_ == MenuKind::kBarter) {
+                    RequestSellRecapture(true);
+                } else {
+                    const auto count = JunkHandler::CountJunkUnits(entry);
+                    ApplyTransferableDelta(favorited ? -1 : 1, count, playerSide);
+                }
             }
         }
 
@@ -1379,9 +1429,6 @@ namespace JunkIt {
             return;
         }
         if (previewMenu_ == MenuKind::kContainer && !containerPreview_.valid) {
-            return;
-        }
-        if (previewMenu_ == MenuKind::kBarter && !sellPreview_.valid) {
             return;
         }
 
@@ -1400,22 +1447,24 @@ namespace JunkIt {
             return;
         }
 
-        const float sellMult = previewMenu_ == MenuKind::kBarter ? sellPreview_.sellMult : 0.0f;
         const auto unit = JunkHandler::LookupJunkPreviewUnit(
             actor,
             a_event->baseObject,
-            a_event->uniqueID,
-            sellMult);
+            a_event->uniqueID);
         if (!unit) {
             return;
         }
         if (Settings::ProtectFavorites() && unit->favorited) {
             return;
         }
-        if (previewMenu_ == MenuKind::kBarter && Settings::ProtectEnchanted() && unit->enchanted) {
+        if (previewMenu_ == MenuKind::kBarter) {
+            if (Settings::ProtectEnchanted() && unit->enchanted) {
+                return;
+            }
+            RequestSellRecapture(true);
             return;
         }
 
-        ApplyTransferableDelta(a_event->equipped ? -1 : 1, unit->count, playerSide, unit->gold);
+        ApplyTransferableDelta(a_event->equipped ? -1 : 1, unit->count, playerSide);
     }
 }
