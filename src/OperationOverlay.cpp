@@ -132,7 +132,6 @@ namespace JunkIt {
                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
             auto* drawList = ImGui::GetWindowDrawList();
-            const int fadeAlpha = static_cast<int>(255.0f * g_fade + 0.5f);
             drawList->AddRectFilled(
                 ImVec2(0.0f, 0.0f),
                 io.DisplaySize,
@@ -155,24 +154,21 @@ namespace JunkIt {
                     tint);
             }
 
-            ImFont* font = ImGui::GetFont();
+            const float baseSize = ImGui::GetFontSize();
             const float fontSize = std::clamp(io.DisplaySize.y * 0.05f, 32.0f, 72.0f);
-            const ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, g_label.c_str());
-            const ImVec2 textPos(
-                (io.DisplaySize.x - textSize.x) * 0.5f,
-                (io.DisplaySize.y - textSize.y) * 0.5f);
-            drawList->AddText(
-                font,
-                fontSize,
-                textPos + ImVec2(2.0f, 2.0f),
-                IM_COL32(0, 0, 0, fadeAlpha),
-                g_label.c_str());
-            drawList->AddText(
-                font,
-                fontSize,
-                textPos,
-                IM_COL32(194, 194, 194, fadeAlpha),
-                g_label.c_str());
+            ImGui::SetWindowFontScale(fontSize / baseSize);
+            const ImVec2 textSize = ImGui::CalcTextSize(g_label.c_str());
+            const float textX = (io.DisplaySize.x - textSize.x) * 0.5f;
+            const float textY = (io.DisplaySize.y - textSize.y) * 0.5f;
+            ImGui::SetCursorPos(ImVec2(textX + 2.0f, textY + 2.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, g_fade));
+            ImGui::TextUnformatted(g_label.c_str());
+            ImGui::PopStyleColor();
+            ImGui::SetCursorPos(ImVec2(textX, textY));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(194.0f / 255.0f, 194.0f / 255.0f, 194.0f / 255.0f, g_fade));
+            ImGui::TextUnformatted(g_label.c_str());
+            ImGui::PopStyleColor();
+            ImGui::SetWindowFontScale(1.0f);
 
             ImGui::End();
             ImGui::PopStyleVar(2);
