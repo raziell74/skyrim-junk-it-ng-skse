@@ -108,6 +108,13 @@ namespace JunkIt {
             }
         }
 
+        void DrainInventoryUIUpdates(TESObjectREFR* primary, TESObjectREFR* secondary) {
+            SendInventoryUpdate(primary);
+            if (secondary && secondary != primary) {
+                SendInventoryUpdate(secondary);
+            }
+        }
+
         void UpdateItemListOwner(ItemList* itemList, TESObjectREFR* owner) {
             if (itemList && owner) {
                 itemList->Update(owner);
@@ -472,7 +479,7 @@ namespace JunkIt {
         InvalidateInventoryLists(movie);
     }
 
-    void JunkHandler::ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete) {
+    void JunkHandler::ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete, bool rebuildList) {
         auto* taskInterface = SKSE::GetTaskInterface();
         if (!taskInterface) {
             if (onComplete) {
@@ -481,16 +488,20 @@ namespace JunkIt {
             return;
         }
 
-        taskInterface->AddUITask([primaryId, secondaryId, framesRemaining, onComplete = std::move(onComplete)]() mutable {
+        taskInterface->AddUITask([primaryId, secondaryId, framesRemaining, onComplete = std::move(onComplete), rebuildList]() mutable {
             if (framesRemaining > 0) {
-                ScheduleInventoryUIRefresh(primaryId, secondaryId, framesRemaining - 1, std::move(onComplete));
+                ScheduleInventoryUIRefresh(primaryId, secondaryId, framesRemaining - 1, std::move(onComplete), rebuildList);
                 return;
             }
 
             auto* primary = LookupRefr(primaryId);
             auto* secondary = LookupRefr(secondaryId);
             if (primary || secondary) {
-                ApplyInventoryUIRefresh(primary, secondary);
+                if (rebuildList) {
+                    ApplyInventoryUIRefresh(primary, secondary);
+                } else {
+                    DrainInventoryUIUpdates(primary, secondary);
+                }
             }
 
             if (!onComplete) {
@@ -1763,7 +1774,8 @@ namespace JunkIt {
             deferredFrames,
             [session = std::move(session)]() mutable {
                 ContinueChunkedSell(std::move(session));
-            });
+            },
+            false);
     }
 
     void JunkHandler::FinishSell(

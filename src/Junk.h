@@ -203,7 +203,7 @@ namespace JunkIt {
         static void FinishSell(TESObjectREFR* player, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, std::size_t uniqueTypes);
 
         static void ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary);
-        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {});
+        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {}, bool rebuildList = true);
         static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
         static void CompleteOperation();
 
