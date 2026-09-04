@@ -477,6 +477,22 @@ namespace JunkIt {
             }
             return result;
         }
+
+        std::int32_t MeasureBarterSellCount(ItemList::Item* entryItem) {
+            if (!entryItem || !entryItem->data.objDesc) {
+                return 0;
+            }
+
+            const auto scan = ScanEntryJunk(entryItem->data.objDesc, false);
+            std::int32_t count = scan.junkCount;
+            if (scan.fullyJunk) {
+                const auto uiCount = static_cast<std::int32_t>(entryItem->data.GetCount());
+                if (uiCount > count) {
+                    count = uiCount;
+                }
+            }
+            return count > 0 ? count : 0;
+        }
     }
 
     void JunkHandler::ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary) {
@@ -867,7 +883,6 @@ namespace JunkIt {
 
         capture.pricesReady = true;
         const auto playerHandle = player->GetHandle().native_handle();
-        auto& junkManager = JunkDataManager::GetSingleton();
         std::vector<PreviewStack> sortStacks;
         const auto& items = itemListMenu->items;
         for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
@@ -883,18 +898,8 @@ namespace JunkIt {
             if (!objDesc->object || !EntryPassesPreviewFilters(objDesc, true)) {
                 continue;
             }
-            if (!junkManager.IsAnyJunkForForm(objDesc->object)) {
-                continue;
-            }
 
-            const auto scan = ScanEntryJunk(objDesc, false);
-            Count count = scan.junkCount;
-            if (scan.fullyJunk) {
-                const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
-                if (uiCount > count) {
-                    count = uiCount;
-                }
-            }
+            const Count count = MeasureBarterSellCount(entryItem);
             if (count > 0) {
                 sortStacks.push_back({ objDesc, count });
             }
@@ -903,7 +908,7 @@ namespace JunkIt {
         SortPreviewStacks(sortStacks, Settings::GetSellPriority());
         capture.stacks.reserve(sortStacks.size());
         for (const auto& stack : sortStacks) {
-            capture.stacks.push_back({ stack.count, ComputeUnitSellPrice(stack.entry, sellMult) });
+            capture.stacks.push_back({ stack.count, ComputeUnitSellPrice(stack.entry, sellMult), stack.entry });
         }
 
         const Count roundedSellValue = ComputePricedStackGold(capture.stacks, vendorGold);
@@ -911,6 +916,107 @@ namespace JunkIt {
             capture.gold = roundedSellValue;
         }
         return capture;
+    }
+
+    bool JunkHandler::TryPatchSellPreviewStacks(
+        std::vector<SellPreviewStack>& stacks,
+        InventoryEntryData* entry) {
+        if (!entry) {
+            return false;
+        }
+
+        std::unordered_map<InventoryEntryData*, SellPreviewStack> byEntry;
+        byEntry.reserve(stacks.size() + 1);
+        for (const auto& stack : stacks) {
+            if (!stack.entry) {
+                return false;
+            }
+            if (!byEntry.emplace(stack.entry, stack).second) {
+                return false;
+            }
+        }
+
+        float vendorGold = 0.0f;
+        float sellMult = 0.0f;
+        if (!TryReadBarterPrices(vendorGold, sellMult)) {
+            return false;
+        }
+        (void)vendorGold;
+
+        auto* player = PlayerCharacter::GetSingleton();
+        const auto ui = RE::UI::GetSingleton();
+        auto barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
+        ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
+        if (!player || !itemListMenu) {
+            return false;
+        }
+
+        const auto playerHandle = player->GetHandle().native_handle();
+        ItemList::Item* matchedItem = nullptr;
+        const auto& items = itemListMenu->items;
+        for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
+            ItemList::Item* entryItem = items[i];
+            if (!entryItem || entryItem->data.objDesc != entry) {
+                continue;
+            }
+            if (entryItem->data.owner != playerHandle) {
+                continue;
+            }
+            matchedItem = entryItem;
+            break;
+        }
+        if (!matchedItem) {
+            return false;
+        }
+
+        SellPreviewStack measured;
+        measured.entry = entry;
+        if (entry->object && EntryPassesPreviewFilters(entry, true)) {
+            measured.count = MeasureBarterSellCount(matchedItem);
+            if (measured.count > 0) {
+                measured.unitPrice = ComputeUnitSellPrice(entry, sellMult);
+            }
+        }
+        if (measured.count > 0) {
+            byEntry[entry] = measured;
+        } else {
+            byEntry.erase(entry);
+        }
+
+        std::vector<PreviewStack> ordered;
+        ordered.reserve(byEntry.size());
+        std::size_t seen = 0;
+        for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
+            ItemList::Item* entryItem = items[i];
+            if (!entryItem || !entryItem->data.objDesc) {
+                continue;
+            }
+            if (entryItem->data.owner != playerHandle) {
+                continue;
+            }
+            auto it = byEntry.find(entryItem->data.objDesc);
+            if (it == byEntry.end()) {
+                continue;
+            }
+            ordered.push_back({ it->first, it->second.count });
+            ++seen;
+        }
+        if (seen != byEntry.size()) {
+            return false;
+        }
+
+        SortPreviewStacks(ordered, Settings::GetSellPriority());
+
+        stacks.clear();
+        stacks.reserve(ordered.size());
+        for (const auto& stack : ordered) {
+            const auto it = byEntry.find(stack.entry);
+            if (it == byEntry.end()) {
+                return false;
+            }
+            stacks.push_back({ stack.count, it->second.unitPrice, stack.entry });
+        }
+        return true;
     }
 
     void JunkHandler::CollectEntryIdentities(InventoryEntryData* entry, std::vector<std::string>& out) {
@@ -932,7 +1038,8 @@ namespace JunkIt {
     std::int32_t JunkHandler::CountPreviewIdentities(
         TESObjectREFR* container,
         const std::vector<std::string>& identities,
-        bool sellFilters) {
+        bool sellFilters,
+        TESBoundObject* objectFilter) {
         if (!container || identities.empty()) {
             return 0;
         }
@@ -945,7 +1052,13 @@ namespace JunkIt {
 
         Count total = 0;
         ForEachInventoryEntry(container, [&](InventoryEntryData* entry) {
-            if (!entry || !entry->object || !EntryPassesPreviewFilters(entry, sellFilters)) {
+            if (!entry || !entry->object) {
+                return;
+            }
+            if (objectFilter && entry->object != objectFilter) {
+                return;
+            }
+            if (!EntryPassesPreviewFilters(entry, sellFilters)) {
                 return;
             }
             total += CountIdentityUnits(entry, identitySet);

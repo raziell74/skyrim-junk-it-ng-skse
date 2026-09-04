@@ -1316,6 +1316,17 @@ namespace JunkIt {
         }
 
         if (previewMenu_ == MenuKind::kBarter && playerOwned) {
+            if (sellPreview_.valid && JunkHandler::TryPatchSellPreviewStacks(sellPreview_.stacks, entry)) {
+                const auto gold = JunkHandler::ComputeSellPreviewGold(sellPreview_.stacks);
+                if (gold) {
+                    if (*gold > 0) {
+                        sellPreview_.gold = gold;
+                    } else {
+                        sellPreview_.gold.reset();
+                    }
+                    return;
+                }
+            }
             RequestSellRecapture(true);
             return;
         }
@@ -1336,8 +1347,8 @@ namespace JunkIt {
         if (auto* form = RE::TESForm::LookupByID(previewContainerId_)) {
             container = form->As<RE::TESObjectREFR>();
         }
-        const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false);
-        const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false);
+        const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false, entry->object);
+        const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false, entry->object);
         containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + sign * playerCount);
         containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + sign * containerCount);
     }

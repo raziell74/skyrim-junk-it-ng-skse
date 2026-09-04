@@ -79,6 +79,7 @@ namespace JunkIt {
         struct SellPreviewStack {
             std::int32_t count = 0;
             std::int32_t unitPrice = 0;
+            InventoryEntryData* entry = nullptr;
         };
 
         struct SellPreviewCapture {
@@ -91,10 +92,17 @@ namespace JunkIt {
         [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview(
             ContainerPreviewSide side = ContainerPreviewSide::Both);
         [[nodiscard]] static SellPreviewCapture CaptureSellPreview();
+        [[nodiscard]] static bool TryPatchSellPreviewStacks(
+            std::vector<SellPreviewStack>& stacks,
+            InventoryEntryData* entry);
         [[nodiscard]] static std::optional<std::int32_t> ComputeSellPreviewGold(
             const std::vector<SellPreviewStack>& stacks);
         static void CollectEntryIdentities(InventoryEntryData* entry, std::vector<std::string>& out);
-        [[nodiscard]] static std::int32_t CountPreviewIdentities(TESObjectREFR* container, const std::vector<std::string>& identities, bool sellFilters);
+        [[nodiscard]] static std::int32_t CountPreviewIdentities(
+            TESObjectREFR* container,
+            const std::vector<std::string>& identities,
+            bool sellFilters,
+            TESBoundObject* objectFilter = nullptr);
         [[nodiscard]] static bool MovedItemIsPreviewableJunk(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, bool sellFilters);
         [[nodiscard]] static std::int32_t CountJunkUnits(InventoryEntryData* entry);
         struct JunkPreviewUnit {
