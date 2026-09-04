@@ -998,7 +998,7 @@ namespace JunkIt {
             return transferList;
         }
 
-        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        const auto& listItems = itemListMenu->items;
         std::vector<InventoryEntryData*> sortFormData;
 
         SKSE::log::info("Processing Entry List for transferable junk items");
@@ -1098,7 +1098,7 @@ namespace JunkIt {
 
         // ItemList holds both inventories; StandardItemData::owner distinguishes player vs vendor.
         const auto playerHandle = player->GetHandle().native_handle();
-        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        const auto& listItems = itemListMenu->items;
         std::vector<std::pair<InventoryEntryData*, Count>> sortData;
 
         SKSE::log::info("Processing BarterMenu ItemList for player-owned sellable junk");
@@ -2616,7 +2616,7 @@ namespace JunkIt {
             return -1;
         }
 
-        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        const auto& listItems = itemListMenu->items;
         for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
             ItemList::Item* entryItem = listItems[i];
             if (!entryItem || !entryItem->data.objDesc) {
@@ -2647,7 +2647,7 @@ namespace JunkIt {
         auto* player = RE::PlayerCharacter::GetSingleton();
         const auto playerHandle = player ? player->GetHandle().native_handle() : 0;
 
-        BSTArray<ItemList::Item*> listItems = itemListMenu->items;
+        const auto& listItems = itemListMenu->items;
         InventoryEntryData* formFallback = nullptr;
 
         for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
