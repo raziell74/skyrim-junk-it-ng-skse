@@ -65,6 +65,27 @@ namespace JunkIt {
             return nullptr;
         }
 
+        TESObjectREFR* GetVisibleListOwner(TESObjectREFR* primary, TESObjectREFR* secondary) {
+            const auto ui = RE::UI::GetSingleton();
+            if (ui && ui->IsMenuOpen("InventoryMenu")) {
+                return primary;
+            }
+
+            if (ui && (ui->IsMenuOpen("ContainerMenu") || ui->IsMenuOpen("BarterMenu"))) {
+                auto* movie = GetOpenInventoryMovie();
+                RE::GFxValue result;
+                if (movie &&
+                    movie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") &&
+                    result.IsNumber() &&
+                    static_cast<int>(result.GetNumber()) != 0) {
+                    return primary;
+                }
+                return secondary ? secondary : primary;
+            }
+
+            return secondary ? secondary : primary;
+        }
+
         bool InventoryLikeMenuOpen() {
             auto* ui = RE::UI::GetSingleton();
             if (!ui) {
@@ -295,15 +316,15 @@ namespace JunkIt {
 
         constexpr int kUiMessageQueueSize = 64;
 
-        int BulkRefreshDrainFrames(std::size_t uniqueTypes, std::int32_t totalItems, bool largeOp) {
+        int BulkRefreshDrainFrames(std::size_t uniqueTypes, bool largeOp) {
             if (!largeOp) {
                 return 1;
             }
 
             int drainFrames = HeavyLoadDeferredFrames();
-            const auto pressure = std::max(uniqueTypes, static_cast<std::size_t>(std::max(0, totalItems)));
-            if (pressure > kUiMessageQueueSize) {
-                const int extra = static_cast<int>((pressure - kUiMessageQueueSize + kUiMessageQueueSize - 1) / kUiMessageQueueSize);
+            if (uniqueTypes > kUiMessageQueueSize) {
+                const int extra = static_cast<int>(
+                    (uniqueTypes - kUiMessageQueueSize + kUiMessageQueueSize - 1) / kUiMessageQueueSize);
                 drainFrames = std::clamp(drainFrames + extra, 1, 20);
             }
             return drainFrames;
@@ -323,11 +344,7 @@ namespace JunkIt {
             SendInventoryUpdate(secondary);
         }
 
-        UpdateItemListOwner(itemList, primary);
-        if (secondary && secondary != primary) {
-            UpdateItemListOwner(itemList, secondary);
-        }
-
+        UpdateItemListOwner(itemList, GetVisibleListOwner(primary, secondary));
         InvalidateInventoryLists(movie);
     }
 
@@ -350,9 +367,6 @@ namespace JunkIt {
             auto* secondary = LookupRefr(secondaryId);
             if (primary || secondary) {
                 ApplyInventoryUIRefresh(primary, secondary);
-                if (!operationInProgress.load()) {
-                    SkyPromptIntegration::GetSingleton().RecapturePreviews();
-                }
             }
 
             if (!onComplete) {
@@ -382,7 +396,10 @@ namespace JunkIt {
                     ScheduleAggressiveRefresh(deadline, framesRemaining - 1);
                     return;
                 }
-                UIUtil::ItemList::Refresh();
+                auto* player = PlayerCharacter::GetSingleton();
+                UpdateItemListOwner(
+                    UIUtil::ItemList::GetOpenList(),
+                    GetVisibleListOwner(player, GetOpenMenuListSecondary()));
                 ScheduleAggressiveRefresh(deadline, 300);
             });
         }
@@ -398,10 +415,9 @@ namespace JunkIt {
     }
 
     void JunkHandler::RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems) {
-        const bool largeOp = uniqueTypes >= static_cast<std::size_t>(kUiMessageQueueSize) || totalItems >= kUiMessageQueueSize
-            || uniqueTypes >= Settings::GetLargeUniqueTypes()
-            || totalItems >= Settings::GetLargeTotalItems();
-        const int drainFrames = BulkRefreshDrainFrames(uniqueTypes, totalItems, largeOp);
+        const bool largeOp = uniqueTypes >= static_cast<std::size_t>(kUiMessageQueueSize)
+            || uniqueTypes >= Settings::GetLargeUniqueTypes();
+        const int drainFrames = BulkRefreshDrainFrames(uniqueTypes, largeOp);
 
         SKSE::log::info(
             "Bulk UI refresh | uniqueTypes={} totalItems={} large={} drainFrames={}",
@@ -410,19 +426,9 @@ namespace JunkIt {
             largeOp,
             drainFrames);
 
-        if (!largeOp) {
-            ApplyInventoryUIRefresh(primary, secondary);
-        }
-
         const FormID primaryId = primary ? primary->GetFormID() : 0;
         const FormID secondaryId = secondary ? secondary->GetFormID() : 0;
-        auto finish = [primaryId, secondaryId] {
-            ScheduleInventoryUIRefresh(primaryId, secondaryId, 0, [] {
-                CompleteOperation();
-            });
-        };
-
-        ScheduleInventoryUIRefresh(primaryId, secondaryId, drainFrames, std::move(finish));
+        ScheduleInventoryUIRefresh(primaryId, secondaryId, drainFrames, CompleteOperation);
 
         StartAggressiveRefresh();
     }
@@ -1011,16 +1017,22 @@ namespace JunkIt {
             if (!junkManager.IsJunk(entryItem->data.objDesc)) continue;
 
             if (entryItem->data.objDesc->IsQuestObject()) {
-                SKSE::log::info("Junk Item is Quest Item - Skipping {}", entryItem->data.objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item is Quest Item - Skipping {}", entryItem->data.objDesc->object->GetName());
+                }
                 continue;
             }
             
             if (Settings::ProtectEquipped() && entryItem->data.objDesc->IsWorn()) {
-                SKSE::log::info("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item Equipped - Skipping {}", entryItem->data.objDesc->object->GetName());
+                }
                 continue;
             }
             if (Settings::ProtectFavorites() && entryItem->data.objDesc->IsFavorited()) {
-                SKSE::log::info("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item Favorited - Skipping {}", entryItem->data.objDesc->object->GetName());
+                }
                 continue;
             }
 
@@ -1050,12 +1062,19 @@ namespace JunkIt {
             });
         }
 
-        SKSE::log::info("Finalized TransferList:");
         for (InventoryEntryData* entryData : sortFormData) {
             const TESBoundObject* entryObject = entryData->object;
             if (!entryObject) continue;
             transferList.push_back(entryData);
-            SKSE::log::info("     {} [{}]", entryObject->GetName(), FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
+        }
+        SKSE::log::info("Finalized TransferList: {} items", transferList.size());
+        if (spdlog::should_log(spdlog::level::debug)) {
+            for (InventoryEntryData* entryData : transferList) {
+                SKSE::log::debug(
+                    "     {} [{}]",
+                    entryData->object->GetName(),
+                    FormUtil::Form::GetFormConfigString(entryData->object->As<TESForm>()));
+            }
         }
 
         SKSE::log::info("---- Completed Junk Transfer List Generation ----");
@@ -1106,20 +1125,28 @@ namespace JunkIt {
             }
 
             if (objDesc->IsQuestObject()) {
-                SKSE::log::info("Junk Item is Quest Item - Skipping {}", objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item is Quest Item - Skipping {}", objDesc->object->GetName());
+                }
                 continue;
             }
 
             if (Settings::ProtectEquipped() && objDesc->IsWorn()) {
-                SKSE::log::info("Junk Item Equipped - Skipping {}", objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item Equipped - Skipping {}", objDesc->object->GetName());
+                }
                 continue;
             }
             if (Settings::ProtectFavorites() && objDesc->IsFavorited()) {
-                SKSE::log::info("Junk Item Favorited - Skipping {}", objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item Favorited - Skipping {}", objDesc->object->GetName());
+                }
                 continue;
             }
             if (Settings::ProtectEnchanted() && objDesc->IsEnchanted()) {
-                SKSE::log::info("Junk Item Enchanted - Skipping {}", objDesc->object->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Junk Item Enchanted - Skipping {}", objDesc->object->GetName());
+                }
                 continue;
             }
 
@@ -1168,14 +1195,21 @@ namespace JunkIt {
             });
         }
 
-        SKSE::log::info("Finalized SellList:");
         for (auto& [objDesc, count] : sortData) {
             if (!objDesc->object) {
                 continue;
             }
             sellList.push_back({objDesc, count});
-            SKSE::log::info("     {} x{} [{}]", objDesc->object->GetName(), count,
-                FormUtil::Form::GetFormConfigString(objDesc->object->As<TESForm>()));
+        }
+        SKSE::log::info("Finalized SellList: {} items", sellList.size());
+        if (spdlog::should_log(spdlog::level::debug)) {
+            for (auto& [objDesc, count] : sellList) {
+                SKSE::log::debug(
+                    "     {} x{} [{}]",
+                    objDesc->object->GetName(),
+                    count,
+                    FormUtil::Form::GetFormConfigString(objDesc->object->As<TESForm>()));
+            }
         }
 
         SKSE::log::info("---- Generated Junk Sell FormList ----");
@@ -1340,7 +1374,9 @@ namespace JunkIt {
 
                 Count itemCount = GetItemCount(transferContainer, entryData->object);
                 if (itemCount > 0) {
-                    SKSE::log::info("Retrieving {} x{}", entryData->object->GetName(), itemCount);
+                    if (spdlog::should_log(spdlog::level::debug)) {
+                        SKSE::log::debug("Retrieving {} x{}", entryData->object->GetName(), itemCount);
+                    }
                     MoveItems(entryData->object, transferContainer, player, reason, itemCount);
                     totalTransferred += itemCount;
                 }
@@ -1385,7 +1421,14 @@ namespace JunkIt {
                             MoveItems(entryData->object, player, transferContainer, reason, iCount);
                             currentWeight += (itemWeight * static_cast<float>(iCount));
                             totalTransferred += iCount;
-                            SKSE::log::info("Transferred {} {} [{}/{}]", iCount, entryData->object->GetName(), RoundNumber(currentWeight), RoundNumber(maxWeight));
+                            if (spdlog::should_log(spdlog::level::debug)) {
+                                SKSE::log::debug(
+                                    "Transferred {} {} [{}/{}]",
+                                    iCount,
+                                    entryData->object->GetName(),
+                                    RoundNumber(currentWeight),
+                                    RoundNumber(maxWeight));
+                            }
                         }
                     }
                 }
@@ -1411,7 +1454,9 @@ namespace JunkIt {
 
                     Count itemCount = GetItemCount(player, entryData->object);
                     if (itemCount > 0) {
-                        SKSE::log::info("Transferring {} x{}", entryData->object->GetName(), itemCount);
+                        if (spdlog::should_log(spdlog::level::debug)) {
+                            SKSE::log::debug("Transferring {} x{}", entryData->object->GetName(), itemCount);
+                        }
                         MoveItems(entryData->object, player, transferContainer, reason, itemCount);
                         totalTransferred += itemCount;
                     }
@@ -1604,9 +1649,13 @@ namespace JunkIt {
                     break;
                 }
                 const Count chunk = std::min(take - soldThis, available);
-                SKSE::log::info("Selling {} x{}", bound->GetName(), chunk);
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Selling {} x{}", bound->GetName(), chunk);
+                }
                 SellEntryUnits(chosen, from, to, chunk);
-                SKSE::log::info("Transaction for {} {} complete", chunk, bound->GetName());
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Transaction for {} {} complete", chunk, bound->GetName());
+                }
                 soldThis += chunk;
             }
 
@@ -1655,19 +1704,15 @@ namespace JunkIt {
             return;
         }
 
-        ApplyInventoryUIRefresh(player, vendorActorRef);
         if (vendorContainer != vendorActorRef) {
             SendInventoryUpdate(vendorContainer);
-            if (auto* itemList = UIUtil::ItemList::GetOpenList()) {
-                itemList->Update(vendorContainer);
-            }
         }
 
         const int deferredFrames = HeavyLoadDeferredFrames();
         ScheduleInventoryUIRefresh(
             player->GetFormID(),
             session.vendorActorId,
-            deferredFrames - 1,
+            deferredFrames,
             [session = std::move(session)]() mutable {
                 ContinueChunkedSell(std::move(session));
             });
@@ -1703,10 +1748,7 @@ namespace JunkIt {
 
         RefreshMenusAfterBulk(player, vendorActorRef, uniqueTypes, totalToSell);
         if (vendorContainer && vendorContainer != vendorActorRef) {
-            RE::SendUIMessage::SendInventoryUpdateMessage(vendorContainer, nullptr);
-            if (auto* itemList = UIUtil::ItemList::GetOpenList()) {
-                itemList->Update(vendorContainer);
-            }
+            SendInventoryUpdate(vendorContainer);
         }
         SKSE::log::info("---- Sale Execution Complete ----");
     }
@@ -1770,9 +1812,13 @@ namespace JunkIt {
             SKSE::log::info("Transferring junk items to vendor...");
             for (const auto& [entryData, count] : itemsToSell) {
                 if (count > 0 && entryData && entryData->object) {
-                    SKSE::log::info("Selling {} x{}", entryData->object->GetName(), count);
+                    if (spdlog::should_log(spdlog::level::debug)) {
+                        SKSE::log::debug("Selling {} x{}", entryData->object->GetName(), count);
+                    }
                     SellEntryUnits(entryData, player, vendorContainer, count);
-                    SKSE::log::info("Transaction for {} {} complete", count, entryData->object->GetName());
+                    if (spdlog::should_log(spdlog::level::debug)) {
+                        SKSE::log::debug("Transaction for {} {} complete", count, entryData->object->GetName());
+                    }
                 }
             }
             FinishSell(player, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, itemsToSell.size());

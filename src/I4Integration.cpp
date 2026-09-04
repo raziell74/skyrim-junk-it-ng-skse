@@ -4,6 +4,7 @@
 #include "util.h"
 
 #include <json/json.h>
+#include <map>
 
 namespace JunkIt {
 
@@ -80,51 +81,119 @@ namespace JunkIt {
         obj.SetMember("processList", newProcessList);
     }
 
+    namespace {
+        void SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
+            if (!obj.IsObject()) {
+                return;
+            }
+            obj.SetMember("isJunk", isJunk);
+            obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
+            obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+        }
+
+        RE::TESBoundObject* BoundFromGFxEntry(RE::GFxValue& entryObject) {
+            RE::GFxValue formIdVal;
+            if (!entryObject.GetMember("formId", &formIdVal) || !formIdVal.IsNumber()) {
+                return nullptr;
+            }
+            auto* form = RE::TESForm::LookupByID(static_cast<RE::FormID>(formIdVal.GetNumber()));
+            return form ? form->As<RE::TESBoundObject>() : nullptr;
+        }
+
+        template <class Handle>
+        RE::TESObjectREFR* ResolveOwner(Handle handle) {
+            RE::TESObjectREFRPtr refr;
+            LookupReferenceByHandle(handle, refr);
+            return refr.get();
+        }
+
+        struct LiveInventoryCache {
+            std::map<std::uint32_t, RE::TESObjectREFR::InventoryItemMap> inventories;
+
+            void Include(RE::TESObjectREFR* owner) {
+                if (!owner) {
+                    return;
+                }
+                const auto key = owner->GetHandle().native_handle();
+                auto [it, inserted] = inventories.try_emplace(key);
+                if (inserted) {
+                    it->second = owner->GetInventory();
+                }
+            }
+
+            RE::InventoryEntryData* Find(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
+                if (!owner || !object) {
+                    return nullptr;
+                }
+                Include(owner);
+                const auto key = owner->GetHandle().native_handle();
+                auto inv = inventories.find(key);
+                if (inv == inventories.end()) {
+                    return nullptr;
+                }
+                auto it = inv->second.find(object);
+                if (it == inv->second.end() || it->second.first <= 0 || !it->second.second) {
+                    return nullptr;
+                }
+                return it->second.second.get();
+            }
+
+            RE::InventoryEntryData* FindLive(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
+                if (auto* entry = Find(owner, object)) {
+                    return entry;
+                }
+
+                const auto ui = RE::UI::GetSingleton();
+                if (!ui || !ui->IsMenuOpen("BarterMenu")) {
+                    return nullptr;
+                }
+                if (auto* entry = Find(UIUtil::Menu::GetBarterMenuTargetRef(), object)) {
+                    return entry;
+                }
+                return Find(UIUtil::Menu::GetMerchantContainer(), object);
+            }
+        };
+
+        bool EntryIsJunk(RE::InventoryEntryData* live) {
+            return live && JunkDataManager::GetSingleton().IsJunk(live);
+        }
+    }
+
     void I4Integration::ProcessListFunc::Call(Params& a_params) {
         SKSE::log::trace("Running I4Integration.processList hook");
 
-        auto& junkManager = JunkDataManager::GetSingleton();
         auto* itemList = UIUtil::ItemList::GetOpenList();
+        LiveInventoryCache liveInventories;
 
         if (itemList && itemList->items.size() > 0) {
             for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
                 auto* item = itemList->items[i];
-                if (!item || !item->data.objDesc) {
+                if (!item || !item->obj.IsObject()) {
                     continue;
                 }
 
-                bool isJunk = junkManager.IsJunk(item->data.objDesc);
-                item->obj.SetMember("isJunk", isJunk);
-                item->obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
-                item->obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+                auto* bound = BoundFromGFxEntry(item->obj);
+                auto* live = liveInventories.FindLive(ResolveOwner(item->data.owner), bound);
+                SetJunkFlags(item->obj, EntryIsJunk(live));
             }
-        } else {
-            if (a_params.argCount >= 1) {
-                auto& a_list = a_params.args[0];
-                RE::GFxValue entryList;
-                if (a_list.IsObject()) {
-                    a_list.GetMember("_entryList", &entryList);
-                }
+        } else if (a_params.argCount >= 1) {
+            auto& a_list = a_params.args[0];
+            RE::GFxValue entryList;
+            if (a_list.IsObject()) {
+                a_list.GetMember("_entryList", &entryList);
+            }
 
-                if (entryList.IsArray()) {
-                    for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
-                        RE::GFxValue entryObject;
-                        entryList.GetElement(i, &entryObject);
-                        if (!entryObject.IsObject()) {
-                            continue;
-                        }
-
-                        RE::GFxValue existingIsJunk;
-                        entryObject.GetMember("isJunk", &existingIsJunk);
-                        if (!existingIsJunk.IsBool()) {
-                            continue;
-                        }
-
-                        const bool isJunk = existingIsJunk.GetBool();
-                        entryObject.SetMember("isJunk", isJunk);
-                        entryObject.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
-                        entryObject.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+            if (entryList.IsArray()) {
+                for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
+                    RE::GFxValue entryObject;
+                    entryList.GetElement(i, &entryObject);
+                    if (!entryObject.IsObject()) {
+                        continue;
                     }
+
+                    auto* bound = BoundFromGFxEntry(entryObject);
+                    auto* live = liveInventories.FindLive(RE::PlayerCharacter::GetSingleton(), bound);
+                    SetJunkFlags(entryObject, EntryIsJunk(live));
                 }
             }
         }

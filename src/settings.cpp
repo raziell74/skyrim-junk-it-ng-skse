@@ -37,6 +37,7 @@ namespace JunkIt {
             bool notifyOnMarkUnmark = true;
             bool notifyOnJunkTransfer = true;
             bool notifyOnJunkSell = true;
+            std::int32_t logLevel = 2;
             float heavyLoadDelayMultiplier = 1.0f;
             std::int32_t largeUniqueTypes = 500;
             std::int32_t largeTotalItems = 1000;
@@ -238,6 +239,7 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnMarkUnmark", g_values.notifyOnMarkUnmark);
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkTransfer", g_values.notifyOnJunkTransfer);
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkSell", g_values.notifyOnJunkSell);
+            complete &= ReadInt(ini, "Misc", "MiscSettings", "iLogLevel", g_values.logLevel);
             complete &= ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeTotalItems", g_values.largeTotalItems);
@@ -316,7 +318,8 @@ namespace JunkIt {
                 g_values.gamepadTrashHoldSeconds,
                 g_values.trashExpireDays);
             SKSE::log::info(
-                "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
+                "Misc Settings | LogLevel: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
+                Settings::LogLevelLabel(static_cast<Settings::LogLevel>(g_values.logLevel)),
                 g_values.aggressiveRefresh,
                 g_values.autoExport,
                 g_values.autoImport,
@@ -379,6 +382,7 @@ namespace JunkIt {
         g_values.sellChunkSize = std::clamp(g_values.sellChunkSize, 50, 1500);
         g_values.aggressiveRefreshMaxInterval = std::clamp(g_values.aggressiveRefreshMaxInterval, 1, 60);
         g_values.skyPromptButtonPlacement = std::clamp(g_values.skyPromptButtonPlacement, 0, 1);
+        g_values.logLevel = std::clamp(g_values.logLevel, 0, 4);
     }
 
     void Settings::ApplyIntegrationGuards() {
@@ -401,6 +405,7 @@ namespace JunkIt {
             const bool complete = ApplyIni(ParseIni(iniPath));
             SKSE::log::info("Loaded settings from {}", iniPath.string());
             ClampValues();
+            ApplyLogLevel();
             ApplyIntegrationGuards();
             if (!complete) {
                 SaveToIni();
@@ -411,6 +416,7 @@ namespace JunkIt {
             ApplyIni(ParseIni(mcmPath));
             SKSE::log::info("Migrated settings from {}", mcmPath.string());
             ClampValues();
+            ApplyLogLevel();
             ApplyIntegrationGuards();
             SaveToIni();
             LogSettings();
@@ -424,6 +430,7 @@ namespace JunkIt {
 
     bool Settings::SaveToIni() {
         ClampValues();
+        ApplyLogLevel();
         ApplyIntegrationGuards();
 
         const auto iniPath = AbsolutePath(kIniPath);
@@ -474,6 +481,7 @@ namespace JunkIt {
             out << "bNotifyOnMarkUnmark=" << (g_values.notifyOnMarkUnmark ? 1 : 0) << "\n";
             out << "bNotifyOnJunkTransfer=" << (g_values.notifyOnJunkTransfer ? 1 : 0) << "\n";
             out << "bNotifyOnJunkSell=" << (g_values.notifyOnJunkSell ? 1 : 0) << "\n";
+            out << "iLogLevel=" << g_values.logLevel << "\n";
             out << "fHeavyLoadDelayMultiplier=" << g_values.heavyLoadDelayMultiplier << "\n";
             out << "iLargeUniqueTypes=" << g_values.largeUniqueTypes << "\n";
             out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n";
@@ -597,6 +605,9 @@ namespace JunkIt {
     bool Settings::GetNotifyOnMarkUnmark() { return g_values.notifyOnMarkUnmark; }
     bool Settings::GetNotifyOnJunkTransfer() { return g_values.notifyOnJunkTransfer; }
     bool Settings::GetNotifyOnJunkSell() { return g_values.notifyOnJunkSell; }
+    Settings::LogLevel Settings::GetLogLevel() {
+        return static_cast<LogLevel>(g_values.logLevel);
+    }
     bool Settings::GetAggressiveRefresh() { return g_values.aggressiveRefresh; }
     std::int32_t Settings::GetAggressiveRefreshMaxInterval() { return g_values.aggressiveRefreshMaxInterval; }
     float Settings::GetHeavyLoadDelayMultiplier() { return g_values.heavyLoadDelayMultiplier; }
@@ -720,6 +731,7 @@ namespace JunkIt {
     bool& Settings::NotifyOnMarkUnmarkValue() { return g_values.notifyOnMarkUnmark; }
     bool& Settings::NotifyOnJunkTransferValue() { return g_values.notifyOnJunkTransfer; }
     bool& Settings::NotifyOnJunkSellValue() { return g_values.notifyOnJunkSell; }
+    std::int32_t& Settings::LogLevelValue() { return g_values.logLevel; }
     float& Settings::HeavyLoadDelayMultiplierValue() { return g_values.heavyLoadDelayMultiplier; }
     std::int32_t& Settings::LargeUniqueTypesValue() { return g_values.largeUniqueTypes; }
     std::int32_t& Settings::LargeTotalItemsValue() { return g_values.largeTotalItems; }
@@ -752,5 +764,39 @@ namespace JunkIt {
             case SortPriority::kChaos: return "Chaos";
         }
         return "Chaos";
+    }
+
+    const char* Settings::LogLevelLabel(LogLevel level) {
+        switch (level) {
+            case LogLevel::kTrace: return "Trace";
+            case LogLevel::kDebug: return "Debug";
+            case LogLevel::kInfo: return "Info";
+            case LogLevel::kWarn: return "Warn";
+            case LogLevel::kError: return "Error";
+        }
+        return "Info";
+    }
+
+    void Settings::ApplyLogLevel() {
+        spdlog::level::level_enum level = spdlog::level::info;
+        switch (static_cast<LogLevel>(g_values.logLevel)) {
+            case LogLevel::kTrace:
+                level = spdlog::level::trace;
+                break;
+            case LogLevel::kDebug:
+                level = spdlog::level::debug;
+                break;
+            case LogLevel::kInfo:
+                level = spdlog::level::info;
+                break;
+            case LogLevel::kWarn:
+                level = spdlog::level::warn;
+                break;
+            case LogLevel::kError:
+                level = spdlog::level::err;
+                break;
+        }
+        spdlog::set_level(level);
+        spdlog::flush_on(level);
     }
 }

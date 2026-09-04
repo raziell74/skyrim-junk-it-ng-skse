@@ -625,6 +625,16 @@ namespace JunkIt {
             return items;
         }
 
+        const char* const* LogLevelItems() {
+            static const char* items[5];
+            items[0] = Translation::Get("$JunkIt_LogLevel_Trace_ENUM").c_str();
+            items[1] = Translation::Get("$JunkIt_LogLevel_Debug_ENUM").c_str();
+            items[2] = Translation::Get("$JunkIt_LogLevel_Info_ENUM").c_str();
+            items[3] = Translation::Get("$JunkIt_LogLevel_Warn_ENUM").c_str();
+            items[4] = Translation::Get("$JunkIt_LogLevel_Error_ENUM").c_str();
+            return items;
+        }
+
         void RenderGeneral() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_General");
@@ -1314,6 +1324,17 @@ namespace JunkIt {
         void RenderAdvanced() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_Advanced");
+
+            ImGui::SeparatorText(Translation::Get("$JunkIt_LoggingHeader").c_str());
+            if (BeginSettingsTable("advancedLog")) {
+                SaveIfChanged(ComboRow(
+                    "$JunkIt_LogLevel",
+                    "$JunkIt_LogLevel_Help",
+                    Settings::LogLevelValue(),
+                    LogLevelItems(),
+                    5));
+                ImGui::EndTable();
+            }
 
             ImGui::SeparatorText(Translation::Get("$AutoloadJunkList_Header").c_str());
             if (BeginSettingsTable("advancedAuto")) {
