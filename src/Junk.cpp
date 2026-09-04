@@ -1633,6 +1633,52 @@ namespace JunkIt {
             return;
         }
 
+        std::unordered_set<FormID> wanted;
+        wanted.reserve(remaining.size());
+        for (const auto& item : remaining) {
+            wanted.insert(item.formId);
+        }
+
+        std::unordered_map<FormID, InventoryEntryData*> entriesByForm;
+        if (auto* changes = from->GetInventoryChanges(); changes && changes->entryList) {
+            for (auto& entry : *changes->entryList) {
+                if (!entry || !entry->object) {
+                    continue;
+                }
+                const FormID formId = entry->object->GetFormID();
+                if (!wanted.contains(formId) || entriesByForm.contains(formId)) {
+                    continue;
+                }
+                if (GetSellableJunkCount(entry) > 0) {
+                    entriesByForm[formId] = entry;
+                }
+            }
+        }
+
+        auto resolveSellable = [&](TESBoundObject* bound) {
+            InventoryEntryData* chosen = nullptr;
+            Count available = 0;
+            const FormID formId = bound->GetFormID();
+            if (auto it = entriesByForm.find(formId); it != entriesByForm.end()) {
+                available = GetSellableJunkCount(it->second);
+                if (available > 0) {
+                    return std::pair{ it->second, available };
+                }
+                entriesByForm.erase(it);
+            }
+            ForEachInventoryEntry(from, [&](InventoryEntryData* entry) {
+                if (chosen || !entry || entry->object != bound) {
+                    return;
+                }
+                const Count n = GetSellableJunkCount(entry);
+                if (n > 0) {
+                    chosen = entry;
+                    available = n;
+                }
+            });
+            return std::pair{ chosen, available };
+        };
+
         Count sold = 0;
         while (!remaining.empty() && sold < maxUnits) {
             auto& item = remaining.front();
@@ -1645,18 +1691,7 @@ namespace JunkIt {
             const Count take = std::min(item.count, maxUnits - sold);
             Count soldThis = 0;
             while (soldThis < take) {
-                InventoryEntryData* chosen = nullptr;
-                Count available = 0;
-                ForEachInventoryEntry(from, [&](InventoryEntryData* entry) {
-                    if (chosen || !entry || entry->object != bound) {
-                        return;
-                    }
-                    const Count n = GetSellableJunkCount(entry);
-                    if (n > 0) {
-                        chosen = entry;
-                        available = n;
-                    }
-                });
+                auto [chosen, available] = resolveSellable(bound);
                 if (!chosen) {
                     break;
                 }
@@ -1665,6 +1700,7 @@ namespace JunkIt {
                     SKSE::log::debug("Selling {} x{}", bound->GetName(), chunk);
                 }
                 SellEntryUnits(chosen, from, to, chunk);
+                entriesByForm.erase(bound->GetFormID());
                 if (spdlog::should_log(spdlog::level::debug)) {
                     SKSE::log::debug("Transaction for {} {} complete", chunk, bound->GetName());
                 }
