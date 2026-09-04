@@ -1,10 +1,11 @@
 #include "OperationOverlay.h"
 #include "Translation.h"
-#include "settings.h"
 
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <WICTextureLoader.h>
+
+#include "settings.h"
 
 #include <algorithm>
 #include <atomic>
