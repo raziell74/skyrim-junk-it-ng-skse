@@ -1335,6 +1335,17 @@ namespace JunkIt {
     void JunkHandler::ExecuteTransfer(std::vector<InventoryEntryData*> transferList, TESObjectREFR* transferContainer, ContainerMenu::ContainerMode containerMode, int menuView) {
         SKSE::log::info("---- Executing Junk Transfer ----");
         auto player = RE::PlayerCharacter::GetSingleton();
+        TESObjectREFR* source = menuView == 0 ? transferContainer : player;
+
+        cInventoryContainerId = 0;
+        const auto* sourceCounts = GetContainerInventoryCountMap(source);
+        auto countOf = [&](TESBoundObject* obj) -> Count {
+            const auto it = sourceCounts->find(obj);
+            if (it == sourceCounts->end() || it->second <= 0) {
+                return 0;
+            }
+            return it->second;
+        };
 
         ITEM_REMOVE_REASON reason = ITEM_REMOVE_REASON::kStoreInContainer;
         if (containerMode == ContainerMenu::ContainerMode::kNPCMode) {
@@ -1355,7 +1366,7 @@ namespace JunkIt {
             for (auto* entryData : transferList) {
                 if (!entryData || !entryData->object) continue;
 
-                Count itemCount = GetItemCount(transferContainer, entryData->object);
+                Count itemCount = countOf(entryData->object);
                 if (itemCount > 0) {
                     if (spdlog::should_log(spdlog::level::debug)) {
                         SKSE::log::debug("Retrieving {} x{}", entryData->object->GetName(), itemCount);
@@ -1387,7 +1398,7 @@ namespace JunkIt {
                 for (auto* entryData : transferList) {
                     if (!entryData || !entryData->object) continue;
 
-                    Count iCount = GetItemCount(player, entryData->object);
+                    Count iCount = countOf(entryData->object);
                     Count iTotalCount = iCount;
                     totalPossibleTransferred += iTotalCount;
 
@@ -1435,7 +1446,7 @@ namespace JunkIt {
                 for (auto* entryData : transferList) {
                     if (!entryData || !entryData->object) continue;
 
-                    Count itemCount = GetItemCount(player, entryData->object);
+                    Count itemCount = countOf(entryData->object);
                     if (itemCount > 0) {
                         if (spdlog::should_log(spdlog::level::debug)) {
                             SKSE::log::debug("Transferring {} x{}", entryData->object->GetName(), itemCount);
