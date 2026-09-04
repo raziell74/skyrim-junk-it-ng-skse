@@ -84,14 +84,17 @@ namespace JunkIt {
         static std::string GetEnchantmentFormConfig(const RE::ExtraDataList* extraList);
         static bool IsCanonicalIdentity(const std::string& identity);
         static std::string GetDisplayNameFromIdentity(const std::string& identity);
+        static std::string GetFormConfigFromIdentity(const std::string& identity);
         void ApplyUnmarkLocked(const std::string& identity);
         void PruneAutoJunkedLocked();
+        void RebuildJunkFormIndexLocked();
 
         JunkDataManager() = default;
         JunkDataManager(const JunkDataManager&) = delete;
         JunkDataManager& operator=(const JunkDataManager&) = delete;
 
         std::unordered_set<std::string> junkSet;
+        std::unordered_set<std::string> junkFormConfigs;
         std::unordered_set<std::string> autoJunkedSet;
         std::unordered_set<std::string> noAutoJunkSet;
         std::vector<JunkItem> junkItems;

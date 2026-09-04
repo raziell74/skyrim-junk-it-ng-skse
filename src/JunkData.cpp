@@ -99,6 +99,24 @@ namespace JunkIt {
         return identity.substr(firstPipe + 1, secondPipe - firstPipe - 1);
     }
 
+    std::string JunkDataManager::GetFormConfigFromIdentity(const std::string& identity) {
+        const auto firstPipe = identity.find('|');
+        if (firstPipe == std::string::npos || firstPipe == 0) {
+            return "";
+        }
+        return identity.substr(0, firstPipe);
+    }
+
+    void JunkDataManager::RebuildJunkFormIndexLocked() {
+        junkFormConfigs.clear();
+        for (const auto& identity : junkSet) {
+            const auto formConfig = GetFormConfigFromIdentity(identity);
+            if (!formConfig.empty()) {
+                junkFormConfigs.insert(formConfig);
+            }
+        }
+    }
+
     std::string JunkDataManager::BuildIdentityForEntry(RE::InventoryEntryData* entry, const RE::ExtraDataList* extraList) {
         if (!entry || !entry->object) {
             return "";
@@ -126,14 +144,8 @@ namespace JunkIt {
         if (formConfig.empty()) {
             return false;
         }
-        const std::string prefix = formConfig + "|";
         std::lock_guard<std::mutex> guard(lock);
-        for (const auto& identity : junkSet) {
-            if (identity.rfind(prefix, 0) == 0) {
-                return true;
-            }
-        }
-        return false;
+        return junkFormConfigs.contains(formConfig);
     }
 
     std::optional<std::string> JunkDataManager::AddJunkItem(RE::InventoryEntryData* entry) {
@@ -159,6 +171,10 @@ namespace JunkIt {
             }
             if (junkSet.insert(identity).second) {
                 junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
+                const auto formConfig = GetFormConfigFromIdentity(identity);
+                if (!formConfig.empty()) {
+                    junkFormConfigs.insert(formConfig);
+                }
                 if (!addedIdentity) {
                     addedIdentity = identity;
                 }
@@ -180,6 +196,10 @@ namespace JunkIt {
         }
 
         junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
+        const auto formConfig = GetFormConfigFromIdentity(identity);
+        if (!formConfig.empty()) {
+            junkFormConfigs.insert(formConfig);
+        }
         if (autoJunked) {
             autoJunkedSet.insert(identity);
             noAutoJunkSet.erase(identity);
@@ -236,6 +256,7 @@ namespace JunkIt {
         for (const auto& identity : junkSet) {
             junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
         }
+        RebuildJunkFormIndexLocked();
         return removedIdentity;
     }
 
@@ -267,6 +288,7 @@ namespace JunkIt {
     void JunkDataManager::Clear() {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
+        junkFormConfigs.clear();
         junkItems.clear();
         autoJunkedSet.clear();
     }
@@ -324,6 +346,7 @@ namespace JunkIt {
             return false;
         }
         ApplyUnmarkLocked(identity);
+        RebuildJunkFormIndexLocked();
         return true;
     }
 
@@ -518,6 +541,7 @@ namespace JunkIt {
         std::lock_guard<std::mutex> guard(lock);
         if (replace) {
             junkSet.clear();
+            junkFormConfigs.clear();
             junkItems.clear();
             autoJunkedSet.clear();
             if (hasExclusions) {
@@ -531,6 +555,10 @@ namespace JunkIt {
                 continue;
             }
             junkItems.push_back(item);
+            const auto formConfig = GetFormConfigFromIdentity(item.identity);
+            if (!formConfig.empty()) {
+                junkFormConfigs.insert(formConfig);
+            }
             ++added;
         }
 
@@ -596,6 +624,7 @@ namespace JunkIt {
 
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
+        junkFormConfigs.clear();
         junkItems.clear();
 
         if (recordVersion != kJunkRecordVersion) {
@@ -647,6 +676,10 @@ namespace JunkIt {
                 displayName = GetDisplayNameFromIdentity(identity);
             }
             junkItems.emplace_back(identity, displayName);
+            const auto formConfig = GetFormConfigFromIdentity(identity);
+            if (!formConfig.empty()) {
+                junkFormConfigs.insert(formConfig);
+            }
         }
     }
 
@@ -735,6 +768,7 @@ namespace JunkIt {
     void JunkDataManager::Revert(SKSE::SerializationInterface*) {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
+        junkFormConfigs.clear();
         junkItems.clear();
         autoJunkedSet.clear();
         noAutoJunkSet.clear();
