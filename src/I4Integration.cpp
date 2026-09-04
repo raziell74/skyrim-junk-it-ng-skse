@@ -91,6 +91,26 @@ namespace JunkIt {
         obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
     }
 
+    void I4Integration::ReprocessOpenList(RE::GFxMovieView* movie) {
+        if (!movie) {
+            return;
+        }
+
+        RE::GFxValue itemList;
+        movie->GetVariable(&itemList, "_root.Menu_mc.inventoryLists.itemList");
+        if (!itemList.IsObject()) {
+            return;
+        }
+
+        RE::GFxValue setter;
+        movie->GetVariable(&setter, "_global.InventoryIconSetter.prototype");
+        if (!setter.IsObject()) {
+            return;
+        }
+
+        setter.Invoke("processList", nullptr, &itemList, 1);
+    }
+
     namespace {
         RE::TESBoundObject* BoundFromGFxEntry(RE::GFxValue& entryObject) {
             RE::GFxValue formIdVal;

@@ -28,6 +28,7 @@ namespace JunkIt {
 
         static void Install(RE::GFxMovieView* a_view, const char* a_pathToObj);
         static void SetJunkFlags(RE::GFxValue& obj, bool isJunk);
+        static void ReprocessOpenList(RE::GFxMovieView* movie);
 
     private:
         class ProcessListFunc : public RE::GFxFunctionHandler {

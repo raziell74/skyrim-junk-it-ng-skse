@@ -142,7 +142,11 @@ namespace JunkIt {
                     I4Integration::SetJunkFlags(item->obj, isNowJunk);
                 }
             }
-            InvalidateInventoryLists(GetOpenInventoryMovie());
+            auto* movie = GetOpenInventoryMovie();
+            if (!isNowJunk) {
+                I4Integration::ReprocessOpenList(movie);
+            }
+            InvalidateInventoryLists(movie);
         }
 
         struct PreviewStack {
