@@ -23,6 +23,25 @@ namespace JunkIt {
         constexpr auto kJsonJunkPath = "Data/SKSE/Plugins/JunkIt/junklist.json";
         const std::regex kCanonicalIdentityRegex(
             R"(^(0x[0-9A-Fa-f]+(?:~[^|]+)?)\|([^|]+)\|((?:0x[0-9A-Fa-f]+(?:~[^|]+)?)|none)$)");
+
+        std::vector<std::string> BuildEntryIdentities(RE::InventoryEntryData* entry) {
+            std::vector<std::string> identities;
+            if (!entry || !entry->object) {
+                return identities;
+            }
+            const auto base = JunkDataManager::CaptureIdentityBase(entry->object, entry->GetDisplayName());
+            if (!base) {
+                return identities;
+            }
+            if (!entry->extraLists || entry->extraLists->empty()) {
+                identities.push_back(JunkDataManager::BuildIdentity(*base, nullptr));
+            } else {
+                for (auto* extraList : *entry->extraLists) {
+                    identities.push_back(JunkDataManager::BuildIdentity(*base, extraList));
+                }
+            }
+            return identities;
+        }
     }
 
     std::string JunkDataManager::GetEnchantmentFormConfig(const RE::ExtraDataList* extraList) {
@@ -155,20 +174,12 @@ namespace JunkIt {
             return std::nullopt;
         }
 
-        std::vector<std::string> identities;
-        if (!entry->extraLists || entry->extraLists->empty()) {
-            identities.push_back(BuildIdentityForEntry(entry, nullptr));
-        } else {
-            for (auto* extraList : *entry->extraLists) {
-                identities.push_back(BuildIdentityForEntry(entry, extraList));
-            }
-        }
+        const auto identities = BuildEntryIdentities(entry);
 
         std::optional<std::string> addedIdentity;
         std::lock_guard<std::mutex> guard(lock);
         for (const auto& identity : identities) {
-            if (!IsCanonicalIdentity(identity)) {
-                SKSE::log::warn("Skipping add for non-canonical identity: {}", identity);
+            if (identity.empty()) {
                 continue;
             }
             if (junkSet.insert(identity).second) {
@@ -230,14 +241,7 @@ namespace JunkIt {
             return std::nullopt;
         }
 
-        std::vector<std::string> identities;
-        if (!entry->extraLists || entry->extraLists->empty()) {
-            identities.push_back(BuildIdentityForEntry(entry, nullptr));
-        } else {
-            for (auto* extraList : *entry->extraLists) {
-                identities.push_back(BuildIdentityForEntry(entry, extraList));
-            }
-        }
+        const auto identities = BuildEntryIdentities(entry);
 
         std::optional<std::string> removedIdentity;
         std::unordered_set<std::string> removedIdentities;
@@ -282,12 +286,14 @@ namespace JunkIt {
             return false;
         }
 
-        if (!entry->extraLists || entry->extraLists->empty()) {
-            return IsJunk(BuildIdentityForEntry(entry, nullptr));
+        if (!IsAnyJunkForForm(entry->object)) {
+            return false;
         }
 
-        for (auto* extraList : *entry->extraLists) {
-            if (IsJunk(BuildIdentityForEntry(entry, extraList))) {
+        const auto identities = BuildEntryIdentities(entry);
+        std::lock_guard<std::mutex> guard(lock);
+        for (const auto& identity : identities) {
+            if (!identity.empty() && junkSet.find(identity) != junkSet.end()) {
                 return true;
             }
         }

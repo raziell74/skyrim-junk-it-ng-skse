@@ -2132,7 +2132,7 @@ namespace JunkIt {
                             auto& junkManager = JunkDataManager::GetSingleton();
                             const auto addedIdentity = junkManager.AddJunkItem(inventoryEntry);
 
-                            if (junkManager.IsJunk(inventoryEntry)) {
+                            if (addedIdentity) {
                                 SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, true, playerOwned);
                             }
 
@@ -2174,7 +2174,7 @@ namespace JunkIt {
             junkIdentity = junkManager.AddJunkItem(inventoryEntry);
         }
 
-        bool isNowJunk = junkManager.IsJunk(inventoryEntry);
+        bool isNowJunk = isJunk != junkIdentity.has_value();
 
         if (isJunk != isNowJunk) {
             SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, isNowJunk, playerOwned);
