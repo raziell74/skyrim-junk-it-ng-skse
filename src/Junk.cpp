@@ -2228,19 +2228,19 @@ namespace JunkIt {
         trashStampPending = false;
     }
 
-    void JunkHandler::TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to) {
+    JunkHandler::Count JunkHandler::TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to) {
         if (!a_entry || !a_entry->object || !a_from || !a_to) {
-            return;
+            return 0;
         }
 
         const auto scan = ScanEntryJunk(a_entry, true);
         if (scan.junkCount <= 0) {
-            return;
+            return 0;
         }
 
         if (scan.fullyJunk) {
             MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kStoreInContainer, scan.junkCount, nullptr);
-            return;
+            return scan.junkCount;
         }
 
         Count remaining = scan.junkCount;
@@ -2256,6 +2256,7 @@ namespace JunkIt {
         if (remaining > 0 && scan.plainIsJunk) {
             MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kStoreInContainer, remaining, nullptr);
         }
+        return scan.junkCount;
     }
 
     bool JunkHandler::EntryIsTrashable(InventoryEntryData* entry) {
@@ -2281,6 +2282,25 @@ namespace JunkIt {
             }
         });
         return found;
+    }
+
+    JunkHandler::Count JunkHandler::CountInventoryTrashUnits() {
+        Count total = 0;
+        auto* player = PlayerCharacter::GetSingleton();
+        if (!player) {
+            return 0;
+        }
+
+        ForEachInventoryEntry(player, [&](InventoryEntryData* entry) {
+            if (!entry || !entry->object) {
+                return;
+            }
+            if (!EntryPassesPreviewFilters(entry, false)) {
+                return;
+            }
+            total += GetSellableJunkCount(entry);
+        });
+        return total;
     }
 
     std::vector<InventoryEntryData*> JunkHandler::BuildInventoryTrashList() {
@@ -2323,9 +2343,7 @@ namespace JunkIt {
             if (!entry || !entry->object) {
                 continue;
             }
-            const Count n = GetSellableJunkCount(entry);
-            TrashEntryUnits(entry, player, chest);
-            total += n;
+            total += TrashEntryUnits(entry, player, chest);
         }
         if (total > 0) {
             NoteTrashDeposit();
@@ -2430,12 +2448,8 @@ namespace JunkIt {
             return;
         }
 
-        auto trashList = BuildInventoryTrashList();
-        Count totalCount = 0;
-        for (auto* entry : trashList) {
-            totalCount += GetSellableJunkCount(entry);
-        }
-        if (trashList.empty() || totalCount <= 0) {
+        const Count totalCount = CountInventoryTrashUnits();
+        if (totalCount <= 0) {
             RE::DebugMessageBox(Translation::Get("$JunkIt_TrashNone").c_str());
             operationInProgress.store(false);
             return;

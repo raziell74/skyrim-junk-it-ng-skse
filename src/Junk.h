@@ -175,8 +175,9 @@ namespace JunkIt {
         static void EmptyTrashContainer(TESObjectREFR* chest);
         static void NoteTrashDeposit();
         static void ClearTrashStampIfEmpty();
+        static Count CountInventoryTrashUnits();
         static std::vector<InventoryEntryData*> BuildInventoryTrashList();
-        static void TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to);
+        static Count TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to);
         static void ExecuteTrash(TESObjectREFR* from, TESBoundObject* item, Count count, ExtraDataList* extraList);
         static void ExecuteBulkTrash(std::vector<InventoryEntryData*> trashList);
         static void HideOpenInventoryMenus();
