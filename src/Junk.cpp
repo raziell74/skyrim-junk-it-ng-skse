@@ -128,6 +128,33 @@ namespace JunkIt {
             std::int32_t value = 0;
         };
 
+        std::int32_t FitCountToCarryWeight(std::int32_t count, float itemWeight, float currentWeight, float maxWeight) {
+            if (count <= 0) {
+                return 0;
+            }
+            if (!(itemWeight > 0.0f)) {
+                return currentWeight > maxWeight ? 0 : count;
+            }
+
+            const float remaining = maxWeight - currentWeight;
+            const float maxFitF = remaining > 0.0f ? std::floor(remaining / itemWeight) : 0.0f;
+
+            std::int32_t n = 0;
+            if (maxFitF >= static_cast<float>(count)) {
+                n = count;
+            } else if (maxFitF > 0.0f) {
+                n = static_cast<std::int32_t>(maxFitF);
+            }
+
+            // Keep floor() aligned with the old (weight * n + current) > max comparison.
+            if (n > 0 && (itemWeight * static_cast<float>(n)) + currentWeight > maxWeight) {
+                n -= 1;
+            } else if (n < count && (itemWeight * static_cast<float>(n + 1)) + currentWeight <= maxWeight) {
+                n += 1;
+            }
+            return n;
+        }
+
         void SortPreviewStacks(std::vector<PreviewStack>& stacks, Settings::SortPriority priority) {
             if (priority == Settings::SortPriority::kChaos) {
                 return;
@@ -775,11 +802,7 @@ namespace JunkIt {
 
                 Count iCount = stack.count;
                 const float itemWeight = stack.entry->object->GetWeight();
-                float currentWeightWithItems = (itemWeight * static_cast<float>(iCount)) + currentWeight;
-                while (currentWeightWithItems > maxWeight && iCount > 0) {
-                    iCount -= 1;
-                    currentWeightWithItems = (itemWeight * static_cast<float>(iCount)) + currentWeight;
-                }
+                iCount = FitCountToCarryWeight(iCount, itemWeight, currentWeight, maxWeight);
 
                 if (iCount > 0) {
                     currentWeight += itemWeight * static_cast<float>(iCount);
@@ -1404,12 +1427,7 @@ namespace JunkIt {
 
                     if (iCount > 0) {
                         float itemWeight = entryData->object->GetWeight();
-                        float currentWeightWithItems = (itemWeight * static_cast<float>(iCount)) + currentWeight;
-
-                        while (currentWeightWithItems > maxWeight && iCount > 0) {
-                            iCount -= 1;
-                            currentWeightWithItems = (itemWeight * static_cast<float>(iCount)) + currentWeight;
-                        }
+                        iCount = FitCountToCarryWeight(iCount, itemWeight, currentWeight, maxWeight);
 
                         if (iCount > 0) {
                             MoveItems(entryData->object, player, transferContainer, reason, iCount);
