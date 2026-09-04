@@ -726,7 +726,7 @@ namespace JunkIt {
         }
     }
 
-    std::optional<JunkHandler::ContainerPreviewCounts> JunkHandler::CaptureContainerPreview() {
+    std::optional<JunkHandler::ContainerPreviewCounts> JunkHandler::CaptureContainerPreview(ContainerPreviewSide side) {
         auto* player = PlayerCharacter::GetSingleton();
         TESObjectREFR* container = GetContainerMenuContainer();
         if (!player || !container) {
@@ -740,12 +740,18 @@ namespace JunkIt {
             return JunkHandler::GetSellableJunkCount(entry);
         };
 
-        std::vector<PreviewStack> retrieveStacks;
-        FillPreviewStacks(container, false, retrieveStacks, passes, sellable);
-
         ContainerPreviewCounts preview;
-        for (const auto& stack : retrieveStacks) {
-            preview.retrieveCount += stack.count;
+
+        if (side != ContainerPreviewSide::Store) {
+            std::vector<PreviewStack> retrieveStacks;
+            FillPreviewStacks(container, false, retrieveStacks, passes, sellable);
+            for (const auto& stack : retrieveStacks) {
+                preview.retrieveCount += stack.count;
+            }
+        }
+
+        if (side == ContainerPreviewSide::Retrieve) {
+            return preview;
         }
 
         std::vector<PreviewStack> storeStacks;
@@ -1246,8 +1252,13 @@ namespace JunkIt {
         SKSE::log::info("Transfer list contains {} unique item types", transferList.size());
 
         Count totalCount = 0;
-        if (const auto preview = CaptureContainerPreview()) {
-            totalCount = menuView == 0 ? preview->retrieveCount : preview->storeCount;
+        if (Settings::ConfirmTransfer() && !transferList.empty()) {
+            const auto side = menuView == 0
+                ? ContainerPreviewSide::Retrieve
+                : ContainerPreviewSide::Store;
+            if (const auto preview = CaptureContainerPreview(side)) {
+                totalCount = menuView == 0 ? preview->retrieveCount : preview->storeCount;
+            }
         }
 
         if (menuView == 0) {

@@ -74,6 +74,8 @@ namespace JunkIt {
             std::int32_t retrieveCount = 0;
         };
 
+        enum class ContainerPreviewSide { Both, Store, Retrieve };
+
         struct SellPreviewStack {
             std::int32_t count = 0;
             std::int32_t unitPrice = 0;
@@ -86,7 +88,8 @@ namespace JunkIt {
             std::vector<SellPreviewStack> stacks;
         };
 
-        [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview();
+        [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview(
+            ContainerPreviewSide side = ContainerPreviewSide::Both);
         [[nodiscard]] static SellPreviewCapture CaptureSellPreview();
         [[nodiscard]] static std::optional<std::int32_t> ComputeSellPreviewGold(
             const std::vector<SellPreviewStack>& stacks);
