@@ -124,43 +124,71 @@ namespace JunkIt {
         struct PreviewStack {
             InventoryEntryData* entry = nullptr;
             std::int32_t count = 0;
+            float weight = 0.0f;
+            std::int32_t value = 0;
         };
 
         void SortPreviewStacks(std::vector<PreviewStack>& stacks, Settings::SortPriority priority) {
-            const auto valueWeight = [](InventoryEntryData* entry) {
-                const float weight = entry->GetWeight();
-                return weight != 0.0f ? entry->GetValue() / weight : 0.0f;
+            if (priority == Settings::SortPriority::kChaos) {
+                return;
+            }
+
+            const bool needWeight =
+                priority == Settings::SortPriority::kWeightHighLow ||
+                priority == Settings::SortPriority::kWeightLowHigh ||
+                priority == Settings::SortPriority::kValueWeightHighLow ||
+                priority == Settings::SortPriority::kValueWeightLowHigh;
+            const bool needValue =
+                priority == Settings::SortPriority::kValueHighLow ||
+                priority == Settings::SortPriority::kValueLowHigh ||
+                priority == Settings::SortPriority::kValueWeightHighLow ||
+                priority == Settings::SortPriority::kValueWeightLowHigh;
+
+            for (auto& stack : stacks) {
+                if (!stack.entry) {
+                    continue;
+                }
+                if (needWeight) {
+                    stack.weight = stack.entry->GetWeight();
+                }
+                if (needValue) {
+                    stack.value = stack.entry->GetValue();
+                }
+            }
+
+            const auto valueWeight = [](const PreviewStack& stack) {
+                return stack.weight != 0.0f ? static_cast<float>(stack.value) / stack.weight : 0.0f;
             };
 
             switch (priority) {
                 case Settings::SortPriority::kWeightHighLow:
                     std::sort(stacks.begin(), stacks.end(), [](const PreviewStack& a, const PreviewStack& b) {
-                        return a.entry->GetWeight() > b.entry->GetWeight();
+                        return a.weight > b.weight;
                     });
                     break;
                 case Settings::SortPriority::kWeightLowHigh:
                     std::sort(stacks.begin(), stacks.end(), [](const PreviewStack& a, const PreviewStack& b) {
-                        return a.entry->GetWeight() < b.entry->GetWeight();
+                        return a.weight < b.weight;
                     });
                     break;
                 case Settings::SortPriority::kValueHighLow:
                     std::sort(stacks.begin(), stacks.end(), [](const PreviewStack& a, const PreviewStack& b) {
-                        return a.entry->GetValue() > b.entry->GetValue();
+                        return a.value > b.value;
                     });
                     break;
                 case Settings::SortPriority::kValueLowHigh:
                     std::sort(stacks.begin(), stacks.end(), [](const PreviewStack& a, const PreviewStack& b) {
-                        return a.entry->GetValue() < b.entry->GetValue();
+                        return a.value < b.value;
                     });
                     break;
                 case Settings::SortPriority::kValueWeightHighLow:
                     std::sort(stacks.begin(), stacks.end(), [&](const PreviewStack& a, const PreviewStack& b) {
-                        return valueWeight(a.entry) > valueWeight(b.entry);
+                        return valueWeight(a) > valueWeight(b);
                     });
                     break;
                 case Settings::SortPriority::kValueWeightLowHigh:
                     std::sort(stacks.begin(), stacks.end(), [&](const PreviewStack& a, const PreviewStack& b) {
-                        return valueWeight(a.entry) < valueWeight(b.entry);
+                        return valueWeight(a) < valueWeight(b);
                     });
                     break;
                 case Settings::SortPriority::kChaos:
@@ -999,7 +1027,7 @@ namespace JunkIt {
         }
 
         const auto& listItems = itemListMenu->items;
-        std::vector<InventoryEntryData*> sortFormData;
+        std::vector<PreviewStack> sortFormData;
 
         SKSE::log::info("Processing Entry List for transferable junk items");
         auto& junkManager = JunkDataManager::GetSingleton();
@@ -1030,36 +1058,14 @@ namespace JunkIt {
                 continue;
             }
 
-            sortFormData.push_back(entryItem->data.objDesc);
+            sortFormData.push_back({ entryItem->data.objDesc, 0 });
         }
 
-        auto priority = Settings::GetTransferPriority();
-        if (priority == Settings::SortPriority::kWeightHighLow) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetWeight() > b->GetWeight(); });
-        } else if (priority == Settings::SortPriority::kWeightLowHigh) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetWeight() < b->GetWeight(); });
-        } else if (priority == Settings::SortPriority::kValueHighLow) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetValue() > b->GetValue(); });
-        } else if (priority == Settings::SortPriority::kValueLowHigh) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) { return a->GetValue() < b->GetValue(); });
-        } else if (priority == Settings::SortPriority::kValueWeightHighLow) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) {
-                float aVW = a->GetWeight() != 0 ? a->GetValue() / a->GetWeight() : 0;
-                float bVW = b->GetWeight() != 0 ? b->GetValue() / b->GetWeight() : 0;
-                return aVW > bVW;
-            });
-        } else if (priority == Settings::SortPriority::kValueWeightLowHigh) {
-            std::sort(sortFormData.begin(), sortFormData.end(), [](const InventoryEntryData* a, const InventoryEntryData* b) {
-                float aVW = a->GetWeight() != 0 ? a->GetValue() / a->GetWeight() : 0;
-                float bVW = b->GetWeight() != 0 ? b->GetValue() / b->GetWeight() : 0;
-                return aVW < bVW;
-            });
-        }
+        SortPreviewStacks(sortFormData, Settings::GetTransferPriority());
 
-        for (InventoryEntryData* entryData : sortFormData) {
-            const TESBoundObject* entryObject = entryData->object;
-            if (!entryObject) continue;
-            transferList.push_back(entryData);
+        for (const auto& stack : sortFormData) {
+            if (!stack.entry || !stack.entry->object) continue;
+            transferList.push_back(stack.entry);
         }
         SKSE::log::info("Finalized TransferList: {} items", transferList.size());
         if (spdlog::should_log(spdlog::level::debug)) {
@@ -1099,7 +1105,7 @@ namespace JunkIt {
         // ItemList holds both inventories; StandardItemData::owner distinguishes player vs vendor.
         const auto playerHandle = player->GetHandle().native_handle();
         const auto& listItems = itemListMenu->items;
-        std::vector<std::pair<InventoryEntryData*, Count>> sortData;
+        std::vector<PreviewStack> sortData;
 
         SKSE::log::info("Processing BarterMenu ItemList for player-owned sellable junk");
 
@@ -1156,45 +1162,16 @@ namespace JunkIt {
                 continue;
             }
 
-            sortData.emplace_back(objDesc, count);
+            sortData.push_back({ objDesc, count });
         }
 
-        auto priority = Settings::GetSellPriority();
-        if (priority == Settings::SortPriority::kWeightHighLow) {
-            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return a.first->GetWeight() > b.first->GetWeight();
-            });
-        } else if (priority == Settings::SortPriority::kWeightLowHigh) {
-            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return a.first->GetWeight() < b.first->GetWeight();
-            });
-        } else if (priority == Settings::SortPriority::kValueHighLow) {
-            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return a.first->GetValue() > b.first->GetValue();
-            });
-        } else if (priority == Settings::SortPriority::kValueLowHigh) {
-            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                return a.first->GetValue() < b.first->GetValue();
-            });
-        } else if (priority == Settings::SortPriority::kValueWeightHighLow) {
-            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                float aVW = a.first->GetWeight() != 0 ? a.first->GetValue() / a.first->GetWeight() : 0;
-                float bVW = b.first->GetWeight() != 0 ? b.first->GetValue() / b.first->GetWeight() : 0;
-                return aVW > bVW;
-            });
-        } else if (priority == Settings::SortPriority::kValueWeightLowHigh) {
-            std::sort(sortData.begin(), sortData.end(), [](const auto& a, const auto& b) {
-                float aVW = a.first->GetWeight() != 0 ? a.first->GetValue() / a.first->GetWeight() : 0;
-                float bVW = b.first->GetWeight() != 0 ? b.first->GetValue() / b.first->GetWeight() : 0;
-                return aVW < bVW;
-            });
-        }
+        SortPreviewStacks(sortData, Settings::GetSellPriority());
 
-        for (auto& [objDesc, count] : sortData) {
-            if (!objDesc->object) {
+        for (const auto& stack : sortData) {
+            if (!stack.entry || !stack.entry->object) {
                 continue;
             }
-            sellList.push_back({objDesc, count});
+            sellList.push_back({ stack.entry, stack.count });
         }
         SKSE::log::info("Finalized SellList: {} items", sellList.size());
         if (spdlog::should_log(spdlog::level::debug)) {
