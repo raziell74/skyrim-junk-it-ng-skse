@@ -2037,7 +2037,7 @@ namespace JunkIt {
 
         ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
         if (!selectedItem) {
-            SKSE::log::info("No item selected in ItemListMenu. Updating UI and trying again");
+            SKSE::log::debug("No item selected in ItemListMenu. Updating UI and trying again");
             itemListMenu->Update();
 
             selectedItem = itemListMenu->GetSelectedItem();
@@ -2069,16 +2069,18 @@ namespace JunkIt {
             return nullptr;
         }
 
-        std::string itemName = itemForm->GetName();
-        std::string hexFormId = FormUtil::Form::GetFormConfigString(itemForm);
-
         bool playerOwned = false;
         if (auto* player = PlayerCharacter::GetSingleton()) {
             playerOwned = selectedItem->data.owner == player->GetHandle().native_handle();
         }
 
         if (inventoryEntry->IsQuestObject()) {
-            SKSE::log::info("Cannot mark quest item {} [{}] as junk", itemName, hexFormId);
+            if (spdlog::should_log(spdlog::level::debug)) {
+                SKSE::log::debug(
+                    "Cannot mark quest item {} [{}] as junk",
+                    itemForm->GetName(),
+                    FormUtil::Form::GetFormConfigString(itemForm));
+            }
             auto& junkManager = JunkDataManager::GetSingleton();
             if (!junkManager.IsJunk(inventoryEntry)) {
                 SendHUDMessage::ShowHUDMessage("JunkIt - Quest Items cannot be marked as Junk");
@@ -2094,24 +2096,39 @@ namespace JunkIt {
             std::string protectionReason;
 
             if (Settings::ProtectEquipped() && inventoryEntry->IsWorn()) {
-                SKSE::log::info("Item is equipped and protected: {} [{}]", itemName, hexFormId);
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug(
+                        "Item is equipped and protected: {} [{}]",
+                        itemForm->GetName(),
+                        FormUtil::Form::GetFormConfigString(itemForm));
+                }
                 needsConfirmation = true;
                 protectionReason = "equipped";
             } else if (Settings::ProtectFavorites() && inventoryEntry->IsFavorited()) {
-                SKSE::log::info("Item is favorited and protected: {} [{}]", itemName, hexFormId);
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug(
+                        "Item is favorited and protected: {} [{}]",
+                        itemForm->GetName(),
+                        FormUtil::Form::GetFormConfigString(itemForm));
+                }
                 needsConfirmation = true;
                 protectionReason = "favorited";
             }
 
             if (needsConfirmation) {
-                SKSE::log::info("Showing confirmation dialog for protected item");
+                SKSE::log::debug("Showing confirmation dialog for protected item");
                 std::string confirmText = Translation::Format("$JunkIt_MarkProtectedConfirm", protectionReason);
                 ShowConfirmationMessageBox(confirmText.c_str(),
                     { Translation::Get("$JunkIt_Yes"), Translation::Get("$JunkIt_ConfirmNo") },
-                    [inventoryEntry, itemForm, itemObject, itemName, hexFormId, playerOwned, owner = selectedItem->data.owner](unsigned int choice) {
+                    [inventoryEntry, itemForm, itemObject, playerOwned, owner = selectedItem->data.owner](unsigned int choice) {
                         if (choice == 0) {
-                            SKSE::log::info("User confirmed marking protected item as junk");
-                            SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
+                            SKSE::log::debug("User confirmed marking protected item as junk");
+                            if (spdlog::should_log(spdlog::level::debug)) {
+                                SKSE::log::debug(
+                                    "Adding junk status to {} [{}]",
+                                    itemForm->GetName(),
+                                    FormUtil::Form::GetFormConfigString(itemForm));
+                            }
                             auto& junkManager = JunkDataManager::GetSingleton();
                             const auto addedIdentity = junkManager.AddJunkItem(inventoryEntry);
 
@@ -2122,7 +2139,7 @@ namespace JunkIt {
                             RefreshJunkListIcons(UIUtil::ItemList::GetOpenList(), itemObject, owner, true);
 
                             if (addedIdentity) {
-                                SKSE::log::info("Form marked as junk: {}", *addedIdentity);
+                                SKSE::log::debug("Form marked as junk: {}", *addedIdentity);
                             } else {
                                 SKSE::log::warn("Failed to mark form as junk: {}", itemForm->GetName());
                             }
@@ -2131,7 +2148,7 @@ namespace JunkIt {
                                 SendHUDMessage::ShowHUDMessage(msg.c_str());
                             }
                         } else {
-                            SKSE::log::info("User cancelled marking protected item as junk");
+                            SKSE::log::debug("User cancelled marking protected item as junk");
                         }
                     });
                 return itemForm;
@@ -2140,10 +2157,20 @@ namespace JunkIt {
 
         std::optional<std::string> junkIdentity;
         if (isJunk) {
-            SKSE::log::info("Removing junk status from {} [{}]", itemName, hexFormId);
+            if (spdlog::should_log(spdlog::level::debug)) {
+                SKSE::log::debug(
+                    "Removing junk status from {} [{}]",
+                    itemForm->GetName(),
+                    FormUtil::Form::GetFormConfigString(itemForm));
+            }
             junkIdentity = junkManager.RemoveJunkItem(inventoryEntry);
         } else {
-            SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
+            if (spdlog::should_log(spdlog::level::debug)) {
+                SKSE::log::debug(
+                    "Adding junk status to {} [{}]",
+                    itemForm->GetName(),
+                    FormUtil::Form::GetFormConfigString(itemForm));
+            }
             junkIdentity = junkManager.AddJunkItem(inventoryEntry);
         }
 
@@ -2157,7 +2184,7 @@ namespace JunkIt {
 
         if (isNowJunk) {
             if (junkIdentity) {
-                SKSE::log::info("Form marked as junk: {}", *junkIdentity);
+                SKSE::log::debug("Form marked as junk: {}", *junkIdentity);
             } else {
                 SKSE::log::warn("Form marked as junk but no identity was returned for {}", itemForm->GetName());
             }
@@ -2166,7 +2193,9 @@ namespace JunkIt {
                 SendHUDMessage::ShowHUDMessage(msg.c_str());
             }
         } else {
-            SKSE::log::info("Form: {} is no longer marked as junk", itemForm->GetName());
+            if (spdlog::should_log(spdlog::level::debug)) {
+                SKSE::log::debug("Form: {} is no longer marked as junk", itemForm->GetName());
+            }
             if (Settings::GetNotifyOnMarkUnmark()) {
                 std::string msg = fmt::format("JunkIt - {} is no longer marked as junk", itemForm->GetName());
                 SendHUDMessage::ShowHUDMessage(msg.c_str());

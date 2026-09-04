@@ -69,7 +69,7 @@ namespace JunkIt {
         const auto holdSeconds = Settings::IsTrashAvailable() ? Settings::GetTrashHoldSeconds() : 0;
         if (holdSeconds <= 0) {
             if (!skyPromptShowing && buttonEvent->IsDown()) {
-                SKSE::log::info("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", buttonEvent->GetIDCode());
+                SKSE::log::debug("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", buttonEvent->GetIDCode());
                 ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
             }
             return;
@@ -87,7 +87,7 @@ namespace JunkIt {
             skyPrompt.UpdateMarkHoldVisual(buttonEvent->HeldDuration());
             if (buttonEvent->HeldDuration() >= static_cast<float>(holdSeconds)) {
                 markTrashFired = true;
-                SKSE::log::info("Mark key held {:.2f}s; trashing selected item", buttonEvent->HeldDuration());
+                SKSE::log::debug("Mark key held {:.2f}s; trashing selected item", buttonEvent->HeldDuration());
                 skyPrompt.ResetMarkHoldVisual();
                 ExecuteAction(JUNKIT_EVENT_TYPE::kTrash);
             }
@@ -98,10 +98,10 @@ namespace JunkIt {
             SkyPromptIntegration::GetSingleton().ResetMarkHoldVisual();
             if (markHoldArmed && !markTrashFired) {
                 if (buttonEvent->HeldDuration() < SkyPromptIntegration::kMarkHoldTrashDelay) {
-                    SKSE::log::info("Mark/Unmark Junk key released before trash hold");
+                    SKSE::log::debug("Mark/Unmark Junk key released before trash hold");
                     ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
                 } else {
-                    SKSE::log::info(
+                    SKSE::log::debug(
                         "Mark key released after trash hold started ({:.2f}s); mark skipped",
                         buttonEvent->HeldDuration());
                 }
@@ -196,7 +196,7 @@ namespace JunkIt {
         uint32_t transferKey = static_cast<uint32_t>(Settings::GetTransferJunkKey());
 
         if (keyCode == markKey) {
-            SKSE::log::info("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", keyCode);
+            SKSE::log::debug("Mark/Unmark Junk key pressed (KeyCode: 0x{:X})", keyCode);
             ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
         } else if (keyCode == transferKey) {
             if (activeMenu == ActiveMenuType::kContainer) {
@@ -213,7 +213,7 @@ namespace JunkIt {
         float holdThreshold = Settings::GetGamepadTransferHoldTime() - 1.0f;
 
         if (holdTime < holdThreshold || activeMenu == ActiveMenuType::kInventory) {
-            SKSE::log::info("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
+            SKSE::log::debug("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
             ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
         } else if (activeMenu == ActiveMenuType::kContainer) {
             SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
