@@ -329,6 +329,75 @@ namespace JunkIt {
             }
             return drainFrames;
         }
+
+        struct EntryJunkScan {
+            std::int32_t junkCount = 0;
+            bool fullyJunk = false;
+            bool plainIsJunk = false;
+            std::vector<std::pair<ExtraDataList*, std::int32_t>> junkExtras;
+        };
+
+        EntryJunkScan ScanEntryJunk(InventoryEntryData* entry, bool collectExtras) {
+            EntryJunkScan result;
+            if (!entry || !entry->object) {
+                return result;
+            }
+
+            auto& junkManager = JunkDataManager::GetSingleton();
+            if (!junkManager.IsAnyJunkForForm(entry->object)) {
+                return result;
+            }
+
+            const auto base = JunkDataManager::CaptureIdentityBase(entry->object, entry->GetDisplayName());
+            if (!base) {
+                return result;
+            }
+
+            const auto extraIsJunk = [&](const ExtraDataList* extraList) {
+                return junkManager.IsJunk(JunkDataManager::BuildIdentity(*base, extraList));
+            };
+
+            if (!entry->extraLists || entry->extraLists->empty()) {
+                result.plainIsJunk = extraIsJunk(nullptr);
+                result.fullyJunk = result.plainIsJunk;
+                if (result.plainIsJunk && entry->countDelta > 0) {
+                    result.junkCount = entry->countDelta;
+                }
+                return result;
+            }
+
+            std::int32_t extrasTotal = 0;
+            std::int32_t junkExtraCount = 0;
+            bool extrasAllJunk = true;
+            for (auto* extraList : *entry->extraLists) {
+                if (!extraList) {
+                    continue;
+                }
+                const std::int32_t extraCount = extraList->GetCount();
+                extrasTotal += extraCount;
+                if (!extraIsJunk(extraList)) {
+                    extrasAllJunk = false;
+                    continue;
+                }
+                junkExtraCount += extraCount;
+                if (collectExtras && extraCount > 0) {
+                    result.junkExtras.emplace_back(extraList, extraCount);
+                }
+            }
+
+            const std::int32_t plain = entry->countDelta - extrasTotal;
+            result.plainIsJunk = extraIsJunk(nullptr);
+            if (plain > 0 && result.plainIsJunk) {
+                junkExtraCount += plain;
+            }
+            result.junkCount = junkExtraCount > 0 ? junkExtraCount : 0;
+            if (plain > 0) {
+                result.fullyJunk = extrasAllJunk && result.plainIsJunk;
+            } else {
+                result.fullyJunk = extrasAllJunk && extrasTotal > 0;
+            }
+            return result;
+        }
     }
 
     void JunkHandler::ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary) {
@@ -733,8 +802,9 @@ namespace JunkIt {
                 continue;
             }
 
-            Count count = GetSellableJunkCount(objDesc);
-            if (EntryIsFullyJunk(objDesc)) {
+            const auto scan = ScanEntryJunk(objDesc, false);
+            Count count = scan.junkCount;
+            if (scan.fullyJunk) {
                 const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
                 if (uiCount > count) {
                     count = uiCount;
@@ -881,70 +951,11 @@ namespace JunkIt {
     }
 
     JunkHandler::Count JunkHandler::GetSellableJunkCount(InventoryEntryData* a_entry) {
-        if (!a_entry || !a_entry->object) {
-            return 0;
-        }
-
-        auto& junkManager = JunkDataManager::GetSingleton();
-        if (!junkManager.IsAnyJunkForForm(a_entry->object)) {
-            return 0;
-        }
-        if (!a_entry->extraLists || a_entry->extraLists->empty()) {
-            if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
-                return 0;
-            }
-            return a_entry->countDelta > 0 ? a_entry->countDelta : 0;
-        }
-
-        Count extrasTotal = 0;
-        Count junkExtras = 0;
-        for (auto* extraList : *a_entry->extraLists) {
-            if (!extraList) {
-                continue;
-            }
-            const Count extraCount = extraList->GetCount();
-            extrasTotal += extraCount;
-            if (junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
-                junkExtras += extraCount;
-            }
-        }
-
-        Count junkPlain = 0;
-        const Count plain = a_entry->countDelta - extrasTotal;
-        if (plain > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
-            junkPlain = plain;
-        }
-
-        const Count total = junkExtras + junkPlain;
-        return total > 0 ? total : 0;
+        return ScanEntryJunk(a_entry, false).junkCount;
     }
 
     bool JunkHandler::EntryIsFullyJunk(InventoryEntryData* a_entry) {
-        if (!a_entry || !a_entry->object) {
-            return false;
-        }
-
-        auto& junkManager = JunkDataManager::GetSingleton();
-        if (!a_entry->extraLists || a_entry->extraLists->empty()) {
-            return junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr));
-        }
-
-        Count extrasTotal = 0;
-        for (auto* extraList : *a_entry->extraLists) {
-            if (!extraList) {
-                continue;
-            }
-            extrasTotal += extraList->GetCount();
-            if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
-                return false;
-            }
-        }
-
-        const Count plain = a_entry->countDelta - extrasTotal;
-        if (plain > 0) {
-            return junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr));
-        }
-        return extrasTotal > 0;
+        return ScanEntryJunk(a_entry, false).fullyJunk;
     }
 
     void JunkHandler::SellEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to, Count a_count) {
@@ -952,31 +963,14 @@ namespace JunkIt {
             return;
         }
 
-        if (EntryIsFullyJunk(a_entry)) {
+        const auto scan = ScanEntryJunk(a_entry, true);
+        if (scan.fullyJunk) {
             MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, a_count, nullptr);
             return;
         }
 
-        auto& junkManager = JunkDataManager::GetSingleton();
         Count remaining = a_count;
-
-        std::vector<std::pair<ExtraDataList*, Count>> junkStacks;
-        if (a_entry->extraLists) {
-            for (auto* extraList : *a_entry->extraLists) {
-                if (!extraList) {
-                    continue;
-                }
-                if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
-                    continue;
-                }
-                const Count extraCount = extraList->GetCount();
-                if (extraCount > 0) {
-                    junkStacks.emplace_back(extraList, extraCount);
-                }
-            }
-        }
-
-        for (const auto& [extraList, extraCount] : junkStacks) {
+        for (const auto& [extraList, extraCount] : scan.junkExtras) {
             if (remaining <= 0) {
                 break;
             }
@@ -985,7 +979,7 @@ namespace JunkIt {
             remaining -= toSell;
         }
 
-        if (remaining > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
+        if (remaining > 0 && scan.plainIsJunk) {
             MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kSelling, remaining, nullptr);
         }
     }
@@ -1150,8 +1144,9 @@ namespace JunkIt {
                 continue;
             }
 
-            Count count = GetSellableJunkCount(objDesc);
-            if (allowUiCountBoost && EntryIsFullyJunk(objDesc)) {
+            const auto scan = ScanEntryJunk(objDesc, false);
+            Count count = scan.junkCount;
+            if (allowUiCountBoost && scan.fullyJunk) {
                 const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
                 if (uiCount > count) {
                     count = uiCount;
@@ -2173,35 +2168,18 @@ namespace JunkIt {
             return;
         }
 
-        const Count count = GetSellableJunkCount(a_entry);
-        if (count <= 0) {
+        const auto scan = ScanEntryJunk(a_entry, true);
+        if (scan.junkCount <= 0) {
             return;
         }
 
-        if (EntryIsFullyJunk(a_entry)) {
-            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kStoreInContainer, count, nullptr);
+        if (scan.fullyJunk) {
+            MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kStoreInContainer, scan.junkCount, nullptr);
             return;
         }
 
-        auto& junkManager = JunkDataManager::GetSingleton();
-        Count remaining = count;
-        std::vector<std::pair<ExtraDataList*, Count>> junkStacks;
-        if (a_entry->extraLists) {
-            for (auto* extraList : *a_entry->extraLists) {
-                if (!extraList) {
-                    continue;
-                }
-                if (!junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, extraList))) {
-                    continue;
-                }
-                const Count extraCount = extraList->GetCount();
-                if (extraCount > 0) {
-                    junkStacks.emplace_back(extraList, extraCount);
-                }
-            }
-        }
-
-        for (const auto& [extraList, extraCount] : junkStacks) {
+        Count remaining = scan.junkCount;
+        for (const auto& [extraList, extraCount] : scan.junkExtras) {
             if (remaining <= 0) {
                 break;
             }
@@ -2210,7 +2188,7 @@ namespace JunkIt {
             remaining -= toMove;
         }
 
-        if (remaining > 0 && junkManager.IsJunk(JunkDataManager::BuildIdentityForEntry(a_entry, nullptr))) {
+        if (remaining > 0 && scan.plainIsJunk) {
             MoveItems(a_entry->object, a_from, a_to, ITEM_REMOVE_REASON::kStoreInContainer, remaining, nullptr);
         }
     }

@@ -39,32 +39,48 @@ namespace JunkIt {
         return configString.empty() ? "none" : configString;
     }
 
-    std::string JunkDataManager::BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) {
+    std::optional<JunkDataManager::IdentityBase> JunkDataManager::CaptureIdentityBase(
+        RE::TESBoundObject* object,
+        std::string_view displayName) {
         if (!object) {
+            return std::nullopt;
+        }
+
+        IdentityBase base;
+        base.formConfig = FormUtil::Form::GetFormConfigString(object->As<RE::TESForm>());
+        if (base.formConfig.empty()) {
+            return std::nullopt;
+        }
+
+        base.displayName = std::string(displayName);
+        if (base.displayName.empty()) {
+            base.displayName = object->GetName();
+        }
+        if (base.displayName.empty()) {
+            return std::nullopt;
+        }
+
+        std::replace(base.displayName.begin(), base.displayName.end(), '|', ':');
+        return base;
+    }
+
+    std::string JunkDataManager::BuildIdentity(const IdentityBase& base, const RE::ExtraDataList* extraList) {
+        if (base.formConfig.empty() || base.displayName.empty()) {
             return "";
         }
-
-        const auto formConfig = FormUtil::Form::GetFormConfigString(object->As<RE::TESForm>());
-        if (formConfig.empty()) {
-            return "";
-        }
-
-        std::string uiDisplayName(displayName);
-        if (uiDisplayName.empty()) {
-            uiDisplayName = object->GetName();
-        }
-        if (uiDisplayName.empty()) {
-            return "";
-        }
-
-        // Sanitize pipe delimiter from the display name
-        std::replace(uiDisplayName.begin(), uiDisplayName.end(), '|', ':');
-
         return fmt::format(
             "{}|{}|{}",
-            formConfig,
-            uiDisplayName,
+            base.formConfig,
+            base.displayName,
             GetEnchantmentFormConfig(extraList));
+    }
+
+    std::string JunkDataManager::BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) {
+        const auto base = CaptureIdentityBase(object, displayName);
+        if (!base) {
+            return "";
+        }
+        return BuildIdentity(*base, extraList);
     }
 
     bool JunkDataManager::IsCanonicalIdentity(const std::string& identity) {
