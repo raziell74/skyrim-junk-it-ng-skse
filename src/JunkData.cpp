@@ -107,14 +107,16 @@ namespace JunkIt {
         return identity.substr(0, firstPipe);
     }
 
-    void JunkDataManager::RebuildJunkFormIndexLocked() {
-        junkFormConfigs.clear();
+    void JunkDataManager::DropFormConfigIfUnusedLocked(const std::string& formConfig) {
+        if (formConfig.empty()) {
+            return;
+        }
         for (const auto& identity : junkSet) {
-            const auto formConfig = GetFormConfigFromIdentity(identity);
-            if (!formConfig.empty()) {
-                junkFormConfigs.insert(formConfig);
+            if (GetFormConfigFromIdentity(identity) == formConfig) {
+                return;
             }
         }
+        junkFormConfigs.erase(formConfig);
     }
 
     std::string JunkDataManager::BuildIdentityForEntry(RE::InventoryEntryData* entry, const RE::ExtraDataList* extraList) {
@@ -238,10 +240,17 @@ namespace JunkIt {
         }
 
         std::optional<std::string> removedIdentity;
+        std::unordered_set<std::string> removedIdentities;
+        std::unordered_set<std::string> removedFormConfigs;
         std::lock_guard<std::mutex> guard(lock);
         for (const auto& identity : identities) {
             if (junkSet.erase(identity) > 0) {
                 ApplyUnmarkLocked(identity);
+                removedIdentities.insert(identity);
+                const auto formConfig = GetFormConfigFromIdentity(identity);
+                if (!formConfig.empty()) {
+                    removedFormConfigs.insert(formConfig);
+                }
                 if (!removedIdentity) {
                     removedIdentity = identity;
                 }
@@ -251,12 +260,12 @@ namespace JunkIt {
             return std::nullopt;
         }
 
-        junkItems.clear();
-        junkItems.reserve(junkSet.size());
-        for (const auto& identity : junkSet) {
-            junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
+        std::erase_if(junkItems, [&](const JunkItem& item) {
+            return removedIdentities.contains(item.identity);
+        });
+        for (const auto& formConfig : removedFormConfigs) {
+            DropFormConfigIfUnusedLocked(formConfig);
         }
-        RebuildJunkFormIndexLocked();
         return removedIdentity;
     }
 
@@ -346,7 +355,7 @@ namespace JunkIt {
             return false;
         }
         ApplyUnmarkLocked(identity);
-        RebuildJunkFormIndexLocked();
+        DropFormConfigIfUnusedLocked(GetFormConfigFromIdentity(identity));
         return true;
     }
 

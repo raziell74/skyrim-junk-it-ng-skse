@@ -87,7 +87,7 @@ namespace JunkIt {
         static std::string GetFormConfigFromIdentity(const std::string& identity);
         void ApplyUnmarkLocked(const std::string& identity);
         void PruneAutoJunkedLocked();
-        void RebuildJunkFormIndexLocked();
+        void DropFormConfigIfUnusedLocked(const std::string& formConfig);
 
         JunkDataManager() = default;
         JunkDataManager(const JunkDataManager&) = delete;
