@@ -12,6 +12,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace JunkIt {
@@ -54,6 +55,9 @@ namespace JunkIt {
         std::string g_label;
         std::function<void()> g_pendingWork;
         std::function<void()> g_onHidden;
+        bool g_suppressMenu = false;
+        bool g_menuHiddenByUs = false;
+        std::string_view g_hiddenMenuName;
         ID3D11DeviceContext* g_context = nullptr;
         ID3D11ShaderResourceView* g_splash = nullptr;
         InitD3D_t* g_initD3D = nullptr;
@@ -115,6 +119,96 @@ namespace JunkIt {
             return true;
         }
 
+        void QueueUITask(std::function<void()> task) {
+            if (!task) {
+                return;
+            }
+            if (auto* tasks = SKSE::GetTaskInterface()) {
+                tasks->AddUITask(std::move(task));
+            } else {
+                task();
+            }
+        }
+
+        RE::GFxMovieView* OpenInventoryLikeMovie(std::string_view& name) {
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui) {
+                return nullptr;
+            }
+            if (auto menu = ui->GetMenu<RE::ContainerMenu>(); menu && menu->uiMovie) {
+                name = RE::ContainerMenu::MENU_NAME;
+                return menu->uiMovie.get();
+            }
+            if (auto menu = ui->GetMenu<RE::BarterMenu>(); menu && menu->uiMovie) {
+                name = RE::BarterMenu::MENU_NAME;
+                return menu->uiMovie.get();
+            }
+            if (auto menu = ui->GetMenu<RE::InventoryMenu>(); menu && menu->uiMovie) {
+                name = RE::InventoryMenu::MENU_NAME;
+                return menu->uiMovie.get();
+            }
+            return nullptr;
+        }
+
+        void HideOpenMenuMovie() {
+            std::string_view name;
+            auto* movie = OpenInventoryLikeMovie(name);
+            if (!movie || !movie->GetVisible()) {
+                return;
+            }
+
+            movie->SetVisible(false);
+            std::lock_guard lock(g_mutex);
+            if (!g_suppressMenu) {
+                movie->SetVisible(true);
+                return;
+            }
+            g_hiddenMenuName = name;
+            g_menuHiddenByUs = true;
+        }
+
+        void RestoreHiddenMenuMovie() {
+            std::string_view name;
+            {
+                std::lock_guard lock(g_mutex);
+                if (!g_menuHiddenByUs) {
+                    return;
+                }
+                name = g_hiddenMenuName;
+                g_menuHiddenByUs = false;
+                g_hiddenMenuName = {};
+            }
+
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui || name.empty()) {
+                return;
+            }
+            if (auto menu = ui->GetMenu(name); menu && menu->uiMovie) {
+                menu->uiMovie->SetVisible(true);
+            }
+        }
+
+        void ApplyMenuMovieVisibility() {
+            bool suppress = false;
+            bool alreadyHidden = false;
+            {
+                std::lock_guard lock(g_mutex);
+                suppress = g_suppressMenu;
+                alreadyHidden = g_menuHiddenByUs;
+            }
+            if (suppress) {
+                if (!alreadyHidden) {
+                    HideOpenMenuMovie();
+                }
+            } else {
+                RestoreHiddenMenuMovie();
+            }
+        }
+
+        void QueueMenuVisibilityApply() {
+            QueueUITask([] { ApplyMenuMovieVisibility(); });
+        }
+
         void BeginVisible(OperationOverlay::Action action) {
             g_label = Translation::Get(TranslationKey(action));
             g_visible = true;
@@ -124,6 +218,8 @@ namespace JunkIt {
             g_settleStart = {};
             g_lastPresent = Clock::now();
             g_onHidden = {};
+            g_suppressMenu = true;
+            QueueMenuVisibilityApply();
         }
 
         void ClearVisibleState() {
@@ -132,6 +228,11 @@ namespace JunkIt {
             g_fade = 0.0f;
             g_fastFrames = 0;
             g_pendingWork = {};
+            const bool restoreMenu = g_suppressMenu || g_menuHiddenByUs;
+            g_suppressMenu = false;
+            if (restoreMenu) {
+                QueueMenuVisibilityApply();
+            }
         }
 
         void QueueCallback(std::function<void()> callback) {
@@ -188,6 +289,8 @@ namespace JunkIt {
                     const float held = std::chrono::duration<float>(now - g_settleStart).count();
                     if (held >= kDoneHoldSeconds) {
                         g_phase = Phase::FadeOut;
+                        g_suppressMenu = false;
+                        QueueMenuVisibilityApply();
                     }
                     break;
                 }
