@@ -5,6 +5,7 @@
 
 #include <json/json.h>
 #include <map>
+#include <vector>
 
 namespace JunkIt {
 
@@ -108,55 +109,64 @@ namespace JunkIt {
         }
 
         struct LiveInventoryCache {
-            std::map<std::uint32_t, RE::TESObjectREFR::InventoryItemMap> inventories;
+            std::map<std::uint32_t, std::vector<RE::InventoryEntryData*>> entries;
 
             void Include(RE::TESObjectREFR* owner) {
                 if (!owner) {
                     return;
                 }
                 const auto key = owner->GetHandle().native_handle();
-                auto [it, inserted] = inventories.try_emplace(key);
-                if (inserted) {
-                    it->second = owner->GetInventory();
+                if (entries.contains(key)) {
+                    return;
+                }
+
+                auto& list = entries[key];
+                auto* changes = owner->GetInventoryChanges(true);
+                if (!changes || !changes->entryList) {
+                    return;
+                }
+                for (auto& entry : *changes->entryList) {
+                    if (entry && entry->object) {
+                        list.push_back(entry);
+                    }
                 }
             }
 
-            RE::InventoryEntryData* Find(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
+            bool HasJunk(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
                 if (!owner || !object) {
-                    return nullptr;
+                    return false;
                 }
                 Include(owner);
                 const auto key = owner->GetHandle().native_handle();
-                auto inv = inventories.find(key);
-                if (inv == inventories.end()) {
-                    return nullptr;
+                auto it = entries.find(key);
+                if (it == entries.end()) {
+                    return false;
                 }
-                auto it = inv->second.find(object);
-                if (it == inv->second.end() || it->second.first <= 0 || !it->second.second) {
-                    return nullptr;
+
+                auto& junkManager = JunkDataManager::GetSingleton();
+                for (auto* entry : it->second) {
+                    if (entry->object == object && junkManager.IsJunk(entry)) {
+                        return true;
+                    }
                 }
-                return it->second.second.get();
+                return false;
             }
 
-            RE::InventoryEntryData* FindLive(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
-                if (auto* entry = Find(owner, object)) {
-                    return entry;
+            bool LiveIsJunk(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
+                if (HasJunk(owner, object)) {
+                    return true;
                 }
 
                 const auto ui = RE::UI::GetSingleton();
                 if (!ui || !ui->IsMenuOpen("BarterMenu")) {
-                    return nullptr;
+                    return false;
                 }
-                if (auto* entry = Find(UIUtil::Menu::GetBarterMenuTargetRef(), object)) {
-                    return entry;
+                if (HasJunk(UIUtil::Menu::GetBarterMenuTargetRef(), object)) {
+                    return true;
                 }
-                return Find(UIUtil::Menu::GetMerchantContainer(), object);
+                return HasJunk(UIUtil::Menu::GetMerchantContainer(), object);
             }
         };
-
-        bool EntryIsJunk(RE::InventoryEntryData* live) {
-            return live && JunkDataManager::GetSingleton().IsJunk(live);
-        }
     }
 
     void I4Integration::ProcessListFunc::Call(Params& a_params) {
@@ -173,8 +183,7 @@ namespace JunkIt {
                 }
 
                 auto* bound = BoundFromGFxEntry(item->obj);
-                auto* live = liveInventories.FindLive(ResolveOwner(item->data.owner), bound);
-                SetJunkFlags(item->obj, EntryIsJunk(live));
+                SetJunkFlags(item->obj, liveInventories.LiveIsJunk(ResolveOwner(item->data.owner), bound));
             }
         } else if (a_params.argCount >= 1) {
             auto& a_list = a_params.args[0];
@@ -192,8 +201,9 @@ namespace JunkIt {
                     }
 
                     auto* bound = BoundFromGFxEntry(entryObject);
-                    auto* live = liveInventories.FindLive(RE::PlayerCharacter::GetSingleton(), bound);
-                    SetJunkFlags(entryObject, EntryIsJunk(live));
+                    SetJunkFlags(
+                        entryObject,
+                        liveInventories.LiveIsJunk(RE::PlayerCharacter::GetSingleton(), bound));
                 }
             }
         }
