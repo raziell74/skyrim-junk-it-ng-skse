@@ -1,5 +1,6 @@
 #include "OperationOverlay.h"
 #include "Translation.h"
+#include "settings.h"
 
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
@@ -335,10 +336,14 @@ namespace JunkIt {
                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
             auto* drawList = ImGui::GetWindowDrawList();
+            const float opacity = static_cast<float>(Settings::GetOverlayOpacity()) / 100.0f;
+            const float veilAlpha = opacity * g_fade;
+            const float textAlpha = std::min(1.0f, opacity + 0.5f) * g_fade;
+
             drawList->AddRectFilled(
                 ImVec2(0.0f, 0.0f),
                 io.DisplaySize,
-                IM_COL32(0, 0, 0, static_cast<int>(64.0f * g_fade + 0.5f)));
+                IM_COL32(0, 0, 0, static_cast<int>(255.0f * veilAlpha + 0.5f)));
 
             const float splash = (io.DisplaySize.y < kSplashSize)
                 ? (std::max)(128.0f, io.DisplaySize.y * 0.45f)
@@ -347,7 +352,7 @@ namespace JunkIt {
             if (g_splash) {
                 ImGui::SetCursorPos(splashPos);
                 ImVec4 tint = kSplashTint;
-                tint.w = 0.25f * g_fade;
+                tint.w = veilAlpha;
                 ImGui::ImageWithBg(
                     reinterpret_cast<ImTextureID>(g_splash),
                     ImVec2(splash, splash),
@@ -364,11 +369,11 @@ namespace JunkIt {
             const float textX = (io.DisplaySize.x - textSize.x) * 0.5f;
             const float textY = (io.DisplaySize.y - textSize.y) * 0.5f;
             ImGui::SetCursorPos(ImVec2(textX + 2.0f, textY + 2.0f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, g_fade));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, textAlpha));
             ImGui::TextUnformatted(g_label.c_str());
             ImGui::PopStyleColor();
             ImGui::SetCursorPos(ImVec2(textX, textY));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(194.0f / 255.0f, 194.0f / 255.0f, 194.0f / 255.0f, g_fade));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(194.0f / 255.0f, 194.0f / 255.0f, 194.0f / 255.0f, textAlpha));
             ImGui::TextUnformatted(g_label.c_str());
             ImGui::PopStyleColor();
             ImGui::SetWindowFontScale(1.0f);
@@ -453,6 +458,9 @@ namespace JunkIt {
     }
 
     void OperationOverlay::Show(Action action) {
+        if (Settings::GetOverlayOpacity() <= 0) {
+            return;
+        }
         std::lock_guard lock(g_mutex);
         BeginVisible(action);
     }
@@ -495,7 +503,7 @@ namespace JunkIt {
             return;
         }
 
-        if (!g_hooksInstalled.load()) {
+        if (!g_hooksInstalled.load() || Settings::GetOverlayOpacity() <= 0) {
             work();
             return;
         }

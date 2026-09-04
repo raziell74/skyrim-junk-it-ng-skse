@@ -520,10 +520,16 @@ namespace JunkIt {
             return changed;
         }
 
-        bool SliderIntRow(const char* labelKey, const char* helpKey, std::int32_t& value, int minValue, int maxValue) {
+        bool SliderIntRow(
+            const char* labelKey,
+            const char* helpKey,
+            std::int32_t& value,
+            int minValue,
+            int maxValue,
+            const char* format = "%d") {
             SettingLabel(labelKey, helpKey);
             ImGui::PushID(labelKey);
-            ImGui::SliderInt("##v", &value, minValue, maxValue);
+            ImGui::SliderInt("##v", &value, minValue, maxValue, format);
             const bool committed = ImGui::IsItemDeactivatedAfterEdit();
             ImGui::PopID();
             return committed;
@@ -659,6 +665,17 @@ namespace JunkIt {
                 SaveIfChanged(CheckboxRow("$JunkIt_NotifyOnMarkUnmark", "$JunkIt_NotifyOnMarkUnmark_Help", Settings::NotifyOnMarkUnmarkValue()));
                 SaveIfChanged(CheckboxRow("$JunkIt_NotifyOnJunkTransfer", "$JunkIt_NotifyOnJunkTransfer_Help", Settings::NotifyOnJunkTransferValue()));
                 SaveIfChanged(CheckboxRow("$JunkIt_NotifyOnJunkSell", "$JunkIt_NotifyOnJunkSell_Help", Settings::NotifyOnJunkSellValue()));
+                ImGui::EndTable();
+            }
+
+            if (BeginSettingsTable("generalOverlay")) {
+                SaveIfChanged(SliderIntRow(
+                    "$JunkIt_OverlayOpacity",
+                    "$JunkIt_OverlayOpacity_Help",
+                    Settings::OverlayOpacityValue(),
+                    0,
+                    100,
+                    "%d%%"));
                 ImGui::EndTable();
             }
 

@@ -66,6 +66,7 @@ namespace JunkIt {
             [[nodiscard]] static bool GetNotifyOnMarkUnmark();
             [[nodiscard]] static bool GetNotifyOnJunkTransfer();
             [[nodiscard]] static bool GetNotifyOnJunkSell();
+            [[nodiscard]] static std::int32_t GetOverlayOpacity();
             [[nodiscard]] static bool GetAggressiveRefresh();
             [[nodiscard]] static std::int32_t GetAggressiveRefreshMaxInterval();
             [[nodiscard]] static float GetHeavyLoadDelayMultiplier();
@@ -123,6 +124,7 @@ namespace JunkIt {
             static bool& NotifyOnMarkUnmarkValue();
             static bool& NotifyOnJunkTransferValue();
             static bool& NotifyOnJunkSellValue();
+            static std::int32_t& OverlayOpacityValue();
             static float& HeavyLoadDelayMultiplierValue();
             static std::int32_t& LargeUniqueTypesValue();
             static std::int32_t& LargeTotalItemsValue();

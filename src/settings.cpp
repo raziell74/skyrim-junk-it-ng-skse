@@ -37,6 +37,7 @@ namespace JunkIt {
             bool notifyOnMarkUnmark = true;
             bool notifyOnJunkTransfer = true;
             bool notifyOnJunkSell = true;
+            std::int32_t overlayOpacity = 50;
             std::int32_t logLevel = 2;
             float heavyLoadDelayMultiplier = 1.0f;
             std::int32_t largeUniqueTypes = 500;
@@ -239,6 +240,7 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnMarkUnmark", g_values.notifyOnMarkUnmark);
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkTransfer", g_values.notifyOnJunkTransfer);
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkSell", g_values.notifyOnJunkSell);
+            complete &= ReadInt(ini, "Overlay", {}, "iOverlayOpacity", g_values.overlayOpacity);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLogLevel", g_values.logLevel);
             complete &= ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
@@ -304,6 +306,7 @@ namespace JunkIt {
                 g_values.notifyOnMarkUnmark,
                 g_values.notifyOnJunkTransfer,
                 g_values.notifyOnJunkSell);
+            SKSE::log::info("Overlay Settings | OverlayOpacity: {}", g_values.overlayOpacity);
             SKSE::log::info(
                 "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {} | TrashJunkKey: {}",
                 g_values.markJunkKey,
@@ -383,6 +386,7 @@ namespace JunkIt {
         g_values.aggressiveRefreshMaxInterval = std::clamp(g_values.aggressiveRefreshMaxInterval, 1, 60);
         g_values.skyPromptButtonPlacement = std::clamp(g_values.skyPromptButtonPlacement, 0, 1);
         g_values.logLevel = std::clamp(g_values.logLevel, 0, 4);
+        g_values.overlayOpacity = std::clamp(g_values.overlayOpacity, 0, 100);
     }
 
     void Settings::ApplyIntegrationGuards() {
@@ -476,6 +480,9 @@ namespace JunkIt {
             out << "bProtectEquipped=" << (g_values.protectEquipped ? 1 : 0) << "\n";
             out << "bProtectFavorites=" << (g_values.protectFavorites ? 1 : 0) << "\n";
             out << "bProtectEnchanted=" << (g_values.protectEnchanted ? 1 : 0) << "\n\n";
+
+            out << "[Overlay]\n";
+            out << "iOverlayOpacity=" << g_values.overlayOpacity << "\n\n";
 
             out << "[Misc]\n";
             out << "bNotifyOnMarkUnmark=" << (g_values.notifyOnMarkUnmark ? 1 : 0) << "\n";
@@ -605,6 +612,7 @@ namespace JunkIt {
     bool Settings::GetNotifyOnMarkUnmark() { return g_values.notifyOnMarkUnmark; }
     bool Settings::GetNotifyOnJunkTransfer() { return g_values.notifyOnJunkTransfer; }
     bool Settings::GetNotifyOnJunkSell() { return g_values.notifyOnJunkSell; }
+    std::int32_t Settings::GetOverlayOpacity() { return g_values.overlayOpacity; }
     Settings::LogLevel Settings::GetLogLevel() {
         return static_cast<LogLevel>(g_values.logLevel);
     }
@@ -731,6 +739,7 @@ namespace JunkIt {
     bool& Settings::NotifyOnMarkUnmarkValue() { return g_values.notifyOnMarkUnmark; }
     bool& Settings::NotifyOnJunkTransferValue() { return g_values.notifyOnJunkTransfer; }
     bool& Settings::NotifyOnJunkSellValue() { return g_values.notifyOnJunkSell; }
+    std::int32_t& Settings::OverlayOpacityValue() { return g_values.overlayOpacity; }
     std::int32_t& Settings::LogLevelValue() { return g_values.logLevel; }
     float& Settings::HeavyLoadDelayMultiplierValue() { return g_values.heavyLoadDelayMultiplier; }
     std::int32_t& Settings::LargeUniqueTypesValue() { return g_values.largeUniqueTypes; }
