@@ -27,6 +27,7 @@ namespace JunkIt {
         I4Integration() = delete;
 
         static void Install(RE::GFxMovieView* a_view, const char* a_pathToObj);
+        static void SetJunkFlags(RE::GFxValue& obj, bool isJunk);
 
     private:
         class ProcessListFunc : public RE::GFxFunctionHandler {

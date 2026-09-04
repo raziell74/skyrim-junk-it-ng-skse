@@ -82,16 +82,16 @@ namespace JunkIt {
         obj.SetMember("processList", newProcessList);
     }
 
-    namespace {
-        void SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
-            if (!obj.IsObject()) {
-                return;
-            }
-            obj.SetMember("isJunk", isJunk);
-            obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
-            obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+    void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
+        if (!obj.IsObject()) {
+            return;
         }
+        obj.SetMember("isJunk", isJunk);
+        obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
+        obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+    }
 
+    namespace {
         RE::TESBoundObject* BoundFromGFxEntry(RE::GFxValue& entryObject) {
             RE::GFxValue formIdVal;
             if (!entryObject.GetMember("formId", &formIdVal) || !formIdVal.IsNumber()) {

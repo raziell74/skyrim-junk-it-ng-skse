@@ -1,4 +1,5 @@
 #include "junk.h"
+#include "I4Integration.h"
 #include "InventoryWalk.h"
 #include "JunkData.h"
 #include "OperationOverlay.h"
@@ -126,6 +127,22 @@ namespace JunkIt {
                 return;
             }
             movie->Invoke("_root.Menu_mc.inventoryLists.InvalidateListData", nullptr, nullptr, 0);
+        }
+
+        void RefreshJunkListIcons(ItemList* itemList, TESBoundObject* object, RefHandle owner, bool isNowJunk) {
+            if (itemList && object) {
+                for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
+                    auto* item = itemList->items[i];
+                    if (!item || !item->data.objDesc || item->data.owner != owner) {
+                        continue;
+                    }
+                    if (item->data.objDesc->object != object) {
+                        continue;
+                    }
+                    I4Integration::SetJunkFlags(item->obj, isNowJunk);
+                }
+            }
+            InvalidateInventoryLists(GetOpenInventoryMovie());
         }
 
         struct PreviewStack {
@@ -1978,7 +1995,7 @@ namespace JunkIt {
                 std::string confirmText = Translation::Format("$JunkIt_MarkProtectedConfirm", protectionReason);
                 ShowConfirmationMessageBox(confirmText.c_str(),
                     { Translation::Get("$JunkIt_Yes"), Translation::Get("$JunkIt_ConfirmNo") },
-                    [inventoryEntry, itemForm, itemName, hexFormId, playerOwned](unsigned int choice) {
+                    [inventoryEntry, itemForm, itemObject, itemName, hexFormId, playerOwned, owner = selectedItem->data.owner](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::info("User confirmed marking protected item as junk");
                             SKSE::log::info("Adding junk status to {} [{}]", itemName, hexFormId);
@@ -1989,10 +2006,7 @@ namespace JunkIt {
                                 SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, true, playerOwned);
                             }
 
-                            ItemList* itemListMenu = UIUtil::ItemList::GetOpenList();
-                            if (itemListMenu) {
-                                itemListMenu->Update();
-                            }
+                            RefreshJunkListIcons(UIUtil::ItemList::GetOpenList(), itemObject, owner, true);
 
                             if (addedIdentity) {
                                 SKSE::log::info("Form marked as junk: {}", *addedIdentity);
@@ -2026,7 +2040,7 @@ namespace JunkIt {
             SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, isNowJunk, playerOwned);
         }
 
-        itemListMenu->Update();
+        RefreshJunkListIcons(itemListMenu, itemObject, selectedItem->data.owner, isNowJunk);
 
         if (isNowJunk) {
             if (junkIdentity) {
