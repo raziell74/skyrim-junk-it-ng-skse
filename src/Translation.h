@@ -9,6 +9,7 @@ namespace JunkIt {
     class Translation {
         public:
             static void Load();
+            static std::string_view Language();
             static const std::string& Get(std::string_view key);
 
             template <class... Args>
@@ -19,5 +20,6 @@ namespace JunkIt {
         private:
             static inline std::unordered_map<std::string, std::string> strings;
             static inline std::string missing;
+            static inline std::string language{ "ENGLISH" };
     };
 }

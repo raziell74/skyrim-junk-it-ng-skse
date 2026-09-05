@@ -13,3 +13,9 @@ The license(s), permission(s), usage instruction(s), and/or author credit(s) app
 - License: [SIL Open Font License 1.1](https://scripts.sil.org/OFL). Full text is in `OFL.txt` in this folder.
 
 - Credits: Designed by [Andrew Paglinawan](https://github.com/andrew-paglinawan/QuicksandFamily).
+
+## NotoSansJP-Bold.ttf
+
+- License: [SIL Open Font License 1.1](https://scripts.sil.org/OFL). Full text is in `NotoSansJP-OFL.txt` in this folder.
+
+- Credits: [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) by Google and Adobe. Upstream OFL is from [google/fonts](https://github.com/google/fonts/blob/main/ofl/notosansjp/OFL.txt).

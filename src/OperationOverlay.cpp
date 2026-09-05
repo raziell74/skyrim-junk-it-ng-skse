@@ -29,7 +29,8 @@ namespace JunkIt {
         constexpr float kDoneHoldSeconds = 0.4f;
         constexpr ImVec4 kSplashTint{ 1.0f, 1.0f, 1.0f, 0.25f };
         constexpr const wchar_t* kSplashPath = L"Data\\Interface\\JunkIt\\JunkIt_splash_512x512.png";
-        constexpr const char* kFontPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
+        constexpr const char* kQuicksandPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
+        constexpr const char* kNotoPath = "Data\\Interface\\JunkIt\\NotoSansJP-Bold.ttf";
         constexpr float kFontRasterSize = 96.0f;
 
         using InitD3D_t = void();
@@ -79,6 +80,28 @@ namespace JunkIt {
             return "$JunkIt_Overlay_Storing";
         }
 
+        bool PrefersWideOverlayFont() {
+            const auto language = Translation::Language();
+            return language == "JAPANESE" || language == "RUSSIAN" || language == "CHINESE" ||
+                language == "KOREAN";
+        }
+
+        const ImWchar* NotoGlyphRanges(ImFontAtlas* fonts) {
+            static ImVector<ImWchar> ranges;
+            if (ranges.empty()) {
+                ImFontGlyphRangesBuilder builder;
+                builder.AddRanges(fonts->GetGlyphRangesJapanese());
+                builder.AddRanges(fonts->GetGlyphRangesChineseSimplifiedCommon());
+                builder.BuildRanges(&ranges);
+            }
+            return ranges.Data;
+        }
+
+        bool AddOverlayFont(ImFontAtlas* fonts, const char* path, bool wideRanges) {
+            const ImWchar* ranges = wideRanges ? NotoGlyphRanges(fonts) : nullptr;
+            return fonts->AddFontFromFileTTF(path, kFontRasterSize, nullptr, ranges) != nullptr;
+        }
+
         bool TryInitImGui() {
             if (g_imguiReady) {
                 return true;
@@ -103,9 +126,15 @@ namespace JunkIt {
             io.LogFilename = nullptr;
             io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
-            if (!io.Fonts->AddFontFromFileTTF(kFontPath, kFontRasterSize)) {
-                SKSE::log::warn("Operation overlay font failed to load, using default");
-                io.Fonts->AddFontDefault();
+            const bool preferNoto = PrefersWideOverlayFont();
+            const char* primary = preferNoto ? kNotoPath : kQuicksandPath;
+            const char* fallback = preferNoto ? kQuicksandPath : kNotoPath;
+            if (!AddOverlayFont(io.Fonts, primary, preferNoto)) {
+                SKSE::log::warn("Operation overlay font failed to load ({}), trying fallback", primary);
+                if (!AddOverlayFont(io.Fonts, fallback, !preferNoto)) {
+                    SKSE::log::warn("Operation overlay fallback font failed to load, using default");
+                    io.Fonts->AddFontDefault();
+                }
             }
 
             ImGui_ImplDX11_Init(device, context);
