@@ -634,11 +634,11 @@ namespace JunkIt {
 
         const char* const* LogLevelItems() {
             static const char* items[5];
-            items[0] = Translation::Get("$JunkIt_LogLevel_Trace_ENUM").c_str();
-            items[1] = Translation::Get("$JunkIt_LogLevel_Debug_ENUM").c_str();
+            items[0] = Translation::Get("$JunkIt_LogLevel_Error_ENUM").c_str();
+            items[1] = Translation::Get("$JunkIt_LogLevel_Warn_ENUM").c_str();
             items[2] = Translation::Get("$JunkIt_LogLevel_Info_ENUM").c_str();
-            items[3] = Translation::Get("$JunkIt_LogLevel_Warn_ENUM").c_str();
-            items[4] = Translation::Get("$JunkIt_LogLevel_Error_ENUM").c_str();
+            items[3] = Translation::Get("$JunkIt_LogLevel_Debug_ENUM").c_str();
+            items[4] = Translation::Get("$JunkIt_LogLevel_Trace_ENUM").c_str();
             return items;
         }
 
@@ -1383,12 +1383,17 @@ namespace JunkIt {
 
             ImGui::SeparatorText(Translation::Get("$JunkIt_LoggingHeader").c_str());
             if (BeginSettingsTable("advancedLog")) {
-                SaveIfChanged(ComboRow(
+                std::int32_t comboIndex = 4 - Settings::LogLevelValue();
+                const bool changed = ComboRow(
                     "$JunkIt_LogLevel",
                     "$JunkIt_LogLevel_Help",
-                    Settings::LogLevelValue(),
+                    comboIndex,
                     LogLevelItems(),
-                    5));
+                    5);
+                if (changed) {
+                    Settings::LogLevelValue() = 4 - comboIndex;
+                }
+                SaveIfChanged(changed);
                 ImGui::EndTable();
             }
 
