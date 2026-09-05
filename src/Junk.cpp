@@ -482,20 +482,50 @@ namespace JunkIt {
             return result;
         }
 
-        std::int32_t MeasureBarterSellCount(ItemList::Item* entryItem) {
-            if (!entryItem || !entryItem->data.objDesc) {
-                return 0;
+        bool PassesPreviewFilters(InventoryEntryData* a_entry, bool sellFilters) {
+            if (!a_entry || !a_entry->object || a_entry->IsQuestObject()) {
+                return false;
+            }
+            if (Settings::ProtectEquipped() && a_entry->IsWorn()) {
+                return false;
+            }
+            if (Settings::ProtectFavorites() && a_entry->IsFavorited()) {
+                return false;
+            }
+            if (sellFilters && Settings::ProtectEnchanted() && a_entry->IsEnchanted()) {
+                return false;
+            }
+            return true;
+        }
+
+        void CollectPlayerSellableJunk(
+            TESObjectREFR* player,
+            std::vector<PreviewStack>& out,
+            TESBoundObject* objectFilter = nullptr) {
+            if (!player) {
+                return;
             }
 
-            const auto scan = ScanEntryJunk(entryItem->data.objDesc, false);
-            std::int32_t count = scan.junkCount;
-            if (scan.fullyJunk) {
-                const auto uiCount = static_cast<std::int32_t>(entryItem->data.GetCount());
-                if (uiCount > count) {
-                    count = uiCount;
+            auto* changes = player->GetInventoryChanges();
+            if (!changes || !changes->entryList) {
+                return;
+            }
+
+            for (auto& live : *changes->entryList) {
+                if (!live || !live->object) {
+                    continue;
+                }
+                if (objectFilter && live->object != objectFilter) {
+                    continue;
+                }
+                if (!PassesPreviewFilters(live, true)) {
+                    continue;
+                }
+                const auto count = ScanEntryJunk(live, false).junkCount;
+                if (count > 0) {
+                    out.push_back({ live, count });
                 }
             }
-            return count > 0 ? count : 0;
         }
     }
 
@@ -763,19 +793,7 @@ namespace JunkIt {
     }
 
     bool JunkHandler::EntryPassesPreviewFilters(InventoryEntryData* a_entry, bool sellFilters) {
-        if (!a_entry || !a_entry->object || a_entry->IsQuestObject()) {
-            return false;
-        }
-        if (Settings::ProtectEquipped() && a_entry->IsWorn()) {
-            return false;
-        }
-        if (Settings::ProtectFavorites() && a_entry->IsFavorited()) {
-            return false;
-        }
-        if (sellFilters && Settings::ProtectEnchanted() && a_entry->IsEnchanted()) {
-            return false;
-        }
-        return true;
+        return PassesPreviewFilters(a_entry, sellFilters);
     }
 
     namespace {
@@ -880,34 +898,13 @@ namespace JunkIt {
         auto* player = PlayerCharacter::GetSingleton();
         const auto ui = RE::UI::GetSingleton();
         auto barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
-        ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
-        if (!player || !itemListMenu || itemListMenu->items.empty()) {
+        if (!player || !barterMenu) {
             return capture;
         }
 
         capture.pricesReady = true;
-        const auto playerHandle = player->GetHandle().native_handle();
         std::vector<PreviewStack> sortStacks;
-        const auto& items = itemListMenu->items;
-        for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
-            ItemList::Item* entryItem = items[i];
-            if (!entryItem || !entryItem->data.objDesc) {
-                continue;
-            }
-            if (entryItem->data.owner != playerHandle) {
-                continue;
-            }
-
-            InventoryEntryData* objDesc = entryItem->data.objDesc;
-            if (!objDesc->object || !EntryPassesPreviewFilters(objDesc, true)) {
-                continue;
-            }
-
-            const Count count = MeasureBarterSellCount(entryItem);
-            if (count > 0) {
-                sortStacks.push_back({ objDesc, count });
-            }
-        }
+        CollectPlayerSellableJunk(player, sortStacks);
 
         SortPreviewStacks(sortStacks, Settings::GetSellPriority());
         capture.stacks.reserve(sortStacks.size());
@@ -925,17 +922,12 @@ namespace JunkIt {
     bool JunkHandler::TryPatchSellPreviewStacks(
         std::vector<SellPreviewStack>& stacks,
         InventoryEntryData* entry) {
-        if (!entry) {
+        if (!entry || !entry->object) {
             return false;
         }
 
-        std::unordered_map<InventoryEntryData*, SellPreviewStack> byEntry;
-        byEntry.reserve(stacks.size() + 1);
         for (const auto& stack : stacks) {
-            if (!stack.entry) {
-                return false;
-            }
-            if (!byEntry.emplace(stack.entry, stack).second) {
+            if (!stack.entry || !stack.entry->object) {
                 return false;
             }
         }
@@ -948,67 +940,38 @@ namespace JunkIt {
         (void)vendorGold;
 
         auto* player = PlayerCharacter::GetSingleton();
-        const auto ui = RE::UI::GetSingleton();
-        auto barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
-        ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
-        if (!player || !itemListMenu) {
+        if (!player) {
             return false;
         }
 
-        const auto playerHandle = player->GetHandle().native_handle();
-        ItemList::Item* matchedItem = nullptr;
-        const auto& items = itemListMenu->items;
-        for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
-            ItemList::Item* entryItem = items[i];
-            if (!entryItem || entryItem->data.objDesc != entry) {
-                continue;
+        auto* object = entry->object;
+        std::vector<SellPreviewStack> next;
+        next.reserve(stacks.size() + 1);
+        for (const auto& stack : stacks) {
+            if (stack.entry->object != object) {
+                next.push_back(stack);
             }
-            if (entryItem->data.owner != playerHandle) {
-                continue;
-            }
-            matchedItem = entryItem;
-            break;
-        }
-        if (!matchedItem) {
-            return false;
         }
 
-        SellPreviewStack measured;
-        measured.entry = entry;
-        if (entry->object && EntryPassesPreviewFilters(entry, true)) {
-            measured.count = MeasureBarterSellCount(matchedItem);
-            if (measured.count > 0) {
-                measured.unitPrice = ComputeUnitSellPrice(entry, sellMult);
-            }
+        std::vector<PreviewStack> liveStacks;
+        CollectPlayerSellableJunk(player, liveStacks, object);
+        for (const auto& stack : liveStacks) {
+            next.push_back({ stack.count, ComputeUnitSellPrice(stack.entry, sellMult), stack.entry });
         }
-        if (measured.count > 0) {
-            byEntry[entry] = measured;
-        } else {
-            byEntry.erase(entry);
+
+        std::unordered_map<InventoryEntryData*, SellPreviewStack> byEntry;
+        byEntry.reserve(next.size());
+        for (const auto& stack : next) {
+            if (!byEntry.emplace(stack.entry, stack).second) {
+                return false;
+            }
         }
 
         std::vector<PreviewStack> ordered;
-        ordered.reserve(byEntry.size());
-        std::size_t seen = 0;
-        for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
-            ItemList::Item* entryItem = items[i];
-            if (!entryItem || !entryItem->data.objDesc) {
-                continue;
-            }
-            if (entryItem->data.owner != playerHandle) {
-                continue;
-            }
-            auto it = byEntry.find(entryItem->data.objDesc);
-            if (it == byEntry.end()) {
-                continue;
-            }
-            ordered.push_back({ it->first, it->second.count });
-            ++seen;
+        ordered.reserve(next.size());
+        for (const auto& stack : next) {
+            ordered.push_back({ stack.entry, stack.count });
         }
-        if (seen != byEntry.size()) {
-            return false;
-        }
-
         SortPreviewStacks(ordered, Settings::GetSellPriority());
 
         stacks.clear();
@@ -1259,6 +1222,7 @@ namespace JunkIt {
     std::vector<std::pair<InventoryEntryData*, std::int32_t>> JunkHandler::BuildSellList(bool allowUiCountBoost) {
         SKSE::log::info(" ");
         SKSE::log::info("---- Finding Sellable Junk ----");
+        (void)allowUiCountBoost;
 
         std::vector<std::pair<InventoryEntryData*, std::int32_t>> sellList;
 
@@ -1270,74 +1234,14 @@ namespace JunkIt {
 
         const auto ui = RE::UI::GetSingleton();
         GPtr<BarterMenu> barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
-        ItemList* itemListMenu = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
-        if (!itemListMenu) {
-            SKSE::log::error("No ItemListMenu found");
+        if (!barterMenu) {
+            SKSE::log::error("No BarterMenu found");
             return sellList;
         }
 
-        // ItemList holds both inventories; StandardItemData::owner distinguishes player vs vendor.
-        const auto playerHandle = player->GetHandle().native_handle();
-        const auto& listItems = itemListMenu->items;
+        SKSE::log::info("Processing player inventory for sellable junk");
         std::vector<PreviewStack> sortData;
-
-        SKSE::log::info("Processing BarterMenu ItemList for player-owned sellable junk");
-
-        for (std::uint32_t i = 0, size = listItems.size(); i < size; i++) {
-            ItemList::Item* entryItem = listItems[i];
-            if (!entryItem || !entryItem->data.objDesc) {
-                continue;
-            }
-
-            if (entryItem->data.owner != playerHandle) {
-                continue;
-            }
-
-            InventoryEntryData* objDesc = entryItem->data.objDesc;
-            if (!objDesc->object) {
-                continue;
-            }
-
-            if (objDesc->IsQuestObject()) {
-                if (spdlog::should_log(spdlog::level::debug)) {
-                    SKSE::log::debug("Junk Item is Quest Item - Skipping {}", objDesc->object->GetName());
-                }
-                continue;
-            }
-
-            if (Settings::ProtectEquipped() && objDesc->IsWorn()) {
-                if (spdlog::should_log(spdlog::level::debug)) {
-                    SKSE::log::debug("Junk Item Equipped - Skipping {}", objDesc->object->GetName());
-                }
-                continue;
-            }
-            if (Settings::ProtectFavorites() && objDesc->IsFavorited()) {
-                if (spdlog::should_log(spdlog::level::debug)) {
-                    SKSE::log::debug("Junk Item Favorited - Skipping {}", objDesc->object->GetName());
-                }
-                continue;
-            }
-            if (Settings::ProtectEnchanted() && objDesc->IsEnchanted()) {
-                if (spdlog::should_log(spdlog::level::debug)) {
-                    SKSE::log::debug("Junk Item Enchanted - Skipping {}", objDesc->object->GetName());
-                }
-                continue;
-            }
-
-            const auto scan = ScanEntryJunk(objDesc, false);
-            Count count = scan.junkCount;
-            if (allowUiCountBoost && scan.fullyJunk) {
-                const Count uiCount = static_cast<Count>(entryItem->data.GetCount());
-                if (uiCount > count) {
-                    count = uiCount;
-                }
-            }
-            if (count <= 0) {
-                continue;
-            }
-
-            sortData.push_back({ objDesc, count });
-        }
+        CollectPlayerSellableJunk(player, sortData);
 
         SortPreviewStacks(sortData, Settings::GetSellPriority());
 
