@@ -68,6 +68,7 @@ namespace JunkIt {
         RE::GFxValue obj;
         a_view->GetVariable(&obj, a_pathToObj);
         if (!obj.IsObject()) {
+            SKSE::log::debug("I4 processList hook skipped, {} is not an object", a_pathToObj);
             return;
         }
 
@@ -80,6 +81,7 @@ namespace JunkIt {
         auto impl = RE::make_gptr<ProcessListFunc>(oldProcessList);
         a_view->CreateFunction(&newProcessList, impl.get());
         obj.SetMember("processList", newProcessList);
+        SKSE::log::debug("Hooked {}.processList existingFunc={}", a_pathToObj, oldProcessList.IsObject());
     }
 
     void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
@@ -93,22 +95,27 @@ namespace JunkIt {
 
     void I4Integration::ReprocessOpenList(RE::GFxMovieView* movie) {
         if (!movie) {
+            SKSE::log::debug("ReprocessOpenList skipped, no movie");
             return;
         }
 
         RE::GFxValue itemList;
         movie->GetVariable(&itemList, "_root.Menu_mc.inventoryLists.itemList");
         if (!itemList.IsObject()) {
+            SKSE::log::debug("ReprocessOpenList skipped, no itemList");
             return;
         }
 
         RE::GFxValue setter;
         movie->GetVariable(&setter, "_global.InventoryIconSetter.prototype");
         if (!setter.IsObject()) {
+            SKSE::log::debug("ReprocessOpenList skipped, no InventoryIconSetter");
             return;
         }
 
+        SKSE::log::trace("ReprocessOpenList invoking InventoryIconSetter.processList");
         setter.Invoke("processList", nullptr, &itemList, 1);
+        SKSE::log::trace("ReprocessOpenList original processList returned");
     }
 
     namespace {
@@ -133,6 +140,7 @@ namespace JunkIt {
 
             void Include(RE::TESObjectREFR* owner) {
                 if (!owner) {
+                    SKSE::log::trace("Live cache include skipped, null owner");
                     return;
                 }
                 const auto key = owner->GetHandle().native_handle();
@@ -143,12 +151,25 @@ namespace JunkIt {
                 auto& list = entries[key];
                 auto* changes = owner->GetInventoryChanges(true);
                 if (!changes || !changes->entryList) {
+                    if (spdlog::should_log(spdlog::level::debug)) {
+                        SKSE::log::debug(
+                            "Live cache include {} [{}] has no inventory changes",
+                            owner->GetName(),
+                            FormUtil::Form::GetFormConfigString(owner));
+                    }
                     return;
                 }
                 for (auto& entry : *changes->entryList) {
                     if (entry && entry->object) {
                         list.push_back(entry);
                     }
+                }
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug(
+                        "Live cache include {} [{}] entries={}",
+                        owner->GetName(),
+                        FormUtil::Form::GetFormConfigString(owner),
+                        list.size());
                 }
             }
 
@@ -174,6 +195,14 @@ namespace JunkIt {
 
             bool LiveIsJunk(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
                 if (HasJunk(owner, object)) {
+                    if (spdlog::should_log(spdlog::level::trace) && owner && object) {
+                        SKSE::log::trace(
+                            "     Live junk match on owner {} [{}] for {} [{}]",
+                            owner->GetName(),
+                            FormUtil::Form::GetFormConfigString(owner),
+                            object->GetName(),
+                            FormUtil::Form::GetFormConfigString(object));
+                    }
                     return true;
                 }
 
@@ -181,10 +210,31 @@ namespace JunkIt {
                 if (!ui || !ui->IsMenuOpen("BarterMenu")) {
                     return false;
                 }
-                if (HasJunk(UIUtil::Menu::GetBarterMenuTargetRef(), object)) {
+
+                auto* barterTarget = UIUtil::Menu::GetBarterMenuTargetRef();
+                if (HasJunk(barterTarget, object)) {
+                    if (spdlog::should_log(spdlog::level::trace) && barterTarget && object) {
+                        SKSE::log::trace(
+                            "     Live junk match on vendor {} [{}] for {} [{}]",
+                            barterTarget->GetName(),
+                            FormUtil::Form::GetFormConfigString(barterTarget),
+                            object->GetName(),
+                            FormUtil::Form::GetFormConfigString(object));
+                    }
                     return true;
                 }
-                return HasJunk(UIUtil::Menu::GetMerchantContainer(), object);
+
+                auto* merchantContainer = UIUtil::Menu::GetMerchantContainer();
+                const bool merchantJunk = HasJunk(merchantContainer, object);
+                if (merchantJunk && spdlog::should_log(spdlog::level::trace) && merchantContainer && object) {
+                    SKSE::log::trace(
+                        "     Live junk match on merchant container {} [{}] for {} [{}]",
+                        merchantContainer->GetName(),
+                        FormUtil::Form::GetFormConfigString(merchantContainer),
+                        object->GetName(),
+                        FormUtil::Form::GetFormConfigString(object));
+                }
+                return merchantJunk;
             }
         };
     }
@@ -196,20 +246,90 @@ namespace JunkIt {
         LiveInventoryCache liveInventories;
         auto& junkManager = JunkDataManager::GetSingleton();
 
+        const auto ui = RE::UI::GetSingleton();
+        const bool barterOpen = ui && ui->IsMenuOpen("BarterMenu");
+        SKSE::log::debug(
+            "processList itemList={} items={} args={} barter={} inventory={} container={}",
+            itemList != nullptr,
+            itemList ? itemList->items.size() : 0,
+            a_params.argCount,
+            barterOpen,
+            ui && ui->IsMenuOpen("InventoryMenu"),
+            ui && ui->IsMenuOpen("ContainerMenu"));
+        if (barterOpen && spdlog::should_log(spdlog::level::debug)) {
+            if (auto* target = UIUtil::Menu::GetBarterMenuTargetRef()) {
+                SKSE::log::debug(
+                    "     Vendor {} [{}]",
+                    target->GetName(),
+                    FormUtil::Form::GetFormConfigString(target));
+            } else {
+                SKSE::log::debug("     Vendor ref not resolved");
+            }
+            if (auto* rawTarget = UIUtil::Menu::GetContainer<RE::BarterMenu>()) {
+                SKSE::log::debug(
+                    "     Barter menu target {} [{}] actor={}",
+                    rawTarget->GetName(),
+                    FormUtil::Form::GetFormConfigString(rawTarget),
+                    rawTarget->As<RE::Actor>() != nullptr);
+            } else {
+                SKSE::log::debug("     Barter menu target handle not resolved");
+            }
+        }
+
+        std::uint32_t descCount = 0;
+        std::uint32_t descJunk = 0;
+        std::uint32_t liveCount = 0;
+        std::uint32_t liveJunk = 0;
+
         if (itemList && itemList->items.size() > 0) {
-            for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
+            const auto size = itemList->items.size();
+            SKSE::log::debug("Processing itemList, {} items", size);
+            for (std::uint32_t i = 0; i < size; i++) {
                 auto* item = itemList->items[i];
                 if (!item || !item->obj.IsObject()) {
+                    SKSE::log::trace("     [{}] skipped, item={} gfxObject={}", i, item != nullptr, item && item->obj.IsObject());
                     continue;
                 }
 
                 if (auto* objDesc = item->data.objDesc) {
-                    SetJunkFlags(item->obj, junkManager.IsJunk(objDesc));
+                    const bool isJunk = junkManager.IsJunk(objDesc);
+                    descCount++;
+                    if (isJunk) {
+                        descJunk++;
+                    }
+                    if (spdlog::should_log(spdlog::level::trace) && objDesc->object) {
+                        SKSE::log::trace(
+                            "     [{}] {} [{}] objDesc junk={}",
+                            i,
+                            objDesc->object->GetName(),
+                            FormUtil::Form::GetFormConfigString(objDesc->object),
+                            isJunk);
+                    }
+                    SetJunkFlags(item->obj, isJunk);
                 } else {
                     auto* bound = BoundFromGFxEntry(item->obj);
-                    SetJunkFlags(item->obj, liveInventories.LiveIsJunk(ResolveOwner(item->data.owner), bound));
+                    const bool isJunk = liveInventories.LiveIsJunk(ResolveOwner(item->data.owner), bound);
+                    liveCount++;
+                    if (isJunk) {
+                        liveJunk++;
+                    }
+                    if (spdlog::should_log(spdlog::level::trace)) {
+                        SKSE::log::trace(
+                            "     [{}] {} [{}] live junk={}",
+                            i,
+                            bound ? bound->GetName() : "",
+                            bound ? FormUtil::Form::GetFormConfigString(bound) : "",
+                            isJunk);
+                    }
+                    SetJunkFlags(item->obj, isJunk);
                 }
             }
+            SKSE::log::debug(
+                "itemList junk flags objDesc={}/{} live={}/{}",
+                descJunk,
+                descCount,
+                liveJunk,
+                liveCount);
         } else if (a_params.argCount >= 1) {
             auto& a_list = a_params.args[0];
             RE::GFxValue entryList;
@@ -218,27 +338,50 @@ namespace JunkIt {
             }
 
             if (entryList.IsArray()) {
-                for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
+                const auto size = entryList.GetArraySize();
+                SKSE::log::debug("Processing GFx _entryList, {} entries", size);
+                for (std::uint32_t i = 0; i < size; i++) {
                     RE::GFxValue entryObject;
                     entryList.GetElement(i, &entryObject);
                     if (!entryObject.IsObject()) {
+                        SKSE::log::trace("     [{}] skipped, entry is not an object", i);
                         continue;
                     }
 
                     auto* bound = BoundFromGFxEntry(entryObject);
-                    SetJunkFlags(
-                        entryObject,
-                        liveInventories.LiveIsJunk(RE::PlayerCharacter::GetSingleton(), bound));
+                    const bool isJunk = liveInventories.LiveIsJunk(RE::PlayerCharacter::GetSingleton(), bound);
+                    liveCount++;
+                    if (isJunk) {
+                        liveJunk++;
+                    }
+                    if (spdlog::should_log(spdlog::level::trace)) {
+                        SKSE::log::trace(
+                            "     [{}] {} [{}] live junk={}",
+                            i,
+                            bound ? bound->GetName() : "",
+                            bound ? FormUtil::Form::GetFormConfigString(bound) : "",
+                            isJunk);
+                    }
+                    SetJunkFlags(entryObject, isJunk);
                 }
+                SKSE::log::debug("entryList junk flags live={}/{}", liveJunk, liveCount);
+            } else {
+                SKSE::log::debug("processList fallback has no _entryList array");
             }
+        } else {
+            SKSE::log::debug("No itemList or _entryList to process");
         }
 
         if (_oldFunc.IsObject()) {
+            SKSE::log::trace("Invoking original processList");
             _oldFunc.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
                 static_cast<std::uint32_t>(a_params.argCount) + 1);
+            SKSE::log::trace("Original processList returned");
+        } else {
+            SKSE::log::debug("No original processList function to invoke");
         }
     }
 }
