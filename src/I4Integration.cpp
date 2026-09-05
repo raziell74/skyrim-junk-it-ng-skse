@@ -1,5 +1,6 @@
 #include "I4Integration.h"
 #include "JunkData.h"
+#include "QuickLootIntegration.h"
 #include "settings.h"
 #include "util.h"
 
@@ -82,6 +83,36 @@ namespace JunkIt {
         a_view->CreateFunction(&newProcessList, impl.get());
         obj.SetMember("processList", newProcessList);
         SKSE::log::debug("Hooked {}.processList existingFunc={}", a_pathToObj, oldProcessList.IsObject());
+    }
+
+    void I4Integration::InstallProcessEntry(RE::GFxMovieView* a_view) {
+        if (!a_view) {
+            return;
+        }
+
+        RE::GFxValue obj;
+        const char* path = "skse.plugins.InventoryInjector";
+        a_view->GetVariable(&obj, path);
+        if (!obj.IsObject()) {
+            path = "_global.skse.plugins.InventoryInjector";
+            a_view->GetVariable(&obj, path);
+        }
+        if (!obj.IsObject()) {
+            SKSE::log::trace("I4 ProcessEntry hook skipped, InventoryInjector is not an object");
+            return;
+        }
+
+        RE::GFxValue oldProcessEntry;
+        if (!obj.GetMember("ProcessEntry", &oldProcessEntry) || oldProcessEntry.IsUndefined()) {
+            SKSE::log::trace("I4 ProcessEntry hook skipped, ProcessEntry is missing");
+            return;
+        }
+
+        RE::GFxValue newProcessEntry;
+        auto impl = RE::make_gptr<ProcessEntryFunc>(oldProcessEntry);
+        a_view->CreateFunction(&newProcessEntry, impl.get());
+        obj.SetMember("ProcessEntry", newProcessEntry);
+        SKSE::log::debug("Hooked {}.ProcessEntry", path);
     }
 
     void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
@@ -236,6 +267,24 @@ namespace JunkIt {
                 }
                 return merchantJunk;
             }
+
+            bool LootIsJunk(RE::TESBoundObject* object) {
+                if (auto* container = QuickLootIntegration::GetLootContainer()) {
+                    if (HasJunk(container, object)) {
+                        return true;
+                    }
+                }
+
+                if (auto* pick = RE::CrosshairPickData::GetSingleton()) {
+                    RE::TESObjectREFRPtr target;
+                    LookupReferenceByHandle(pick->GetActiveTarget(), target);
+                    if (HasJunk(target.get(), object)) {
+                        return true;
+                    }
+                }
+
+                return LiveIsJunk(RE::PlayerCharacter::GetSingleton(), object);
+            }
         };
     }
 
@@ -382,6 +431,25 @@ namespace JunkIt {
             SKSE::log::trace("Original processList returned");
         } else {
             SKSE::log::debug("No original processList function to invoke");
+        }
+    }
+
+    void I4Integration::ProcessEntryFunc::Call(Params& a_params) {
+        if (a_params.argCount >= 1) {
+            auto& entryObject = a_params.args[0];
+            if (entryObject.IsObject()) {
+                LiveInventoryCache liveInventories;
+                auto* bound = BoundFromGFxEntry(entryObject);
+                SetJunkFlags(entryObject, liveInventories.LootIsJunk(bound));
+            }
+        }
+
+        if (_oldFunc.IsObject()) {
+            _oldFunc.Invoke(
+                "call",
+                a_params.retVal,
+                a_params.argsWithThisRef,
+                static_cast<std::uint32_t>(a_params.argCount) + 1);
         }
     }
 }

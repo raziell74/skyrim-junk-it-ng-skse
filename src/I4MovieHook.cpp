@@ -30,5 +30,6 @@ namespace JunkIt {
         I4Integration::Install(a_view, "_global.CraftingIconSetter.prototype");
         I4Integration::Install(a_view, "_global.MagicIconSetter.prototype");
         I4Integration::Install(a_view, "_global.FavoritesIconSetter.prototype");
+        I4Integration::InstallProcessEntry(a_view);
     }
 }

@@ -237,6 +237,13 @@ namespace QuickLoot::API
 			}
 		}
 
+		static void RefreshLootMenu()
+		{
+			if (_interface) {
+				_interface->RefreshLootMenu(_plugin);
+			}
+		}
+
 	private:
 		// ReSharper disable once CppPolymorphicClassWithNonVirtualPublicDestructor
 		struct InterfaceV20

@@ -85,7 +85,6 @@ namespace JunkIt {
             [[nodiscard]] static SkyPromptButtonPlacement GetSkyPromptButtonPlacement();
             [[nodiscard]] static bool GetSkyPromptShowCounts();
             [[nodiscard]] static bool GetQuickLootEnabled();
-            [[nodiscard]] static bool GetQuickLootIcons();
             [[nodiscard]] static bool GetQuickLootMarkButton();
 
             [[nodiscard]] static bool GetAutoJunkOnPickup();
@@ -141,7 +140,6 @@ namespace JunkIt {
             static std::int32_t& SkyPromptButtonPlacementValue();
             static bool& SkyPromptShowCountsValue();
             static bool& QuickLootEnabledValue();
-            static bool& QuickLootIconsValue();
             static bool& QuickLootMarkButtonValue();
 
             static bool& AutoJunkOnPickupValue();

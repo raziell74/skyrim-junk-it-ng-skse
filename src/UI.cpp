@@ -959,17 +959,14 @@ namespace JunkIt {
                 ImGui::TextWrapped("%s", Translation::Get(statusKey).c_str());
             }
             if (BeginSettingsTable("quickloot")) {
-                const bool quickLootAvailable = Settings::IsQuickLootInstalled() && QuickLootIntegration::IsReady();
-                ImGui::BeginDisabled(!quickLootAvailable);
+                const bool quickLootPresent = Settings::IsQuickLootInstalled();
+                const bool apiReady = QuickLootIntegration::IsReady();
+                ImGui::BeginDisabled(!quickLootPresent);
                 const bool enabledChanged = CheckboxRow(
                     "$JunkIt_QuickLootEnabled",
                     "$JunkIt_QuickLootEnabled_Help",
                     Settings::QuickLootEnabledValue());
-                ImGui::BeginDisabled(!Settings::QuickLootEnabledValue());
-                const bool iconsChanged = CheckboxRow(
-                    "$JunkIt_QuickLootIcons",
-                    "$JunkIt_QuickLootIcons_Help",
-                    Settings::QuickLootIconsValue());
+                ImGui::BeginDisabled(!Settings::QuickLootEnabledValue() || !apiReady);
                 const bool markChanged = CheckboxRow(
                     "$JunkIt_QuickLootMarkButton",
                     "$JunkIt_QuickLootMarkButton_Help",
@@ -977,7 +974,7 @@ namespace JunkIt {
                 ImGui::EndDisabled();
                 ImGui::EndDisabled();
                 ImGui::EndTable();
-                if (enabledChanged || iconsChanged || markChanged) {
+                if (enabledChanged || markChanged) {
                     SaveSettings();
                     QuickLootIntegration::RefreshMenu();
                 }

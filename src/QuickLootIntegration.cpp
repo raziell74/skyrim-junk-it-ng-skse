@@ -17,10 +17,7 @@ namespace JunkIt {
         bool g_gamepadInputKnown = false;
         RE::InventoryEntryData* g_selectedEntry = nullptr;
         std::uint32_t g_selectedOwner = 0;
-
-        bool IconsAllowed() {
-            return g_ready && Settings::GetQuickLootEnabled() && Settings::GetQuickLootIcons();
-        }
+        std::uint32_t g_lootOwner = 0;
 
         bool UsingGamepad() {
             if (g_gamepadInputKnown) {
@@ -33,27 +30,14 @@ namespace JunkIt {
         void ClearSelection() {
             g_selectedEntry = nullptr;
             g_selectedOwner = 0;
-        }
-
-        void OnModifyItemData(QuickLoot::API::ModifyItemDataEvent* e) {
-            if (!e || !IconsAllowed()) {
-                return;
-            }
-
-            const bool isJunk = e->stack && e->stack->entry && JunkDataManager::GetSingleton().IsJunk(e->stack->entry);
-            if (!e->data.IsObject()) {
-                return;
-            }
-            e->data.SetMember("isJunk", isJunk);
-            e->data.SetMember("isJunkIcon", isJunk);
-            e->data.SetMember("isJunkSubType", isJunk);
+            g_lootOwner = 0;
         }
 
         void OnPopulateInfoBar(QuickLoot::API::PopulateInfoBarEvent* e) {
             if (!e || !e->stack || !e->stack->entry) {
                 return;
             }
-            if (!IconsAllowed()) {
+            if (!Settings::GetQuickLootEnabled()) {
                 return;
             }
             if (!JunkDataManager::GetSingleton().IsJunk(e->stack->entry)) {
@@ -64,7 +48,7 @@ namespace JunkIt {
             e->result.push_back(label.empty() ? "Junk" : label.c_str());
         }
 
-        void OnModifyButtonBar(QuickLoot::API::ModifyButtonBarEvent* e) {
+        void OnPopulateButtonBar(QuickLoot::API::PopulateButtonBarEvent* e) {
             if (!e || !QuickLootIntegration::MarkAllowed()) {
                 return;
             }
@@ -83,20 +67,27 @@ namespace JunkIt {
             const auto& label = Translation::Get(
                 isJunk ? "$JunkIt_QuickLoot_Unmark" : "$JunkIt_QuickLoot_Mark");
 
-            e->buttons.emplace_back(
+            e->result.push_back({
                 label.c_str(),
-                static_cast<std::uint16_t>(artKey),
-                false,
-                QuickLoot::API::QuickLootAction::kNone);
+                static_cast<std::uint16_t>(artKey)});
+        }
+
+        void OnOpenLootMenu(QuickLoot::API::OpenLootMenuEvent* e) {
+            if (!e) {
+                return;
+            }
+            g_lootOwner = e->container.native_handle();
         }
 
         void OnSelectItem(QuickLoot::API::SelectItemEvent* e) {
             if (!e || !e->stack || !e->stack->entry) {
-                ClearSelection();
+                g_selectedEntry = nullptr;
+                g_selectedOwner = 0;
                 return;
             }
             g_selectedEntry = e->stack->entry;
             g_selectedOwner = e->container.native_handle();
+            g_lootOwner = g_selectedOwner;
         }
 
         void OnCloseLootMenu(QuickLoot::API::CloseLootMenuEvent*) {
@@ -106,22 +97,22 @@ namespace JunkIt {
 
     void QuickLootIntegration::Install() {
         if (GetModuleHandleW(L"QuickLootIE") == nullptr) {
-            SKSE::log::debug("QuickLootIE not installed; loot menu junk icons disabled");
+            SKSE::log::debug("QuickLootIE not installed; loot menu API integration skipped");
             return;
         }
 
-        if (!QuickLoot::API::QuickLootAPI::Init("JunkIt", QuickLoot::API::ApiVersion::kV21)) {
-            SKSE::log::warn("QuickLootIE API v21 unavailable; loot menu junk icons disabled");
+        if (!QuickLoot::API::QuickLootAPI::Init("JunkIt")) {
+            SKSE::log::info("QuickLootIE API V20 unavailable; loot menu mark button disabled");
             return;
         }
 
-        QuickLoot::API::QuickLootAPI::RegisterModifyItemDataHandler(&OnModifyItemData);
         QuickLoot::API::QuickLootAPI::RegisterPopulateInfoBarHandler(&OnPopulateInfoBar);
-        QuickLoot::API::QuickLootAPI::RegisterModifyButtonBarHandler(&OnModifyButtonBar);
+        QuickLoot::API::QuickLootAPI::RegisterPopulateButtonBarHandler(&OnPopulateButtonBar);
+        QuickLoot::API::QuickLootAPI::RegisterOpenLootMenuHandler(&OnOpenLootMenu);
         QuickLoot::API::QuickLootAPI::RegisterSelectItemHandler(&OnSelectItem);
         QuickLoot::API::QuickLootAPI::RegisterCloseLootMenuHandler(&OnCloseLootMenu);
         g_ready = true;
-        SKSE::log::info("QuickLootIE junk icon and mark button integration installed");
+        SKSE::log::info("QuickLootIE V20 API integration installed");
     }
 
     void QuickLootIntegration::RefreshMenu() {
@@ -183,5 +174,12 @@ namespace JunkIt {
 
     bool QuickLootIntegration::MarkAllowed() {
         return g_ready && Settings::GetQuickLootEnabled() && Settings::GetQuickLootMarkButton();
+    }
+
+    RE::TESObjectREFR* QuickLootIntegration::GetLootContainer() {
+        if (g_lootOwner == 0) {
+            return nullptr;
+        }
+        return RE::TESObjectREFR::LookupByHandle(g_lootOwner).get();
     }
 }

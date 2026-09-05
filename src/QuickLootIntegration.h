@@ -14,6 +14,7 @@ namespace JunkIt {
         [[nodiscard]] static bool IsReady();
         [[nodiscard]] static bool IsMenuOpen();
         [[nodiscard]] static bool MarkAllowed();
+        [[nodiscard]] static RE::TESObjectREFR* GetLootContainer();
     };
 
 }
