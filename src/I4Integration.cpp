@@ -276,8 +276,7 @@ namespace JunkIt {
                 }
 
                 if (auto* pick = RE::CrosshairPickData::GetSingleton()) {
-                    RE::TESObjectREFRPtr target;
-                    LookupReferenceByHandle(pick->GetActiveTarget(), target);
+                    auto target = pick->GetActiveTarget().get();
                     if (HasJunk(target.get(), object)) {
                         return true;
                     }
