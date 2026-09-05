@@ -112,7 +112,11 @@ namespace JunkIt {
         auto impl = RE::make_gptr<ProcessEntryFunc>(oldProcessEntry);
         a_view->CreateFunction(&newProcessEntry, impl.get());
         obj.SetMember("ProcessEntry", newProcessEntry);
-        SKSE::log::debug("Hooked {}.ProcessEntry", path);
+        SKSE::log::debug(
+            "Hooked {}.ProcessEntry existingFunc={} type={}",
+            path,
+            oldProcessEntry.IsObject(),
+            static_cast<std::uint32_t>(oldProcessEntry.GetType()));
     }
 
     void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
@@ -157,6 +161,39 @@ namespace JunkIt {
             }
             auto* form = RE::TESForm::LookupByID(static_cast<RE::FormID>(formIdVal.GetNumber()));
             return form ? form->As<RE::TESBoundObject>() : nullptr;
+        }
+
+        void SetGFxString(RE::GFxMovie* movie, RE::GFxValue& value, const char* text) {
+            if (movie) {
+                movie->CreateString(&value, text);
+            } else {
+                value = text;
+            }
+        }
+
+        void ApplyJunkVisuals(RE::GFxMovie* movie, RE::GFxValue& obj, bool isJunk) {
+            if (!isJunk || !obj.IsObject()) {
+                return;
+            }
+
+            const auto& cfg = I4JunkConfig::GetSingleton();
+            if (Settings::GetUpdateItemIcon() && cfg.loaded) {
+                RE::GFxValue source;
+                RE::GFxValue label;
+                SetGFxString(movie, source, cfg.iconSource.c_str());
+                SetGFxString(movie, label, cfg.iconLabel.c_str());
+                obj.SetMember("iconSource", source);
+                obj.SetMember("iconLabel", label);
+                obj.SetMember("iconColor", static_cast<double>(cfg.iconColor));
+            }
+            if (Settings::GetUpdateSubTypeDisplay()) {
+                RE::GFxValue display;
+                SetGFxString(
+                    movie,
+                    display,
+                    cfg.subTypeDisplay.empty() ? "Junk" : cfg.subTypeDisplay.c_str());
+                obj.SetMember("subTypeDisplay", display);
+            }
         }
 
         template <class Handle>
@@ -434,21 +471,49 @@ namespace JunkIt {
     }
 
     void I4Integration::ProcessEntryFunc::Call(Params& a_params) {
+        bool isJunk = false;
         if (a_params.argCount >= 1) {
             auto& entryObject = a_params.args[0];
             if (entryObject.IsObject()) {
                 LiveInventoryCache liveInventories;
                 auto* bound = BoundFromGFxEntry(entryObject);
-                SetJunkFlags(entryObject, liveInventories.LootIsJunk(bound));
+                isJunk = liveInventories.LootIsJunk(bound);
+                SetJunkFlags(entryObject, isJunk);
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug(
+                        "ProcessEntry {} [{}] junk={} oldFunc={} type={}",
+                        bound ? bound->GetName() : "",
+                        bound ? FormUtil::Form::GetFormConfigString(bound) : "",
+                        isJunk,
+                        _oldFunc.IsObject(),
+                        static_cast<std::uint32_t>(_oldFunc.GetType()));
+                }
+            } else {
+                SKSE::log::debug(
+                    "ProcessEntry arg0 is not an object type={} args={}",
+                    static_cast<std::uint32_t>(entryObject.GetType()),
+                    a_params.argCount);
             }
+        } else {
+            SKSE::log::debug("ProcessEntry skipped, args={}", a_params.argCount);
         }
 
         if (_oldFunc.IsObject()) {
-            _oldFunc.Invoke(
-                "call",
-                a_params.retVal,
-                a_params.argsWithThisRef,
-                static_cast<std::uint32_t>(a_params.argCount) + 1);
+            if (!_oldFunc.Invoke(
+                    "call",
+                    a_params.retVal,
+                    a_params.argsWithThisRef,
+                    static_cast<std::uint32_t>(a_params.argCount) + 1)) {
+                SKSE::log::debug("Original ProcessEntry Invoke(call) failed");
+            }
+        } else {
+            SKSE::log::debug(
+                "No original ProcessEntry function to invoke type={}",
+                static_cast<std::uint32_t>(_oldFunc.GetType()));
+        }
+
+        if (a_params.argCount >= 1) {
+            ApplyJunkVisuals(a_params.movie, a_params.args[0], isJunk);
         }
     }
 }
