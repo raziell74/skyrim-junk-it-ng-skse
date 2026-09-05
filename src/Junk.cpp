@@ -498,10 +498,39 @@ namespace JunkIt {
             return true;
         }
 
+        std::unordered_set<TESBoundObject*> CollectBarterPlayerBuyableObjects(PlayerCharacter* player) {
+            std::unordered_set<TESBoundObject*> buyable;
+            if (!player) {
+                return buyable;
+            }
+
+            const auto ui = RE::UI::GetSingleton();
+            auto barterMenu = ui ? ui->GetMenu<BarterMenu>() : nullptr;
+            ItemList* itemList = barterMenu ? barterMenu->GetRuntimeData().itemList : nullptr;
+            if (!itemList) {
+                return buyable;
+            }
+
+            const auto playerHandle = player->GetHandle().native_handle();
+            const auto& items = itemList->items;
+            for (std::uint32_t i = 0, size = items.size(); i < size; i++) {
+                ItemList::Item* entryItem = items[i];
+                if (!entryItem || !entryItem->data.objDesc || !entryItem->data.objDesc->object) {
+                    continue;
+                }
+                if (entryItem->data.owner != playerHandle) {
+                    continue;
+                }
+                buyable.insert(entryItem->data.objDesc->object);
+            }
+            return buyable;
+        }
+
         void CollectPlayerSellableJunk(
             TESObjectREFR* player,
             std::vector<PreviewStack>& out,
-            TESBoundObject* objectFilter = nullptr) {
+            TESBoundObject* objectFilter = nullptr,
+            const std::unordered_set<TESBoundObject*>* buyable = nullptr) {
             if (!player) {
                 return;
             }
@@ -516,6 +545,9 @@ namespace JunkIt {
                     continue;
                 }
                 if (objectFilter && live->object != objectFilter) {
+                    continue;
+                }
+                if (buyable && !buyable->contains(live->object)) {
                     continue;
                 }
                 if (!PassesPreviewFilters(live, true)) {
@@ -903,8 +935,9 @@ namespace JunkIt {
         }
 
         capture.pricesReady = true;
+        const auto buyable = CollectBarterPlayerBuyableObjects(player);
         std::vector<PreviewStack> sortStacks;
-        CollectPlayerSellableJunk(player, sortStacks);
+        CollectPlayerSellableJunk(player, sortStacks, nullptr, &buyable);
 
         SortPreviewStacks(sortStacks, Settings::GetSellPriority());
         capture.stacks.reserve(sortStacks.size());
@@ -954,7 +987,8 @@ namespace JunkIt {
         }
 
         std::vector<PreviewStack> liveStacks;
-        CollectPlayerSellableJunk(player, liveStacks, object);
+        const auto buyable = CollectBarterPlayerBuyableObjects(player);
+        CollectPlayerSellableJunk(player, liveStacks, object, &buyable);
         for (const auto& stack : liveStacks) {
             next.push_back({ stack.count, ComputeUnitSellPrice(stack.entry, sellMult), stack.entry });
         }
@@ -1240,8 +1274,9 @@ namespace JunkIt {
         }
 
         SKSE::log::info("Processing player inventory for sellable junk");
+        const auto buyable = CollectBarterPlayerBuyableObjects(player);
         std::vector<PreviewStack> sortData;
-        CollectPlayerSellableJunk(player, sortData);
+        CollectPlayerSellableJunk(player, sortData, nullptr, &buyable);
 
         SortPreviewStacks(sortData, Settings::GetSellPriority());
 
@@ -1908,17 +1943,8 @@ namespace JunkIt {
 
         if (totalToSell <= chunkSize) {
             SKSE::log::info("Transferring junk items to vendor...");
-            for (const auto& [entryData, count] : itemsToSell) {
-                if (count > 0 && entryData && entryData->object) {
-                    if (spdlog::should_log(spdlog::level::debug)) {
-                        SKSE::log::debug("Selling {} x{}", entryData->object->GetName(), count);
-                    }
-                    SellEntryUnits(entryData, player, vendorContainer, count);
-                    if (spdlog::should_log(spdlog::level::debug)) {
-                        SKSE::log::debug("Transaction for {} {} complete", count, entryData->object->GetName());
-                    }
-                }
-            }
+            auto remaining = BuildSellWorkList(itemsToSell);
+            SellWorkUnits(remaining, player, vendorContainer, totalToSell);
             FinishSell(player, vendorActorRef, vendorContainer, totalSellValue, totalToSell, totalPossibleToSell, itemsToSell.size());
             return;
         }
