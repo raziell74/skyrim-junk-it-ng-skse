@@ -55,7 +55,7 @@ namespace JunkIt {
 
     void SkyPromptIntegration::Install() {
         if (GetModuleHandleW(L"SkyPrompt") == nullptr) {
-            SKSE::log::info("SkyPrompt not installed; on-screen prompts disabled");
+            SKSE::log::debug("SkyPrompt not installed; on-screen prompts disabled");
             return;
         }
 

@@ -473,7 +473,7 @@ namespace NifUtil
             if (node)
             {
                 node->AttachChild(obj, true);
-                SKSE::log::info("Object Attached");
+                SKSE::log::debug("Object Attached");
             }
         }
     };
@@ -617,12 +617,12 @@ namespace UIUtil { // Sourced from JunkIt
             const auto UI = RE::UI::GetSingleton();
             const auto containerMenu = UI ? UI->GetMenu<ContainerMenu>() : nullptr;
             if (!containerMenu) {
-                SKSE::log::info("No open menu found");
+                SKSE::log::debug("No open menu found");
                 return ContainerMenu::ContainerMode::kLoot;
             }
 
             ContainerMenu::ContainerMode mode = containerMenu->GetContainerMode();
-            SKSE::log::info("Container Mode: {}", static_cast<std::uint32_t>(mode));
+            SKSE::log::debug("Container Mode: {}", static_cast<std::uint32_t>(mode));
             return mode;
         }
 

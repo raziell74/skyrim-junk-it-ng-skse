@@ -1492,7 +1492,7 @@ namespace JunkIt {
         }
 
         if (!SKSEMenuFramework::IsInstalled()) {
-            SKSE::log::error("SKSE Menu Framework is not installed; Junk It settings menu will be unavailable");
+            SKSE::log::warn("SKSE Menu Framework is not installed; Junk It settings menu will be unavailable");
             return;
         }
 

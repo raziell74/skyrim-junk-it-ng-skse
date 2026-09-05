@@ -106,7 +106,7 @@ namespace JunkIt {
 
     void QuickLootIntegration::Install() {
         if (GetModuleHandleW(L"QuickLootIE") == nullptr) {
-            SKSE::log::info("QuickLootIE not installed; loot menu junk icons disabled");
+            SKSE::log::debug("QuickLootIE not installed; loot menu junk icons disabled");
             return;
         }
 

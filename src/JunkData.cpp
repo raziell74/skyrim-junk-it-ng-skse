@@ -474,7 +474,7 @@ namespace JunkIt {
         const std::filesystem::path filePath(kJsonJunkPath);
         std::ifstream file(filePath, std::ios::binary);
         if (!file.is_open()) {
-            SKSE::log::error("Failed to open JSON junk list for reading: {}", filePath.string());
+            SKSE::log::warn("Failed to open JSON junk list for reading: {}", filePath.string());
             return false;
         }
 

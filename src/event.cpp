@@ -141,7 +141,7 @@ namespace JunkIt {
         const auto holdSeconds = Settings::IsTrashAvailable() ? Settings::GetTrashHoldSeconds() : 0;
         if (holdSeconds <= 0) {
             if (buttonEvent->IsDown()) {
-                SKSE::log::info("Trash Junk key pressed (KeyCode: 0x{:X})", buttonEvent->GetIDCode());
+                SKSE::log::debug("Trash Junk key pressed (KeyCode: 0x{:X})", buttonEvent->GetIDCode());
                 ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
             }
             return;
@@ -158,7 +158,7 @@ namespace JunkIt {
             skyPrompt.UpdateTrashHoldVisual(buttonEvent->HeldDuration());
             if (buttonEvent->HeldDuration() >= static_cast<float>(holdSeconds)) {
                 trashBulkFired = true;
-                SKSE::log::info("Trash Junk key held {:.2f}s; trashing all junk", buttonEvent->HeldDuration());
+                SKSE::log::debug("Trash Junk key held {:.2f}s; trashing all junk", buttonEvent->HeldDuration());
                 skyPrompt.ResetTrashHoldVisual();
                 ExecuteAction(JUNKIT_EVENT_TYPE::kTrashBulk);
             }
@@ -198,7 +198,7 @@ namespace JunkIt {
             skyPrompt.UpdateGamepadHoldVisual(buttonEvent->HeldDuration());
             if (canTrash && buttonEvent->HeldDuration() >= trashHold) {
                 gamepadTrashFired = true;
-                SKSE::log::info(
+                SKSE::log::debug(
                     "Gamepad junk button held {:.2f}s; trashing all junk",
                     buttonEvent->HeldDuration());
                 skyPrompt.ResetGamepadHoldVisual();
@@ -225,10 +225,10 @@ namespace JunkIt {
             ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
         } else if (keyCode == transferKey) {
             if (activeMenu == ActiveMenuType::kContainer) {
-                SKSE::log::info("Transfer Junk key pressed (KeyCode: 0x{:X}) in Container menu", keyCode);
+                SKSE::log::debug("Transfer Junk key pressed (KeyCode: 0x{:X}) in Container menu", keyCode);
                 ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
             } else if (activeMenu == ActiveMenuType::kBarter) {
-                SKSE::log::info("Sell Junk key pressed (KeyCode: 0x{:X}) in Barter menu", keyCode);
+                SKSE::log::debug("Sell Junk key pressed (KeyCode: 0x{:X}) in Barter menu", keyCode);
                 ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
             }
         }
@@ -241,10 +241,10 @@ namespace JunkIt {
             SKSE::log::debug("Gamepad Mark/Unmark Junk button released (Hold: {:.2f}s, Threshold: {:.2f}s)", holdTime, holdThreshold);
             ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
         } else if (activeMenu == ActiveMenuType::kContainer) {
-            SKSE::log::info("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
+            SKSE::log::debug("Gamepad Transfer Junk button held (Hold: {:.2f}s) in Container menu", holdTime);
             ExecuteAction(JUNKIT_EVENT_TYPE::kTransfer);
         } else if (activeMenu == ActiveMenuType::kBarter) {
-            SKSE::log::info("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
+            SKSE::log::debug("Gamepad Sell Junk button held (Hold: {:.2f}s) in Barter menu", holdTime);
             ExecuteAction(JUNKIT_EVENT_TYPE::kSell);
         }
     }

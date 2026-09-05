@@ -408,7 +408,7 @@ namespace JunkIt {
         DetectSkyPrompt();
         DetectQuickLoot();
         if (!g_values.diiiInstalled && g_values.useDynamicInventoryIcon) {
-            SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
+            SKSE::log::debug("DIII not installed, forcing UseDynamicInventoryIcon to false");
             g_values.useDynamicInventoryIcon = false;
         }
     }
@@ -554,7 +554,7 @@ namespace JunkIt {
 
         static bool loggedSuccess = false;
         if (!loggedSuccess) {
-            SKSE::log::info("Saved settings to {}", iniPath.string());
+            SKSE::log::debug("Saved settings to {}", iniPath.string());
             loggedSuccess = true;
         }
         return true;
@@ -578,7 +578,7 @@ namespace JunkIt {
         auto* dataHandler = RE::TESDataHandler::GetSingleton();
         const bool trashPluginLoaded = dataHandler && dataHandler->LookupModByName(kTrashContainerPlugin);
         if (!trashPluginLoaded) {
-            SKSE::log::info("{} is not loaded; trash disabled", kTrashContainerPlugin);
+            SKSE::log::warn("{} is not loaded; trash disabled", kTrashContainerPlugin);
         } else if (kTrashContainerFormID == 0) {
             SKSE::log::warn(
                 "Trash container FormID is unset in settings.h; trash disabled until the JunkIt.esp REFR is assigned");
