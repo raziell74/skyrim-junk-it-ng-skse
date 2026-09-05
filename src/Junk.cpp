@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -149,6 +150,40 @@ namespace JunkIt {
             }
             InvalidateInventoryLists(movie);
             QuickLootIntegration::RefreshMenu();
+        }
+
+        void RefreshAfterJunkToggle(
+            JunkHandler::JunkToggleUi ui,
+            TESBoundObject* object,
+            RefHandle owner,
+            bool isNowJunk) {
+            if (ui == JunkHandler::JunkToggleUi::kItemList) {
+                RefreshJunkListIcons(UIUtil::ItemList::GetOpenList(), object, owner, isNowJunk);
+            } else {
+                QuickLootIntegration::RefreshMenu();
+            }
+        }
+
+        void NotifyJunkToggle(TESForm* itemForm, bool isNowJunk, const std::optional<std::string>& junkIdentity) {
+            if (isNowJunk) {
+                if (junkIdentity) {
+                    SKSE::log::debug("Form marked as junk: {}", *junkIdentity);
+                } else {
+                    SKSE::log::warn("Form marked as junk but no identity was returned for {}", itemForm->GetName());
+                }
+                if (Settings::GetNotifyOnMarkUnmark()) {
+                    std::string msg = Translation::Format("$JunkIt_NotifyMarkedAsJunk", itemForm->GetName());
+                    SendHUDMessage::ShowHUDMessage(msg.c_str());
+                }
+            } else {
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug("Form: {} is no longer marked as junk", itemForm->GetName());
+                }
+                if (Settings::GetNotifyOnMarkUnmark()) {
+                    std::string msg = Translation::Format("$JunkIt_NotifyUnmarkedAsJunk", itemForm->GetName());
+                    SendHUDMessage::ShowHUDMessage(msg.c_str());
+                }
+            }
         }
 
         struct PreviewStack {
@@ -1984,9 +2019,12 @@ namespace JunkIt {
             }
         }
 
-        InventoryEntryData* inventoryEntry = selectedItem->data.objDesc;
+        return ToggleEntryJunk(selectedItem->data.objDesc, selectedItem->data.owner, JunkToggleUi::kItemList);
+    }
+
+    TESForm* JunkHandler::ToggleEntryJunk(InventoryEntryData* inventoryEntry, std::uint32_t ownerHandle, JunkToggleUi ui) {
         if (!inventoryEntry) {
-            SKSE::log::error("Error getting InventoryEntryData for {}", selectedItem->data.objDesc->GetDisplayName());
+            SKSE::log::error("Error getting InventoryEntryData");
             SendHUDMessage::ShowHUDMessage(Translation::Get("$JunkIt_NotifyMarkFailed").c_str());
             return nullptr;
         }
@@ -2007,7 +2045,7 @@ namespace JunkIt {
 
         bool playerOwned = false;
         if (auto* player = PlayerCharacter::GetSingleton()) {
-            playerOwned = selectedItem->data.owner == player->GetHandle().native_handle();
+            playerOwned = ownerHandle == player->GetHandle().native_handle();
         }
 
         if (inventoryEntry->IsQuestObject()) {
@@ -2056,7 +2094,7 @@ namespace JunkIt {
                 std::string confirmText = Translation::Format("$JunkIt_MarkProtectedConfirm", protectionReason);
                 ShowConfirmationMessageBox(confirmText.c_str(),
                     { Translation::Get("$JunkIt_Yes"), Translation::Get("$JunkIt_ConfirmNo") },
-                    [inventoryEntry, itemForm, itemObject, playerOwned, owner = selectedItem->data.owner](unsigned int choice) {
+                    [inventoryEntry, itemForm, itemObject, playerOwned, ownerHandle, ui](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::debug("User confirmed marking protected item as junk");
                             if (spdlog::should_log(spdlog::level::debug)) {
@@ -2072,17 +2110,8 @@ namespace JunkIt {
                                 SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, true, playerOwned);
                             }
 
-                            RefreshJunkListIcons(UIUtil::ItemList::GetOpenList(), itemObject, owner, true);
-
-                            if (addedIdentity) {
-                                SKSE::log::debug("Form marked as junk: {}", *addedIdentity);
-                            } else {
-                                SKSE::log::warn("Failed to mark form as junk: {}", itemForm->GetName());
-                            }
-                            if (Settings::GetNotifyOnMarkUnmark()) {
-                                std::string msg = Translation::Format("$JunkIt_NotifyMarkedAsJunk", itemForm->GetName());
-                                SendHUDMessage::ShowHUDMessage(msg.c_str());
-                            }
+                            RefreshAfterJunkToggle(ui, itemObject, ownerHandle, true);
+                            NotifyJunkToggle(itemForm, true, addedIdentity);
                         } else {
                             SKSE::log::debug("User cancelled marking protected item as junk");
                         }
@@ -2116,27 +2145,8 @@ namespace JunkIt {
             SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, isNowJunk, playerOwned);
         }
 
-        RefreshJunkListIcons(itemListMenu, itemObject, selectedItem->data.owner, isNowJunk);
-
-        if (isNowJunk) {
-            if (junkIdentity) {
-                SKSE::log::debug("Form marked as junk: {}", *junkIdentity);
-            } else {
-                SKSE::log::warn("Form marked as junk but no identity was returned for {}", itemForm->GetName());
-            }
-            if (Settings::GetNotifyOnMarkUnmark()) {
-                std::string msg = Translation::Format("$JunkIt_NotifyMarkedAsJunk", itemForm->GetName());
-                SendHUDMessage::ShowHUDMessage(msg.c_str());
-            }
-        } else {
-            if (spdlog::should_log(spdlog::level::debug)) {
-                SKSE::log::debug("Form: {} is no longer marked as junk", itemForm->GetName());
-            }
-            if (Settings::GetNotifyOnMarkUnmark()) {
-                std::string msg = Translation::Format("$JunkIt_NotifyUnmarkedAsJunk", itemForm->GetName());
-                SendHUDMessage::ShowHUDMessage(msg.c_str());
-            }
-        }
+        RefreshAfterJunkToggle(ui, itemObject, ownerHandle, isNowJunk);
+        NotifyJunkToggle(itemForm, isNowJunk, junkIdentity);
 
         return itemForm;
     }

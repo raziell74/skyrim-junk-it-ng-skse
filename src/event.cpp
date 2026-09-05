@@ -1,5 +1,6 @@
 #include "event.h"
 #include "junk.h"
+#include "QuickLootIntegration.h"
 #include "SkyPromptIntegration.h"
 #include "UI.h"
 
@@ -12,6 +13,7 @@ namespace JunkIt {
         if (ui->IsMenuOpen("ContainerMenu")) return ActiveMenuType::kContainer;
         if (ui->IsMenuOpen("BarterMenu")) return ActiveMenuType::kBarter;
         if (ui->IsMenuOpen("InventoryMenu")) return ActiveMenuType::kInventory;
+        if (ui->IsMenuOpen("LootMenu")) return ActiveMenuType::kLootMenu;
 
         return ActiveMenuType::kNone;
     }
@@ -26,14 +28,21 @@ namespace JunkIt {
             return;
         }
 
-        if (Settings::GetAggressiveRefresh()) {
+        const bool lootMenuMark =
+            type == JUNKIT_EVENT_TYPE::kMark && GetActiveMenu() == ActiveMenuType::kLootMenu;
+
+        if (Settings::GetAggressiveRefresh() && !lootMenuMark) {
             UIUtil::ItemList::Refresh();
             JunkHandler::StartAggressiveRefresh();
         }
 
         switch (type) {
             case JUNKIT_EVENT_TYPE::kMark:
-                JunkHandler::ToggleIsJunk();
+                if (lootMenuMark) {
+                    QuickLootIntegration::ToggleSelectedJunk();
+                } else {
+                    JunkHandler::ToggleIsJunk();
+                }
                 break;
             case JUNKIT_EVENT_TYPE::kTransfer:
                 JunkHandler::TransferJunk();
@@ -53,7 +62,7 @@ namespace JunkIt {
 
         const bool trashConfirmPending =
             type == JUNKIT_EVENT_TYPE::kTrash || type == JUNKIT_EVENT_TYPE::kTrashBulk;
-        if (Settings::GetAggressiveRefresh() && !trashConfirmPending) {
+        if (Settings::GetAggressiveRefresh() && !trashConfirmPending && !lootMenuMark) {
             UIUtil::ItemList::Refresh();
             JunkHandler::StartAggressiveRefresh();
         }
@@ -65,7 +74,15 @@ namespace JunkIt {
         }
     }
 
-    void InputEventHandler::HandleMarkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType, bool skyPromptShowing) {
+    void InputEventHandler::HandleMarkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu, bool skyPromptShowing) {
+        if (activeMenu == ActiveMenuType::kLootMenu) {
+            if (buttonEvent->IsDown() && QuickLootIntegration::MarkAllowed()) {
+                SKSE::log::debug("Mark/Unmark Junk key pressed in loot menu (KeyCode: 0x{:X})", buttonEvent->GetIDCode());
+                ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
+            }
+            return;
+        }
+
         const auto holdSeconds = Settings::IsTrashAvailable() ? Settings::GetTrashHoldSeconds() : 0;
         if (holdSeconds <= 0) {
             if (!skyPromptShowing && buttonEvent->IsDown()) {
@@ -156,6 +173,14 @@ namespace JunkIt {
     }
 
     void InputEventHandler::HandleGamepadJunkKey(RE::ButtonEvent* buttonEvent, ActiveMenuType activeMenu) {
+        if (activeMenu == ActiveMenuType::kLootMenu) {
+            if (buttonEvent->IsUp() && QuickLootIntegration::MarkAllowed()) {
+                SKSE::log::debug("Gamepad Mark/Unmark Junk button released in loot menu");
+                ExecuteAction(JUNKIT_EVENT_TYPE::kMark);
+            }
+            return;
+        }
+
         auto& skyPrompt = SkyPromptIntegration::GetSingleton();
         const float trashHold = Settings::IsTrashAvailable()
             ? static_cast<float>(Settings::GetGamepadTrashHoldSeconds())
@@ -239,6 +264,7 @@ namespace JunkIt {
             auto buttonEvent = event->AsButtonEvent();
             if (buttonEvent && !buttonEvent->IsUp()) {
                 SkyPromptIntegration::GetSingleton().NoteInputDevice(buttonEvent->GetDevice());
+                QuickLootIntegration::NoteInputDevice(buttonEvent->GetDevice());
             }
             if (!buttonEvent || !buttonEvent->IsDown()) {
                 continue;
@@ -292,14 +318,16 @@ namespace JunkIt {
             }
 
             if (keyCode == gamepadKey) {
-                HandleGamepadJunkKey(buttonEvent, GetActiveMenu());
+                HandleGamepadJunkKey(buttonEvent, activeMenu);
+            } else if (activeMenu == ActiveMenuType::kLootMenu && keyCode == markKey) {
+                HandleMarkKey(buttonEvent, activeMenu, skyPromptShowing);
             } else if (nativeOwnsMark && keyCode == markKey) {
                 HandleMarkKey(buttonEvent, activeMenu, skyPromptShowing);
-            } else if (!skyPromptShowing && keyCode == transferKey) {
+            } else if (activeMenu != ActiveMenuType::kLootMenu && !skyPromptShowing && keyCode == transferKey) {
                 if (buttonEvent->IsDown()) {
                     HandleKeyDown(keyCode, activeMenu);
                 }
-            } else if (nativeOwnsTrash && keyCode == trashKey) {
+            } else if (activeMenu != ActiveMenuType::kLootMenu && nativeOwnsTrash && keyCode == trashKey) {
                 HandleTrashKey(buttonEvent);
             }
         }

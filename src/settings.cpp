@@ -50,6 +50,9 @@ namespace JunkIt {
             bool skyPromptEnabled = true;
             std::int32_t skyPromptButtonPlacement = 0;
             bool skyPromptShowCounts = true;
+            bool quickLootEnabled = true;
+            bool quickLootIcons = true;
+            bool quickLootMarkButton = true;
 
             bool autoJunkOnPickup = true;
             bool autoJunkOnMenuOpen = true;
@@ -65,6 +68,7 @@ namespace JunkIt {
 
             bool diiiInstalled = false;
             bool skyPromptInstalled = false;
+            bool quickLootInstalled = false;
             RE::TESObjectMISC* gold001 = nullptr;
             RE::TESObjectREFR* trashContainer = nullptr;
         };
@@ -253,6 +257,9 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptEnabled", g_values.skyPromptEnabled);
             complete &= ReadInt(ini, "Integration", "IntegrationSettings", "iSkyPromptButtonPlacement", g_values.skyPromptButtonPlacement);
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptShowCounts", g_values.skyPromptShowCounts);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bQuickLootEnabled", g_values.quickLootEnabled);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bQuickLootIcons", g_values.quickLootIcons);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bQuickLootMarkButton", g_values.quickLootMarkButton);
 
             complete &= ReadBool(ini, "Utility", {}, "bReplaceJunkListOnLoad", g_values.replaceJunkListOnLoad);
             complete &= ReadBool(ini, "Utility", {}, "bAggressiveRefresh", g_values.aggressiveRefresh);
@@ -331,13 +338,16 @@ namespace JunkIt {
                 g_values.largeTotalItems,
                 g_values.sellChunkSize);
             SKSE::log::info(
-                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptEnabled: {} | SkyPromptButtonPlacement: {} | SkyPromptShowCounts: {}",
+                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptEnabled: {} | SkyPromptButtonPlacement: {} | SkyPromptShowCounts: {} | QuickLootEnabled: {} | QuickLootIcons: {} | QuickLootMarkButton: {}",
                 g_values.updateItemIcon,
                 g_values.updateSubTypeDisplay,
                 g_values.useDynamicInventoryIcon,
                 g_values.skyPromptEnabled,
                 g_values.skyPromptButtonPlacement,
-                g_values.skyPromptShowCounts);
+                g_values.skyPromptShowCounts,
+                g_values.quickLootEnabled,
+                g_values.quickLootIcons,
+                g_values.quickLootMarkButton);
             SKSE::log::info(
                 "Auto Junk Settings | OnPickup: {} | OnMenuOpen: {} | Types: {} | Materials: {} | Keywords: {}",
                 g_values.autoJunkOnPickup,
@@ -354,6 +364,10 @@ namespace JunkIt {
 
         void DetectSkyPrompt() {
             g_values.skyPromptInstalled = GetModuleHandleW(L"SkyPrompt") != nullptr;
+        }
+
+        void DetectQuickLoot() {
+            g_values.quickLootInstalled = GetModuleHandleW(L"QuickLootIE") != nullptr;
         }
 
         std::filesystem::path AbsolutePath(const char* relativePath) {
@@ -392,6 +406,7 @@ namespace JunkIt {
     void Settings::ApplyIntegrationGuards() {
         DetectDIII();
         DetectSkyPrompt();
+        DetectQuickLoot();
         if (!g_values.diiiInstalled && g_values.useDynamicInventoryIcon) {
             SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
             g_values.useDynamicInventoryIcon = false;
@@ -500,7 +515,10 @@ namespace JunkIt {
             out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n";
             out << "bSkyPromptEnabled=" << (g_values.skyPromptEnabled ? 1 : 0) << "\n";
             out << "iSkyPromptButtonPlacement=" << g_values.skyPromptButtonPlacement << "\n";
-            out << "bSkyPromptShowCounts=" << (g_values.skyPromptShowCounts ? 1 : 0) << "\n\n";
+            out << "bSkyPromptShowCounts=" << (g_values.skyPromptShowCounts ? 1 : 0) << "\n";
+            out << "bQuickLootEnabled=" << (g_values.quickLootEnabled ? 1 : 0) << "\n";
+            out << "bQuickLootIcons=" << (g_values.quickLootIcons ? 1 : 0) << "\n";
+            out << "bQuickLootMarkButton=" << (g_values.quickLootMarkButton ? 1 : 0) << "\n\n";
 
             out << "[Utility]\n";
             out << "bReplaceJunkListOnLoad=" << (g_values.replaceJunkListOnLoad ? 1 : 0) << "\n";
@@ -635,6 +653,9 @@ namespace JunkIt {
         return static_cast<SkyPromptButtonPlacement>(g_values.skyPromptButtonPlacement);
     }
     bool Settings::GetSkyPromptShowCounts() { return g_values.skyPromptShowCounts; }
+    bool Settings::GetQuickLootEnabled() { return g_values.quickLootEnabled; }
+    bool Settings::GetQuickLootIcons() { return g_values.quickLootIcons; }
+    bool Settings::GetQuickLootMarkButton() { return g_values.quickLootMarkButton; }
 
     bool Settings::GetAutoJunkOnPickup() { return g_values.autoJunkOnPickup; }
     bool Settings::GetAutoJunkOnMenuOpen() { return g_values.autoJunkOnMenuOpen; }
@@ -715,6 +736,7 @@ namespace JunkIt {
 
     bool Settings::IsDIIIInstalled() { return g_values.diiiInstalled; }
     bool Settings::IsSkyPromptInstalled() { return g_values.skyPromptInstalled; }
+    bool Settings::IsQuickLootInstalled() { return g_values.quickLootInstalled; }
     RE::TESObjectMISC* Settings::GetGold001() { return g_values.gold001; }
 
     std::uint32_t& Settings::MarkJunkKeyValue() { return g_values.markJunkKey; }
@@ -752,6 +774,9 @@ namespace JunkIt {
     bool& Settings::SkyPromptEnabledValue() { return g_values.skyPromptEnabled; }
     std::int32_t& Settings::SkyPromptButtonPlacementValue() { return g_values.skyPromptButtonPlacement; }
     bool& Settings::SkyPromptShowCountsValue() { return g_values.skyPromptShowCounts; }
+    bool& Settings::QuickLootEnabledValue() { return g_values.quickLootEnabled; }
+    bool& Settings::QuickLootIconsValue() { return g_values.quickLootIcons; }
+    bool& Settings::QuickLootMarkButtonValue() { return g_values.quickLootMarkButton; }
 
     bool& Settings::AutoJunkOnPickupValue() { return g_values.autoJunkOnPickup; }
     bool& Settings::AutoJunkOnMenuOpenValue() { return g_values.autoJunkOnMenuOpen; }

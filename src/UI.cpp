@@ -948,6 +948,41 @@ namespace JunkIt {
                 }
             }
 
+            ImGui::SeparatorText(Translation::Get("$JunkIt_QuickLootIntegrationHeader").c_str());
+            {
+                const char* statusKey = "$JunkIt_QuickLootNotInstalled";
+                if (Settings::IsQuickLootInstalled()) {
+                    statusKey = QuickLootIntegration::IsReady()
+                        ? "$JunkIt_QuickLootInstalled"
+                        : "$JunkIt_QuickLootApiUnavailable";
+                }
+                ImGui::TextWrapped("%s", Translation::Get(statusKey).c_str());
+            }
+            if (BeginSettingsTable("quickloot")) {
+                const bool quickLootAvailable = Settings::IsQuickLootInstalled() && QuickLootIntegration::IsReady();
+                ImGui::BeginDisabled(!quickLootAvailable);
+                const bool enabledChanged = CheckboxRow(
+                    "$JunkIt_QuickLootEnabled",
+                    "$JunkIt_QuickLootEnabled_Help",
+                    Settings::QuickLootEnabledValue());
+                ImGui::BeginDisabled(!Settings::QuickLootEnabledValue());
+                const bool iconsChanged = CheckboxRow(
+                    "$JunkIt_QuickLootIcons",
+                    "$JunkIt_QuickLootIcons_Help",
+                    Settings::QuickLootIconsValue());
+                const bool markChanged = CheckboxRow(
+                    "$JunkIt_QuickLootMarkButton",
+                    "$JunkIt_QuickLootMarkButton_Help",
+                    Settings::QuickLootMarkButtonValue());
+                ImGui::EndDisabled();
+                ImGui::EndDisabled();
+                ImGui::EndTable();
+                if (enabledChanged || iconsChanged || markChanged) {
+                    SaveSettings();
+                    QuickLootIntegration::RefreshMenu();
+                }
+            }
+
             RenderStatus();
             PopBrandColors();
         }

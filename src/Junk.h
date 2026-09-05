@@ -37,8 +37,14 @@ namespace JunkIt {
         using InventoryCountMap = std::map<TESBoundObject*, Count>;
         using InventoryItemMap = std::map<TESBoundObject*, std::pair<Count, std::unique_ptr<InventoryEntryData>>>;
 
-    public: 
+    public:
+        enum class JunkToggleUi {
+            kItemList,
+            kLootMenu
+        };
+
         static TESForm* ToggleSelectedItemJunk();
+        static TESForm* ToggleEntryJunk(InventoryEntryData* entry, std::uint32_t ownerHandle, JunkToggleUi ui);
         static void ToggleIsJunk();
         static void StartAggressiveRefresh();
 

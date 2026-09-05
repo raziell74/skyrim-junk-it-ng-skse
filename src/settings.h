@@ -84,6 +84,9 @@ namespace JunkIt {
             [[nodiscard]] static bool GetSkyPromptEnabled();
             [[nodiscard]] static SkyPromptButtonPlacement GetSkyPromptButtonPlacement();
             [[nodiscard]] static bool GetSkyPromptShowCounts();
+            [[nodiscard]] static bool GetQuickLootEnabled();
+            [[nodiscard]] static bool GetQuickLootIcons();
+            [[nodiscard]] static bool GetQuickLootMarkButton();
 
             [[nodiscard]] static bool GetAutoJunkOnPickup();
             [[nodiscard]] static bool GetAutoJunkOnMenuOpen();
@@ -99,6 +102,7 @@ namespace JunkIt {
 
             [[nodiscard]] static bool IsDIIIInstalled();
             [[nodiscard]] static bool IsSkyPromptInstalled();
+            [[nodiscard]] static bool IsQuickLootInstalled();
             [[nodiscard]] static RE::TESObjectMISC* GetGold001();
 
             static std::uint32_t& MarkJunkKeyValue();
@@ -136,6 +140,9 @@ namespace JunkIt {
             static bool& SkyPromptEnabledValue();
             static std::int32_t& SkyPromptButtonPlacementValue();
             static bool& SkyPromptShowCountsValue();
+            static bool& QuickLootEnabledValue();
+            static bool& QuickLootIconsValue();
+            static bool& QuickLootMarkButtonValue();
 
             static bool& AutoJunkOnPickupValue();
             static bool& AutoJunkOnMenuOpenValue();
