@@ -3,6 +3,7 @@
 #include "InventoryWalk.h"
 #include "JunkData.h"
 #include "OperationOverlay.h"
+#include "QuickLootIntegration.h"
 #include "SendUIMessage.h"
 #include "SkyPromptIntegration.h"
 #include "Translation.h"
@@ -147,6 +148,7 @@ namespace JunkIt {
                 I4Integration::ReprocessOpenList(movie);
             }
             InvalidateInventoryLists(movie);
+            QuickLootIntegration::RefreshMenu();
         }
 
         struct PreviewStack {

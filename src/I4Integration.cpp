@@ -194,6 +194,7 @@ namespace JunkIt {
 
         auto* itemList = UIUtil::ItemList::GetOpenList();
         LiveInventoryCache liveInventories;
+        auto& junkManager = JunkDataManager::GetSingleton();
 
         if (itemList && itemList->items.size() > 0) {
             for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
@@ -202,8 +203,12 @@ namespace JunkIt {
                     continue;
                 }
 
-                auto* bound = BoundFromGFxEntry(item->obj);
-                SetJunkFlags(item->obj, liveInventories.LiveIsJunk(ResolveOwner(item->data.owner), bound));
+                if (auto* objDesc = item->data.objDesc) {
+                    SetJunkFlags(item->obj, junkManager.IsJunk(objDesc));
+                } else {
+                    auto* bound = BoundFromGFxEntry(item->obj);
+                    SetJunkFlags(item->obj, liveInventories.LiveIsJunk(ResolveOwner(item->data.owner), bound));
+                }
             }
         } else if (a_params.argCount >= 1) {
             auto& a_list = a_params.args[0];

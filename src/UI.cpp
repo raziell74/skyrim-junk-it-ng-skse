@@ -2,6 +2,7 @@
 
 #include "AutoJunk.h"
 #include "JunkData.h"
+#include "QuickLootIntegration.h"
 #include "SkyPromptIntegration.h"
 #include "Translation.h"
 #include "junk.h"
@@ -1243,6 +1244,7 @@ namespace JunkIt {
                         Settings::GetReplaceJunkListOnLoad() ? "$JunkIt_JunkReplaced" : "$JunkIt_JunkLoaded",
                         true);
                     UIUtil::ItemList::Refresh();
+                    QuickLootIntegration::RefreshMenu();
                 } else {
                     SetStatus("$JunkIt_ImportFailed", false);
                 }
@@ -1270,6 +1272,7 @@ namespace JunkIt {
             if (ConfirmPopup("ResetJunk", "$JunkIt_ResetJunk", "$JunkIt_ResetJunkConfirm")) {
                 manager.Clear();
                 UIUtil::ItemList::Refresh();
+                QuickLootIntegration::RefreshMenu();
                 SetStatus("$JunkIt_JunkReset", true);
             }
             if (ConfirmPopup(
@@ -1328,6 +1331,7 @@ namespace JunkIt {
                             manager.RemoveNoAutoJunkIdentity(item.identity);
                         } else if (manager.RemoveJunkItemAtIndex(index)) {
                             UIUtil::ItemList::Refresh();
+                            QuickLootIntegration::RefreshMenu();
                         }
                     }
                     ImGui::PopID();
