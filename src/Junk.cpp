@@ -76,11 +76,8 @@ namespace JunkIt {
 
             if (ui && (ui->IsMenuOpen("ContainerMenu") || ui->IsMenuOpen("BarterMenu"))) {
                 auto* movie = GetOpenInventoryMovie();
-                RE::GFxValue result;
-                if (movie &&
-                    movie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") &&
-                    result.IsNumber() &&
-                    static_cast<int>(result.GetNumber()) != 0) {
+                int segment = 0;
+                if (UIUtil::Menu::TryGetCategoryActiveSegment(movie, segment) && segment != 0) {
                     return primary;
                 }
                 return secondary ? secondary : primary;
@@ -1386,11 +1383,8 @@ namespace JunkIt {
             return;
         }
 
-        RE::GFxValue result;
         int menuView = 0;
-        if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
-            menuView = static_cast<int>(result.GetNumber());
-        }
+        UIUtil::Menu::TryGetCategoryActiveSegment(menu->uiMovie.get(), menuView);
 
         auto transferList = BuildTransferList();
         SKSE::log::debug("Transfer list contains {} unique item types", transferList.size());

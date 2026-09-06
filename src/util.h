@@ -695,5 +695,33 @@ namespace UIUtil { // Sourced from JunkIt
                 return barterMenu->uiMovie.get();
             return nullptr;
         }
+
+        static bool TryGetCategoryActiveSegment(RE::GFxMovieView* movie, int& outSegment) {
+            if (!movie) {
+                return false;
+            }
+
+            RE::GFxValue node;
+            if (!movie->GetVariable(&node, "_root") || !node.IsObject()) {
+                return false;
+            }
+
+            constexpr const char* kObjects[] = { "Menu_mc", "inventoryLists", "categoryList" };
+            for (const char* part : kObjects) {
+                RE::GFxValue child;
+                if (!node.GetMember(part, &child) || !child.IsObject()) {
+                    return false;
+                }
+                node = child;
+            }
+
+            RE::GFxValue segment;
+            if (!node.GetMember("activeSegment", &segment) || !segment.IsNumber()) {
+                return false;
+            }
+
+            outSegment = static_cast<int>(segment.GetNumber());
+            return true;
+        }
     };
 }
