@@ -6,6 +6,7 @@
 
 #include <json/json.h>
 #include <map>
+#include <string_view>
 #include <vector>
 
 namespace JunkIt {
@@ -119,9 +120,46 @@ namespace JunkIt {
             static_cast<std::uint32_t>(oldProcessEntry.GetType()));
     }
 
+    namespace {
+        constexpr const char* kSavedSubTypeDisplay = "_junkItSubTypeDisplay";
+
+        const char* JunkSubTypeLabel() {
+            const auto& label = I4JunkConfig::GetSingleton().subTypeDisplay;
+            return label.empty() ? "Junk" : label.c_str();
+        }
+
+        void SaveSubTypeDisplay(RE::GFxValue& obj) {
+            if (obj.HasMember(kSavedSubTypeDisplay)) {
+                return;
+            }
+
+            RE::GFxValue current;
+            if (!obj.GetMember("subTypeDisplay", &current) || current.IsUndefined()) {
+                return;
+            }
+            if (current.IsString() && current.GetString() == std::string_view(JunkSubTypeLabel())) {
+                return;
+            }
+
+            obj.SetMember(kSavedSubTypeDisplay, current);
+        }
+
+        void RestoreSubTypeDisplay(RE::GFxValue& obj) {
+            RE::GFxValue saved;
+            if (!obj.GetMember(kSavedSubTypeDisplay, &saved) || saved.IsUndefined()) {
+                return;
+            }
+            obj.SetMember("subTypeDisplay", saved);
+            obj.DeleteMember(kSavedSubTypeDisplay);
+        }
+    }
+
     void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
         if (!obj.IsObject()) {
             return;
+        }
+        if (isJunk) {
+            SaveSubTypeDisplay(obj);
         }
         obj.SetMember("isJunk", isJunk);
         obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
@@ -135,6 +173,7 @@ namespace JunkIt {
         obj.DeleteMember("iconSource");
         obj.DeleteMember("iconLabel");
         obj.DeleteMember("iconColor");
+        RestoreSubTypeDisplay(obj);
     }
 
     namespace {
