@@ -14,6 +14,7 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -128,7 +129,67 @@ namespace JunkIt {
             movie->Invoke("_root.Menu_mc.inventoryLists.InvalidateListData", nullptr, nullptr, 0);
         }
 
+        bool DIIIIconLabelEquals(const RE::GFxValue& entry, std::string_view label) {
+            RE::GFxValue iconLabel;
+            return entry.IsObject() &&
+                entry.GetMember("label", &iconLabel) &&
+                iconLabel.IsString() &&
+                iconLabel.GetString() == label;
+        }
+
+        void UpdateDIIIJunkIcon(RE::GFxMovieView* movie, RE::GFxValue& obj, bool isJunk) {
+            if (!movie || !obj.IsObject() || !Settings::IsDIIIInstalled() || !Settings::GetUseDynamicInventoryIcon()) {
+                return;
+            }
+
+            constexpr std::string_view kLabel = "TrashItemIcon";
+
+            RE::GFxValue icons;
+            obj.GetMember("_DIIIIcons", &icons);
+
+            if (isJunk) {
+                if (icons.IsArray()) {
+                    const auto size = icons.GetArraySize();
+                    for (std::uint32_t i = 0; i < size; i++) {
+                        RE::GFxValue entry;
+                        icons.GetElement(i, &entry);
+                        if (DIIIIconLabelEquals(entry, kLabel)) {
+                            return;
+                        }
+                    }
+                } else {
+                    movie->CreateArray(&icons);
+                }
+
+                RE::GFxValue icon;
+                RE::GFxValue label;
+                movie->CreateObject(&icon);
+                movie->CreateString(&label, kLabel.data());
+                icon.SetMember("label", label);
+                icons.PushBack(icon);
+                obj.SetMember("_DIIIIcons", icons);
+                return;
+            }
+
+            if (!icons.IsArray()) {
+                return;
+            }
+
+            for (std::int32_t i = static_cast<std::int32_t>(icons.GetArraySize()) - 1; i >= 0; --i) {
+                RE::GFxValue entry;
+                icons.GetElement(static_cast<std::uint32_t>(i), &entry);
+                if (DIIIIconLabelEquals(entry, kLabel)) {
+                    icons.RemoveElement(static_cast<std::uint32_t>(i));
+                }
+            }
+
+            if (icons.GetArraySize() == 0) {
+                obj.DeleteMember("_DIIIIcons");
+            }
+        }
+
         void RefreshJunkListIcons(ItemList* itemList, TESBoundObject* object, RefHandle owner, bool isNowJunk) {
+            auto* movie = GetOpenInventoryMovie();
             if (itemList && object) {
                 for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
                     auto* item = itemList->items[i];
@@ -139,11 +200,11 @@ namespace JunkIt {
                         continue;
                     }
                     I4Integration::SetJunkFlags(item->obj, isNowJunk);
+                    UpdateDIIIJunkIcon(movie, item->obj, isNowJunk);
+                    if (!isNowJunk) {
+                        I4Integration::ClearJunkVisuals(item->obj);
+                    }
                 }
-            }
-            auto* movie = GetOpenInventoryMovie();
-            if (!isNowJunk) {
-                I4Integration::ReprocessOpenList(movie);
             }
             InvalidateInventoryLists(movie);
             QuickLootIntegration::RefreshMenu();
@@ -2059,7 +2120,7 @@ namespace JunkIt {
         auto& junkManager = JunkDataManager::GetSingleton();
         bool isJunk = junkManager.IsJunk(inventoryEntry);
 
-        if (!isJunk) {
+        if (!isJunk && playerOwned) {
             bool needsConfirmation = false;
             std::string protectionReason;
 
@@ -2085,10 +2146,12 @@ namespace JunkIt {
 
             if (needsConfirmation) {
                 SKSE::log::debug("Showing confirmation dialog for protected item");
+                std::vector<std::string> identities;
+                CollectEntryIdentities(inventoryEntry, identities);
                 std::string confirmText = Translation::Format("$JunkIt_MarkProtectedConfirm", protectionReason);
                 ShowConfirmationMessageBox(confirmText.c_str(),
                     { Translation::Get("$JunkIt_Yes"), Translation::Get("$JunkIt_ConfirmNo") },
-                    [inventoryEntry, itemForm, itemObject, playerOwned, ownerHandle, ui](unsigned int choice) {
+                    [identities = std::move(identities), itemForm, itemObject, ownerHandle, ui](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::debug("User confirmed marking protected item as junk");
                             if (spdlog::should_log(spdlog::level::debug)) {
@@ -2098,12 +2161,16 @@ namespace JunkIt {
                                     FormUtil::Form::GetFormConfigString(itemForm));
                             }
                             auto& junkManager = JunkDataManager::GetSingleton();
-                            const auto addedIdentity = junkManager.AddJunkItem(inventoryEntry);
-
-                            if (addedIdentity) {
-                                SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, true, playerOwned);
+                            std::optional<std::string> addedIdentity;
+                            for (const auto& identity : identities) {
+                                if (auto added = junkManager.AddJunkIdentity(identity, false)) {
+                                    if (!addedIdentity) {
+                                        addedIdentity = std::move(added);
+                                    }
+                                }
                             }
 
+                            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
                             RefreshAfterJunkToggle(ui, itemObject, ownerHandle, true);
                             NotifyJunkToggle(itemForm, true, addedIdentity);
                         } else {

@@ -6,6 +6,7 @@
 
 #include <json/json.h>
 #include <map>
+#include <string_view>
 #include <vector>
 
 namespace JunkIt {
@@ -69,7 +70,7 @@ namespace JunkIt {
         RE::GFxValue obj;
         a_view->GetVariable(&obj, a_pathToObj);
         if (!obj.IsObject()) {
-            SKSE::log::debug("I4 processList hook skipped, {} is not an object", a_pathToObj);
+            SKSE::log::trace("I4 processList hook skipped, {} is not an object", a_pathToObj);
             return;
         }
 
@@ -119,38 +120,60 @@ namespace JunkIt {
             static_cast<std::uint32_t>(oldProcessEntry.GetType()));
     }
 
+    namespace {
+        constexpr const char* kSavedSubTypeDisplay = "_junkItSubTypeDisplay";
+
+        const char* JunkSubTypeLabel() {
+            const auto& label = I4JunkConfig::GetSingleton().subTypeDisplay;
+            return label.empty() ? "Junk" : label.c_str();
+        }
+
+        void SaveSubTypeDisplay(RE::GFxValue& obj) {
+            if (obj.HasMember(kSavedSubTypeDisplay)) {
+                return;
+            }
+
+            RE::GFxValue current;
+            if (!obj.GetMember("subTypeDisplay", &current) || current.IsUndefined()) {
+                return;
+            }
+            if (current.IsString() && current.GetString() == std::string_view(JunkSubTypeLabel())) {
+                return;
+            }
+
+            obj.SetMember(kSavedSubTypeDisplay, current);
+        }
+
+        void RestoreSubTypeDisplay(RE::GFxValue& obj) {
+            RE::GFxValue saved;
+            if (!obj.GetMember(kSavedSubTypeDisplay, &saved) || saved.IsUndefined()) {
+                return;
+            }
+            obj.SetMember("subTypeDisplay", saved);
+            obj.DeleteMember(kSavedSubTypeDisplay);
+        }
+    }
+
     void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
         if (!obj.IsObject()) {
             return;
+        }
+        if (isJunk) {
+            SaveSubTypeDisplay(obj);
         }
         obj.SetMember("isJunk", isJunk);
         obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
         obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
     }
 
-    void I4Integration::ReprocessOpenList(RE::GFxMovieView* movie) {
-        if (!movie) {
-            SKSE::log::debug("ReprocessOpenList skipped, no movie");
+    void I4Integration::ClearJunkVisuals(RE::GFxValue& obj) {
+        if (!obj.IsObject()) {
             return;
         }
-
-        RE::GFxValue itemList;
-        movie->GetVariable(&itemList, "_root.Menu_mc.inventoryLists.itemList");
-        if (!itemList.IsObject()) {
-            SKSE::log::debug("ReprocessOpenList skipped, no itemList");
-            return;
-        }
-
-        RE::GFxValue setter;
-        movie->GetVariable(&setter, "_global.InventoryIconSetter.prototype");
-        if (!setter.IsObject()) {
-            SKSE::log::debug("ReprocessOpenList skipped, no InventoryIconSetter");
-            return;
-        }
-
-        SKSE::log::trace("ReprocessOpenList invoking InventoryIconSetter.processList");
-        setter.Invoke("processList", nullptr, &itemList, 1);
-        SKSE::log::trace("ReprocessOpenList original processList returned");
+        obj.DeleteMember("iconSource");
+        obj.DeleteMember("iconLabel");
+        obj.DeleteMember("iconColor");
+        RestoreSubTypeDisplay(obj);
     }
 
     namespace {
