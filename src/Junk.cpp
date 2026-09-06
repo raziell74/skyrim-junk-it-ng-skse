@@ -2120,7 +2120,7 @@ namespace JunkIt {
         auto& junkManager = JunkDataManager::GetSingleton();
         bool isJunk = junkManager.IsJunk(inventoryEntry);
 
-        if (!isJunk) {
+        if (!isJunk && playerOwned) {
             bool needsConfirmation = false;
             std::string protectionReason;
 
@@ -2146,10 +2146,12 @@ namespace JunkIt {
 
             if (needsConfirmation) {
                 SKSE::log::debug("Showing confirmation dialog for protected item");
+                std::vector<std::string> identities;
+                CollectEntryIdentities(inventoryEntry, identities);
                 std::string confirmText = Translation::Format("$JunkIt_MarkProtectedConfirm", protectionReason);
                 ShowConfirmationMessageBox(confirmText.c_str(),
                     { Translation::Get("$JunkIt_Yes"), Translation::Get("$JunkIt_ConfirmNo") },
-                    [inventoryEntry, itemForm, itemObject, playerOwned, ownerHandle, ui](unsigned int choice) {
+                    [identities = std::move(identities), itemForm, itemObject, ownerHandle, ui](unsigned int choice) {
                         if (choice == 0) {
                             SKSE::log::debug("User confirmed marking protected item as junk");
                             if (spdlog::should_log(spdlog::level::debug)) {
@@ -2159,12 +2161,16 @@ namespace JunkIt {
                                     FormUtil::Form::GetFormConfigString(itemForm));
                             }
                             auto& junkManager = JunkDataManager::GetSingleton();
-                            const auto addedIdentity = junkManager.AddJunkItem(inventoryEntry);
-
-                            if (addedIdentity) {
-                                SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, true, playerOwned);
+                            std::optional<std::string> addedIdentity;
+                            for (const auto& identity : identities) {
+                                if (auto added = junkManager.AddJunkIdentity(identity, false)) {
+                                    if (!addedIdentity) {
+                                        addedIdentity = std::move(added);
+                                    }
+                                }
                             }
 
+                            SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
                             RefreshAfterJunkToggle(ui, itemObject, ownerHandle, true);
                             NotifyJunkToggle(itemForm, true, addedIdentity);
                         } else {

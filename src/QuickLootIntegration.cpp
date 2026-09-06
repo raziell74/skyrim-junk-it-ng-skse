@@ -206,6 +206,11 @@ namespace JunkIt {
             ClearSelection();
             UnblockConflictingInputs();
         }
+
+        void OnInvalidateLootMenu(QuickLoot::API::InvalidateLootMenuEvent*) {
+            g_selectedEntry = nullptr;
+            g_selectedOwner = 0;
+        }
     }
 
     void QuickLootIntegration::Install() {
@@ -224,6 +229,7 @@ namespace JunkIt {
         QuickLoot::API::QuickLootAPI::RegisterOpenLootMenuHandler(&OnOpenLootMenu);
         QuickLoot::API::QuickLootAPI::RegisterSelectItemHandler(&OnSelectItem);
         QuickLoot::API::QuickLootAPI::RegisterCloseLootMenuHandler(&OnCloseLootMenu);
+        QuickLoot::API::QuickLootAPI::RegisterInvalidateLootMenuHandler(&OnInvalidateLootMenu);
         g_ready = true;
         SKSE::log::info("QuickLootIE V20 API integration installed");
     }
