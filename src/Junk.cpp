@@ -139,12 +139,12 @@ namespace JunkIt {
                         continue;
                     }
                     I4Integration::SetJunkFlags(item->obj, isNowJunk);
+                    if (!isNowJunk) {
+                        I4Integration::ClearJunkVisuals(item->obj);
+                    }
                 }
             }
             auto* movie = GetOpenInventoryMovie();
-            if (!isNowJunk) {
-                I4Integration::ReprocessOpenList(movie);
-            }
             InvalidateInventoryLists(movie);
             QuickLootIntegration::RefreshMenu();
         }

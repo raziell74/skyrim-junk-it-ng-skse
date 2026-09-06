@@ -69,7 +69,7 @@ namespace JunkIt {
         RE::GFxValue obj;
         a_view->GetVariable(&obj, a_pathToObj);
         if (!obj.IsObject()) {
-            SKSE::log::debug("I4 processList hook skipped, {} is not an object", a_pathToObj);
+            SKSE::log::trace("I4 processList hook skipped, {} is not an object", a_pathToObj);
             return;
         }
 
@@ -128,29 +128,13 @@ namespace JunkIt {
         obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
     }
 
-    void I4Integration::ReprocessOpenList(RE::GFxMovieView* movie) {
-        if (!movie) {
-            SKSE::log::debug("ReprocessOpenList skipped, no movie");
+    void I4Integration::ClearJunkVisuals(RE::GFxValue& obj) {
+        if (!obj.IsObject()) {
             return;
         }
-
-        RE::GFxValue itemList;
-        movie->GetVariable(&itemList, "_root.Menu_mc.inventoryLists.itemList");
-        if (!itemList.IsObject()) {
-            SKSE::log::debug("ReprocessOpenList skipped, no itemList");
-            return;
-        }
-
-        RE::GFxValue setter;
-        movie->GetVariable(&setter, "_global.InventoryIconSetter.prototype");
-        if (!setter.IsObject()) {
-            SKSE::log::debug("ReprocessOpenList skipped, no InventoryIconSetter");
-            return;
-        }
-
-        SKSE::log::trace("ReprocessOpenList invoking InventoryIconSetter.processList");
-        setter.Invoke("processList", nullptr, &itemList, 1);
-        SKSE::log::trace("ReprocessOpenList original processList returned");
+        obj.DeleteMember("iconSource");
+        obj.DeleteMember("iconLabel");
+        obj.DeleteMember("iconColor");
     }
 
     namespace {
