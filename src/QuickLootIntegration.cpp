@@ -12,12 +12,123 @@
 
 namespace JunkIt {
     namespace {
+        using UEFlag = RE::UserEvents::USER_EVENT_FLAG;
+
+        constexpr UEFlag kJunkItEventGroup = static_cast<UEFlag>(1 << 13);
+
         bool g_ready = false;
         bool g_gamepadInput = false;
         bool g_gamepadInputKnown = false;
+        bool g_inputBlocked = false;
         RE::InventoryEntryData* g_selectedEntry = nullptr;
         std::uint32_t g_selectedOwner = 0;
         std::uint32_t g_lootOwner = 0;
+
+        bool MappingMatchesJunkKey(const RE::ControlMap::UserEventMapping& mapping, RE::INPUT_DEVICE device) {
+            if (mapping.inputKey == RE::ControlMap::kInvalid || mapping.userEventGroupFlag.all(UEFlag::kInvalid)) {
+                return false;
+            }
+
+            const auto markKey = static_cast<std::uint32_t>(Settings::GetMarkJunkKey());
+            const auto gamepadKey = static_cast<std::uint32_t>(Settings::GetGamepadJunkKey());
+
+            switch (device) {
+                case RE::INPUT_DEVICE::kKeyboard:
+                    return markKey > 0 && markKey < SKSE::InputMap::kMacro_NumKeyboardKeys &&
+                        mapping.inputKey == static_cast<std::uint16_t>(markKey);
+                case RE::INPUT_DEVICE::kMouse: {
+                    if (markKey < SKSE::InputMap::kMacro_MouseButtonOffset ||
+                        markKey >= SKSE::InputMap::kMacro_GamepadOffset) {
+                        return false;
+                    }
+                    const auto mouseKey = markKey - SKSE::InputMap::kMacro_MouseButtonOffset;
+                    return mapping.inputKey == static_cast<std::uint16_t>(mouseKey);
+                }
+                case RE::INPUT_DEVICE::kGamepad: {
+                    if (gamepadKey == 0) {
+                        return false;
+                    }
+                    const auto mask = SKSE::InputMap::GamepadKeycodeToMask(gamepadKey);
+                    return mask != 0xFF && mapping.inputKey == static_cast<std::uint16_t>(mask);
+                }
+                default:
+                    return false;
+            }
+        }
+
+        template <typename Fn>
+        void WalkGameplayMappings(Fn&& fn) {
+            auto* controlMap = RE::ControlMap::GetSingleton();
+            if (!controlMap) {
+                return;
+            }
+
+            auto* context = controlMap->controlMap[RE::UserEvents::INPUT_CONTEXT_ID::kGameplay];
+            if (!context) {
+                return;
+            }
+
+            constexpr RE::INPUT_DEVICE devices[] = {
+                RE::INPUT_DEVICE::kKeyboard,
+                RE::INPUT_DEVICE::kMouse,
+                RE::INPUT_DEVICE::kGamepad
+            };
+            for (const auto device : devices) {
+                for (auto& mapping : context->deviceMappings[device]) {
+                    fn(mapping, device);
+                }
+            }
+        }
+
+        void TagMatchingMappings() {
+            WalkGameplayMappings([&](RE::ControlMap::UserEventMapping& mapping, RE::INPUT_DEVICE device) {
+                if (MappingMatchesJunkKey(mapping, device)) {
+                    mapping.userEventGroupFlag.set(kJunkItEventGroup);
+                }
+            });
+        }
+
+        void ClearTaggedMappings() {
+            WalkGameplayMappings([&](RE::ControlMap::UserEventMapping& mapping, RE::INPUT_DEVICE) {
+                mapping.userEventGroupFlag.reset(kJunkItEventGroup);
+            });
+        }
+
+        void UnblockConflictingInputs() {
+            if (!g_inputBlocked) {
+                return;
+            }
+
+            if (auto* controlMap = RE::ControlMap::GetSingleton()) {
+                controlMap->ToggleControls(kJunkItEventGroup, true, false);
+            }
+            ClearTaggedMappings();
+            g_inputBlocked = false;
+        }
+
+        void BlockConflictingInputs() {
+            if (g_inputBlocked) {
+                return;
+            }
+
+            auto* controlMap = RE::ControlMap::GetSingleton();
+            if (!controlMap) {
+                return;
+            }
+
+            TagMatchingMappings();
+            controlMap->ToggleControls(kJunkItEventGroup, false, false);
+            g_inputBlocked = true;
+        }
+
+        void SyncInputBlock(bool menuOpen) {
+            if (g_inputBlocked) {
+                UnblockConflictingInputs();
+            }
+            if (menuOpen && QuickLootIntegration::MarkAllowed()) {
+                BlockConflictingInputs();
+            }
+        }
 
         bool UsingGamepad() {
             if (g_gamepadInputKnown) {
@@ -73,10 +184,10 @@ namespace JunkIt {
         }
 
         void OnOpenLootMenu(QuickLoot::API::OpenLootMenuEvent* e) {
-            if (!e) {
-                return;
+            if (e) {
+                g_lootOwner = e->container.native_handle();
             }
-            g_lootOwner = e->container.native_handle();
+            SyncInputBlock(true);
         }
 
         void OnSelectItem(QuickLoot::API::SelectItemEvent* e) {
@@ -92,6 +203,7 @@ namespace JunkIt {
 
         void OnCloseLootMenu(QuickLoot::API::CloseLootMenuEvent*) {
             ClearSelection();
+            UnblockConflictingInputs();
         }
     }
 
@@ -120,6 +232,7 @@ namespace JunkIt {
             return;
         }
         QuickLoot::API::QuickLootAPI::RefreshLootMenu();
+        SyncInputBlock(IsMenuOpen());
     }
 
     void QuickLootIntegration::NoteInputDevice(RE::INPUT_DEVICE device) {

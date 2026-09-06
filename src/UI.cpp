@@ -1533,10 +1533,14 @@ namespace JunkIt {
                 break;
         }
 
+        const auto captured = g_capture;
         SaveSettings();
         g_capture = CaptureSlot::kNone;
         g_captureWaitMouseUp = false;
         SkyPromptIntegration::GetSingleton().RefreshPrompts();
+        if (captured == CaptureSlot::kMark || captured == CaptureSlot::kGamepad) {
+            QuickLootIntegration::RefreshMenu();
+        }
         return true;
     }
 
