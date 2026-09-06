@@ -184,9 +184,10 @@ namespace JunkIt {
         }
 
         void OnOpenLootMenu(QuickLoot::API::OpenLootMenuEvent* e) {
-            if (e) {
-                g_lootOwner = e->container.native_handle();
+            if (!e) {
+                return;
             }
+            g_lootOwner = e->container.native_handle();
             SyncInputBlock(true);
         }
 
