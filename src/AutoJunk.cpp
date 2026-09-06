@@ -3,6 +3,7 @@
 #include "I4Integration.h"
 #include "InventoryWalk.h"
 #include "JunkData.h"
+#include "QuickLootIntegration.h"
 #include "SkyPromptIntegration.h"
 #include "junk.h"
 #include "settings.h"
@@ -958,6 +959,7 @@ namespace JunkIt {
             if (marked) {
                 SkyPromptIntegration::GetSingleton().RecapturePreviews();
                 RefreshOpenItemList();
+                QuickLootIntegration::RefreshMenu();
             }
         }
 

@@ -473,7 +473,7 @@ namespace NifUtil
             if (node)
             {
                 node->AttachChild(obj, true);
-                SKSE::log::info("Object Attached");
+                SKSE::log::debug("Object Attached");
             }
         }
     };
@@ -617,12 +617,12 @@ namespace UIUtil { // Sourced from JunkIt
             const auto UI = RE::UI::GetSingleton();
             const auto containerMenu = UI ? UI->GetMenu<ContainerMenu>() : nullptr;
             if (!containerMenu) {
-                SKSE::log::info("No open menu found");
+                SKSE::log::debug("No open menu found");
                 return ContainerMenu::ContainerMode::kLoot;
             }
 
             ContainerMenu::ContainerMode mode = containerMenu->GetContainerMode();
-            SKSE::log::info("Container Mode: {}", static_cast<std::uint32_t>(mode));
+            SKSE::log::debug("Container Mode: {}", static_cast<std::uint32_t>(mode));
             return mode;
         }
 
@@ -694,6 +694,34 @@ namespace UIUtil { // Sourced from JunkIt
             if (barterMenu && barterMenu->uiMovie)
                 return barterMenu->uiMovie.get();
             return nullptr;
+        }
+
+        static bool TryGetCategoryActiveSegment(RE::GFxMovieView* movie, int& outSegment) {
+            if (!movie) {
+                return false;
+            }
+
+            RE::GFxValue node;
+            if (!movie->GetVariable(&node, "_root") || !node.IsObject()) {
+                return false;
+            }
+
+            constexpr const char* kObjects[] = { "Menu_mc", "inventoryLists", "categoryList" };
+            for (const char* part : kObjects) {
+                RE::GFxValue child;
+                if (!node.GetMember(part, &child) || !child.IsObject()) {
+                    return false;
+                }
+                node = child;
+            }
+
+            RE::GFxValue segment;
+            if (!node.GetMember("activeSegment", &segment) || !segment.IsNumber()) {
+                return false;
+            }
+
+            outSegment = static_cast<int>(segment.GetNumber());
+            return true;
         }
     };
 }

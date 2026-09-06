@@ -24,6 +24,14 @@ namespace JunkIt {
                 kLowerRight = 1
             };
 
+            enum class LogLevel {
+                kTrace = 0,
+                kDebug = 1,
+                kInfo = 2,
+                kWarn = 3,
+                kError = 4
+            };
+
             // Update after placing the trash container in JunkIt.esp (placed REFR local FormID, not the CONT base).
             static constexpr RE::FormID kTrashContainerFormID = 0x829;
             static constexpr std::string_view kTrashContainerPlugin = "JunkIt.esp";
@@ -54,9 +62,11 @@ namespace JunkIt {
             [[nodiscard]] static RE::TESObjectREFR* GetTrashContainer();
             [[nodiscard]] static bool IsTrashAvailable();
 
+            [[nodiscard]] static LogLevel GetLogLevel();
             [[nodiscard]] static bool GetNotifyOnMarkUnmark();
             [[nodiscard]] static bool GetNotifyOnJunkTransfer();
             [[nodiscard]] static bool GetNotifyOnJunkSell();
+            [[nodiscard]] static std::int32_t GetOverlayOpacity();
             [[nodiscard]] static bool GetAggressiveRefresh();
             [[nodiscard]] static std::int32_t GetAggressiveRefreshMaxInterval();
             [[nodiscard]] static float GetHeavyLoadDelayMultiplier();
@@ -74,6 +84,8 @@ namespace JunkIt {
             [[nodiscard]] static bool GetSkyPromptEnabled();
             [[nodiscard]] static SkyPromptButtonPlacement GetSkyPromptButtonPlacement();
             [[nodiscard]] static bool GetSkyPromptShowCounts();
+            [[nodiscard]] static bool GetQuickLootEnabled();
+            [[nodiscard]] static bool GetQuickLootMarkButton();
 
             [[nodiscard]] static bool GetAutoJunkOnPickup();
             [[nodiscard]] static bool GetAutoJunkOnMenuOpen();
@@ -89,6 +101,7 @@ namespace JunkIt {
 
             [[nodiscard]] static bool IsDIIIInstalled();
             [[nodiscard]] static bool IsSkyPromptInstalled();
+            [[nodiscard]] static bool IsQuickLootInstalled();
             [[nodiscard]] static RE::TESObjectMISC* GetGold001();
 
             static std::uint32_t& MarkJunkKeyValue();
@@ -110,9 +123,11 @@ namespace JunkIt {
             static bool& ProtectFavoritesValue();
             static bool& ProtectEnchantedValue();
 
+            static std::int32_t& LogLevelValue();
             static bool& NotifyOnMarkUnmarkValue();
             static bool& NotifyOnJunkTransferValue();
             static bool& NotifyOnJunkSellValue();
+            static std::int32_t& OverlayOpacityValue();
             static float& HeavyLoadDelayMultiplierValue();
             static std::int32_t& LargeUniqueTypesValue();
             static std::int32_t& LargeTotalItemsValue();
@@ -124,6 +139,8 @@ namespace JunkIt {
             static bool& SkyPromptEnabledValue();
             static std::int32_t& SkyPromptButtonPlacementValue();
             static bool& SkyPromptShowCountsValue();
+            static bool& QuickLootEnabledValue();
+            static bool& QuickLootMarkButtonValue();
 
             static bool& AutoJunkOnPickupValue();
             static bool& AutoJunkOnMenuOpenValue();
@@ -134,8 +151,10 @@ namespace JunkIt {
             static bool& AggressiveRefreshValue();
             static std::int32_t& AggressiveRefreshMaxIntervalValue();
 
+            static void ApplyLogLevel();
             static void ApplyIntegrationGuards();
             static void ClampValues();
             static const char* SortPriorityLabel(SortPriority priority);
+            static const char* LogLevelLabel(LogLevel level);
     };
 }

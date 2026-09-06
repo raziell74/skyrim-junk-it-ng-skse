@@ -37,6 +37,8 @@ namespace JunkIt {
             bool notifyOnMarkUnmark = true;
             bool notifyOnJunkTransfer = true;
             bool notifyOnJunkSell = true;
+            std::int32_t overlayOpacity = 50;
+            std::int32_t logLevel = 2;
             float heavyLoadDelayMultiplier = 1.0f;
             std::int32_t largeUniqueTypes = 500;
             std::int32_t largeTotalItems = 1000;
@@ -48,6 +50,8 @@ namespace JunkIt {
             bool skyPromptEnabled = true;
             std::int32_t skyPromptButtonPlacement = 0;
             bool skyPromptShowCounts = true;
+            bool quickLootEnabled = true;
+            bool quickLootMarkButton = true;
 
             bool autoJunkOnPickup = true;
             bool autoJunkOnMenuOpen = true;
@@ -63,6 +67,7 @@ namespace JunkIt {
 
             bool diiiInstalled = false;
             bool skyPromptInstalled = false;
+            bool quickLootInstalled = false;
             RE::TESObjectMISC* gold001 = nullptr;
             RE::TESObjectREFR* trashContainer = nullptr;
         };
@@ -238,6 +243,8 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnMarkUnmark", g_values.notifyOnMarkUnmark);
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkTransfer", g_values.notifyOnJunkTransfer);
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkSell", g_values.notifyOnJunkSell);
+            complete &= ReadInt(ini, "Overlay", {}, "iOverlayOpacity", g_values.overlayOpacity);
+            complete &= ReadInt(ini, "Misc", "MiscSettings", "iLogLevel", g_values.logLevel);
             complete &= ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeTotalItems", g_values.largeTotalItems);
@@ -249,6 +256,8 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptEnabled", g_values.skyPromptEnabled);
             complete &= ReadInt(ini, "Integration", "IntegrationSettings", "iSkyPromptButtonPlacement", g_values.skyPromptButtonPlacement);
             complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bSkyPromptShowCounts", g_values.skyPromptShowCounts);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bQuickLootEnabled", g_values.quickLootEnabled);
+            complete &= ReadBool(ini, "Integration", "IntegrationSettings", "bQuickLootMarkButton", g_values.quickLootMarkButton);
 
             complete &= ReadBool(ini, "Utility", {}, "bReplaceJunkListOnLoad", g_values.replaceJunkListOnLoad);
             complete &= ReadBool(ini, "Utility", {}, "bAggressiveRefresh", g_values.aggressiveRefresh);
@@ -302,6 +311,7 @@ namespace JunkIt {
                 g_values.notifyOnMarkUnmark,
                 g_values.notifyOnJunkTransfer,
                 g_values.notifyOnJunkSell);
+            SKSE::log::info("Overlay Settings | OverlayOpacity: {}", g_values.overlayOpacity);
             SKSE::log::info(
                 "Hotkey Settings | MarkJunkKey: {} | TransferJunkKey: {} | GamepadJunkKey: {} | GamepadTransferHoldTime: {} | TrashJunkKey: {}",
                 g_values.markJunkKey,
@@ -316,7 +326,8 @@ namespace JunkIt {
                 g_values.gamepadTrashHoldSeconds,
                 g_values.trashExpireDays);
             SKSE::log::info(
-                "Misc Settings | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
+                "Misc Settings | LogLevel: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
+                Settings::LogLevelLabel(static_cast<Settings::LogLevel>(g_values.logLevel)),
                 g_values.aggressiveRefresh,
                 g_values.autoExport,
                 g_values.autoImport,
@@ -325,13 +336,15 @@ namespace JunkIt {
                 g_values.largeTotalItems,
                 g_values.sellChunkSize);
             SKSE::log::info(
-                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptEnabled: {} | SkyPromptButtonPlacement: {} | SkyPromptShowCounts: {}",
+                "Integration Settings | UpdateItemIcon: {} | UpdateSubTypeDisplay: {} | UseDynamicInventoryIcon: {} | SkyPromptEnabled: {} | SkyPromptButtonPlacement: {} | SkyPromptShowCounts: {} | QuickLootEnabled: {} | QuickLootMarkButton: {}",
                 g_values.updateItemIcon,
                 g_values.updateSubTypeDisplay,
                 g_values.useDynamicInventoryIcon,
                 g_values.skyPromptEnabled,
                 g_values.skyPromptButtonPlacement,
-                g_values.skyPromptShowCounts);
+                g_values.skyPromptShowCounts,
+                g_values.quickLootEnabled,
+                g_values.quickLootMarkButton);
             SKSE::log::info(
                 "Auto Junk Settings | OnPickup: {} | OnMenuOpen: {} | Types: {} | Materials: {} | Keywords: {}",
                 g_values.autoJunkOnPickup,
@@ -348,6 +361,10 @@ namespace JunkIt {
 
         void DetectSkyPrompt() {
             g_values.skyPromptInstalled = GetModuleHandleW(L"SkyPrompt") != nullptr;
+        }
+
+        void DetectQuickLoot() {
+            g_values.quickLootInstalled = GetModuleHandleW(L"QuickLootIE") != nullptr;
         }
 
         std::filesystem::path AbsolutePath(const char* relativePath) {
@@ -379,13 +396,16 @@ namespace JunkIt {
         g_values.sellChunkSize = std::clamp(g_values.sellChunkSize, 50, 1500);
         g_values.aggressiveRefreshMaxInterval = std::clamp(g_values.aggressiveRefreshMaxInterval, 1, 60);
         g_values.skyPromptButtonPlacement = std::clamp(g_values.skyPromptButtonPlacement, 0, 1);
+        g_values.logLevel = std::clamp(g_values.logLevel, 0, 4);
+        g_values.overlayOpacity = std::clamp(g_values.overlayOpacity, 0, 100);
     }
 
     void Settings::ApplyIntegrationGuards() {
         DetectDIII();
         DetectSkyPrompt();
+        DetectQuickLoot();
         if (!g_values.diiiInstalled && g_values.useDynamicInventoryIcon) {
-            SKSE::log::info("DIII not installed, forcing UseDynamicInventoryIcon to false");
+            SKSE::log::debug("DIII not installed, forcing UseDynamicInventoryIcon to false");
             g_values.useDynamicInventoryIcon = false;
         }
     }
@@ -401,6 +421,7 @@ namespace JunkIt {
             const bool complete = ApplyIni(ParseIni(iniPath));
             SKSE::log::info("Loaded settings from {}", iniPath.string());
             ClampValues();
+            ApplyLogLevel();
             ApplyIntegrationGuards();
             if (!complete) {
                 SaveToIni();
@@ -411,6 +432,7 @@ namespace JunkIt {
             ApplyIni(ParseIni(mcmPath));
             SKSE::log::info("Migrated settings from {}", mcmPath.string());
             ClampValues();
+            ApplyLogLevel();
             ApplyIntegrationGuards();
             SaveToIni();
             LogSettings();
@@ -424,6 +446,7 @@ namespace JunkIt {
 
     bool Settings::SaveToIni() {
         ClampValues();
+        ApplyLogLevel();
         ApplyIntegrationGuards();
 
         const auto iniPath = AbsolutePath(kIniPath);
@@ -470,10 +493,14 @@ namespace JunkIt {
             out << "bProtectFavorites=" << (g_values.protectFavorites ? 1 : 0) << "\n";
             out << "bProtectEnchanted=" << (g_values.protectEnchanted ? 1 : 0) << "\n\n";
 
+            out << "[Overlay]\n";
+            out << "iOverlayOpacity=" << g_values.overlayOpacity << "\n\n";
+
             out << "[Misc]\n";
             out << "bNotifyOnMarkUnmark=" << (g_values.notifyOnMarkUnmark ? 1 : 0) << "\n";
             out << "bNotifyOnJunkTransfer=" << (g_values.notifyOnJunkTransfer ? 1 : 0) << "\n";
             out << "bNotifyOnJunkSell=" << (g_values.notifyOnJunkSell ? 1 : 0) << "\n";
+            out << "iLogLevel=" << g_values.logLevel << "\n";
             out << "fHeavyLoadDelayMultiplier=" << g_values.heavyLoadDelayMultiplier << "\n";
             out << "iLargeUniqueTypes=" << g_values.largeUniqueTypes << "\n";
             out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n";
@@ -485,7 +512,9 @@ namespace JunkIt {
             out << "bUseDynamicInventoryIcon=" << (g_values.useDynamicInventoryIcon ? 1 : 0) << "\n";
             out << "bSkyPromptEnabled=" << (g_values.skyPromptEnabled ? 1 : 0) << "\n";
             out << "iSkyPromptButtonPlacement=" << g_values.skyPromptButtonPlacement << "\n";
-            out << "bSkyPromptShowCounts=" << (g_values.skyPromptShowCounts ? 1 : 0) << "\n\n";
+            out << "bSkyPromptShowCounts=" << (g_values.skyPromptShowCounts ? 1 : 0) << "\n";
+            out << "bQuickLootEnabled=" << (g_values.quickLootEnabled ? 1 : 0) << "\n";
+            out << "bQuickLootMarkButton=" << (g_values.quickLootMarkButton ? 1 : 0) << "\n\n";
 
             out << "[Utility]\n";
             out << "bReplaceJunkListOnLoad=" << (g_values.replaceJunkListOnLoad ? 1 : 0) << "\n";
@@ -521,7 +550,7 @@ namespace JunkIt {
 
         static bool loggedSuccess = false;
         if (!loggedSuccess) {
-            SKSE::log::info("Saved settings to {}", iniPath.string());
+            SKSE::log::debug("Saved settings to {}", iniPath.string());
             loggedSuccess = true;
         }
         return true;
@@ -545,7 +574,7 @@ namespace JunkIt {
         auto* dataHandler = RE::TESDataHandler::GetSingleton();
         const bool trashPluginLoaded = dataHandler && dataHandler->LookupModByName(kTrashContainerPlugin);
         if (!trashPluginLoaded) {
-            SKSE::log::info("{} is not loaded; trash disabled", kTrashContainerPlugin);
+            SKSE::log::warn("{} is not loaded; trash disabled", kTrashContainerPlugin);
         } else if (kTrashContainerFormID == 0) {
             SKSE::log::warn(
                 "Trash container FormID is unset in settings.h; trash disabled until the JunkIt.esp REFR is assigned");
@@ -597,6 +626,10 @@ namespace JunkIt {
     bool Settings::GetNotifyOnMarkUnmark() { return g_values.notifyOnMarkUnmark; }
     bool Settings::GetNotifyOnJunkTransfer() { return g_values.notifyOnJunkTransfer; }
     bool Settings::GetNotifyOnJunkSell() { return g_values.notifyOnJunkSell; }
+    std::int32_t Settings::GetOverlayOpacity() { return g_values.overlayOpacity; }
+    Settings::LogLevel Settings::GetLogLevel() {
+        return static_cast<LogLevel>(g_values.logLevel);
+    }
     bool Settings::GetAggressiveRefresh() { return g_values.aggressiveRefresh; }
     std::int32_t Settings::GetAggressiveRefreshMaxInterval() { return g_values.aggressiveRefreshMaxInterval; }
     float Settings::GetHeavyLoadDelayMultiplier() { return g_values.heavyLoadDelayMultiplier; }
@@ -616,6 +649,8 @@ namespace JunkIt {
         return static_cast<SkyPromptButtonPlacement>(g_values.skyPromptButtonPlacement);
     }
     bool Settings::GetSkyPromptShowCounts() { return g_values.skyPromptShowCounts; }
+    bool Settings::GetQuickLootEnabled() { return g_values.quickLootEnabled; }
+    bool Settings::GetQuickLootMarkButton() { return g_values.quickLootMarkButton; }
 
     bool Settings::GetAutoJunkOnPickup() { return g_values.autoJunkOnPickup; }
     bool Settings::GetAutoJunkOnMenuOpen() { return g_values.autoJunkOnMenuOpen; }
@@ -696,6 +731,7 @@ namespace JunkIt {
 
     bool Settings::IsDIIIInstalled() { return g_values.diiiInstalled; }
     bool Settings::IsSkyPromptInstalled() { return g_values.skyPromptInstalled; }
+    bool Settings::IsQuickLootInstalled() { return g_values.quickLootInstalled; }
     RE::TESObjectMISC* Settings::GetGold001() { return g_values.gold001; }
 
     std::uint32_t& Settings::MarkJunkKeyValue() { return g_values.markJunkKey; }
@@ -720,6 +756,8 @@ namespace JunkIt {
     bool& Settings::NotifyOnMarkUnmarkValue() { return g_values.notifyOnMarkUnmark; }
     bool& Settings::NotifyOnJunkTransferValue() { return g_values.notifyOnJunkTransfer; }
     bool& Settings::NotifyOnJunkSellValue() { return g_values.notifyOnJunkSell; }
+    std::int32_t& Settings::OverlayOpacityValue() { return g_values.overlayOpacity; }
+    std::int32_t& Settings::LogLevelValue() { return g_values.logLevel; }
     float& Settings::HeavyLoadDelayMultiplierValue() { return g_values.heavyLoadDelayMultiplier; }
     std::int32_t& Settings::LargeUniqueTypesValue() { return g_values.largeUniqueTypes; }
     std::int32_t& Settings::LargeTotalItemsValue() { return g_values.largeTotalItems; }
@@ -731,6 +769,8 @@ namespace JunkIt {
     bool& Settings::SkyPromptEnabledValue() { return g_values.skyPromptEnabled; }
     std::int32_t& Settings::SkyPromptButtonPlacementValue() { return g_values.skyPromptButtonPlacement; }
     bool& Settings::SkyPromptShowCountsValue() { return g_values.skyPromptShowCounts; }
+    bool& Settings::QuickLootEnabledValue() { return g_values.quickLootEnabled; }
+    bool& Settings::QuickLootMarkButtonValue() { return g_values.quickLootMarkButton; }
 
     bool& Settings::AutoJunkOnPickupValue() { return g_values.autoJunkOnPickup; }
     bool& Settings::AutoJunkOnMenuOpenValue() { return g_values.autoJunkOnMenuOpen; }
@@ -752,5 +792,39 @@ namespace JunkIt {
             case SortPriority::kChaos: return "Chaos";
         }
         return "Chaos";
+    }
+
+    const char* Settings::LogLevelLabel(LogLevel level) {
+        switch (level) {
+            case LogLevel::kTrace: return "Trace";
+            case LogLevel::kDebug: return "Debug";
+            case LogLevel::kInfo: return "Info";
+            case LogLevel::kWarn: return "Warn";
+            case LogLevel::kError: return "Error";
+        }
+        return "Info";
+    }
+
+    void Settings::ApplyLogLevel() {
+        spdlog::level::level_enum level = spdlog::level::info;
+        switch (static_cast<LogLevel>(g_values.logLevel)) {
+            case LogLevel::kTrace:
+                level = spdlog::level::trace;
+                break;
+            case LogLevel::kDebug:
+                level = spdlog::level::debug;
+                break;
+            case LogLevel::kInfo:
+                level = spdlog::level::info;
+                break;
+            case LogLevel::kWarn:
+                level = spdlog::level::warn;
+                break;
+            case LogLevel::kError:
+                level = spdlog::level::err;
+                break;
+        }
+        spdlog::set_level(level);
+        spdlog::flush_on(level);
     }
 }

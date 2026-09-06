@@ -7,6 +7,7 @@ set(sources ${sources}
     src/SendUIMessage.cpp
     src/I4Integration.cpp
     src/I4MovieHook.cpp
+    src/QuickLootIntegration.cpp
     src/settings.cpp
     src/Translation.cpp
     src/UI.cpp

@@ -55,7 +55,7 @@ namespace JunkIt {
 
     void SkyPromptIntegration::Install() {
         if (GetModuleHandleW(L"SkyPrompt") == nullptr) {
-            SKSE::log::info("SkyPrompt not installed; on-screen prompts disabled");
+            SKSE::log::debug("SkyPrompt not installed; on-screen prompts disabled");
             return;
         }
 
@@ -593,12 +593,8 @@ namespace JunkIt {
             return false;
         }
 
-        RE::GFxValue result;
-        if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") &&
-            result.IsNumber()) {
-            return static_cast<int>(result.GetNumber()) != 0;
-        }
-        return false;
+        int segment = 0;
+        return UIUtil::Menu::TryGetCategoryActiveSegment(menu->uiMovie.get(), segment) && segment != 0;
     }
 
     bool SkyPromptIntegration::IsPlayerInventoryView() {
@@ -1316,6 +1312,17 @@ namespace JunkIt {
         }
 
         if (previewMenu_ == MenuKind::kBarter && playerOwned) {
+            if (sellPreview_.valid && JunkHandler::TryPatchSellPreviewStacks(sellPreview_.stacks, entry)) {
+                const auto gold = JunkHandler::ComputeSellPreviewGold(sellPreview_.stacks);
+                if (gold) {
+                    if (*gold > 0) {
+                        sellPreview_.gold = gold;
+                    } else {
+                        sellPreview_.gold.reset();
+                    }
+                    return;
+                }
+            }
             RequestSellRecapture(true);
             return;
         }
@@ -1336,8 +1343,8 @@ namespace JunkIt {
         if (auto* form = RE::TESForm::LookupByID(previewContainerId_)) {
             container = form->As<RE::TESObjectREFR>();
         }
-        const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false);
-        const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false);
+        const auto playerCount = JunkHandler::CountPreviewIdentities(player, identities, false, entry->object);
+        const auto containerCount = JunkHandler::CountPreviewIdentities(container, identities, false, entry->object);
         containerPreview_.storeCount = ClampNonNegative(containerPreview_.storeCount + sign * playerCount);
         containerPreview_.retrieveCount = ClampNonNegative(containerPreview_.retrieveCount + sign * containerCount);
     }
@@ -1385,30 +1392,7 @@ namespace JunkIt {
             }
         }
 
-        if (previewMenu_ == MenuKind::kBarter) {
-            const auto ui = RE::UI::GetSingleton();
-            auto menu = ui ? ui->GetMenu<RE::BarterMenu>() : nullptr;
-            if (menu && menu->uiMovie) {
-                RE::GFxValue result;
-                if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
-                    return static_cast<int>(result.GetNumber()) != 0;
-                }
-            }
-            return false;
-        }
-
-        if (previewMenu_ == MenuKind::kContainer) {
-            const auto ui = RE::UI::GetSingleton();
-            auto menu = ui ? ui->GetMenu<RE::ContainerMenu>() : nullptr;
-            if (menu && menu->uiMovie) {
-                RE::GFxValue result;
-                if (menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.categoryList.activeSegment") && result.IsNumber()) {
-                    return static_cast<int>(result.GetNumber()) != 0;
-                }
-            }
-        }
-
-        return true;
+        return previewMenu_ != MenuKind::kBarter;
     }
 
     void SkyPromptIntegration::ApplyTransferableDelta(
@@ -1443,6 +1427,10 @@ namespace JunkIt {
         auto* entry = selected->data.objDesc;
         const auto formId = entry->object->GetFormID();
         const auto owner = selected->data.owner;
+        if (owner == 0) {
+            selectedProtection_ = {};
+            return;
+        }
         const bool playerSide = SelectedRowIsPlayerSide();
         const bool favorited = entry->IsFavorited();
         const bool junk = JunkDataManager::GetSingleton().IsJunk(entry);

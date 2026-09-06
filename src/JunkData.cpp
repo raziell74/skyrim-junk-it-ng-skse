@@ -23,6 +23,25 @@ namespace JunkIt {
         constexpr auto kJsonJunkPath = "Data/SKSE/Plugins/JunkIt/junklist.json";
         const std::regex kCanonicalIdentityRegex(
             R"(^(0x[0-9A-Fa-f]+(?:~[^|]+)?)\|([^|]+)\|((?:0x[0-9A-Fa-f]+(?:~[^|]+)?)|none)$)");
+
+        std::vector<std::string> BuildEntryIdentities(RE::InventoryEntryData* entry) {
+            std::vector<std::string> identities;
+            if (!entry || !entry->object) {
+                return identities;
+            }
+            const auto base = JunkDataManager::CaptureIdentityBase(entry->object, entry->GetDisplayName());
+            if (!base) {
+                return identities;
+            }
+            if (!entry->extraLists || entry->extraLists->empty()) {
+                identities.push_back(JunkDataManager::BuildIdentity(*base, nullptr));
+            } else {
+                for (auto* extraList : *entry->extraLists) {
+                    identities.push_back(JunkDataManager::BuildIdentity(*base, extraList));
+                }
+            }
+            return identities;
+        }
     }
 
     std::string JunkDataManager::GetEnchantmentFormConfig(const RE::ExtraDataList* extraList) {
@@ -39,32 +58,48 @@ namespace JunkIt {
         return configString.empty() ? "none" : configString;
     }
 
-    std::string JunkDataManager::BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) {
+    std::optional<JunkDataManager::IdentityBase> JunkDataManager::CaptureIdentityBase(
+        RE::TESBoundObject* object,
+        std::string_view displayName) {
         if (!object) {
+            return std::nullopt;
+        }
+
+        IdentityBase base;
+        base.formConfig = FormUtil::Form::GetFormConfigString(object->As<RE::TESForm>());
+        if (base.formConfig.empty()) {
+            return std::nullopt;
+        }
+
+        base.displayName = std::string(displayName);
+        if (base.displayName.empty()) {
+            base.displayName = object->GetName();
+        }
+        if (base.displayName.empty()) {
+            return std::nullopt;
+        }
+
+        std::replace(base.displayName.begin(), base.displayName.end(), '|', ':');
+        return base;
+    }
+
+    std::string JunkDataManager::BuildIdentity(const IdentityBase& base, const RE::ExtraDataList* extraList) {
+        if (base.formConfig.empty() || base.displayName.empty()) {
             return "";
         }
-
-        const auto formConfig = FormUtil::Form::GetFormConfigString(object->As<RE::TESForm>());
-        if (formConfig.empty()) {
-            return "";
-        }
-
-        std::string uiDisplayName(displayName);
-        if (uiDisplayName.empty()) {
-            uiDisplayName = object->GetName();
-        }
-        if (uiDisplayName.empty()) {
-            return "";
-        }
-
-        // Sanitize pipe delimiter from the display name
-        std::replace(uiDisplayName.begin(), uiDisplayName.end(), '|', ':');
-
         return fmt::format(
             "{}|{}|{}",
-            formConfig,
-            uiDisplayName,
+            base.formConfig,
+            base.displayName,
             GetEnchantmentFormConfig(extraList));
+    }
+
+    std::string JunkDataManager::BuildIdentity(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) {
+        const auto base = CaptureIdentityBase(object, displayName);
+        if (!base) {
+            return "";
+        }
+        return BuildIdentity(*base, extraList);
     }
 
     bool JunkDataManager::IsCanonicalIdentity(const std::string& identity) {
@@ -81,6 +116,26 @@ namespace JunkIt {
             return "";
         }
         return identity.substr(firstPipe + 1, secondPipe - firstPipe - 1);
+    }
+
+    std::string JunkDataManager::GetFormConfigFromIdentity(const std::string& identity) {
+        const auto firstPipe = identity.find('|');
+        if (firstPipe == std::string::npos || firstPipe == 0) {
+            return "";
+        }
+        return identity.substr(0, firstPipe);
+    }
+
+    void JunkDataManager::DropFormConfigIfUnusedLocked(const std::string& formConfig) {
+        if (formConfig.empty()) {
+            return;
+        }
+        for (const auto& identity : junkSet) {
+            if (GetFormConfigFromIdentity(identity) == formConfig) {
+                return;
+            }
+        }
+        junkFormConfigs.erase(formConfig);
     }
 
     std::string JunkDataManager::BuildIdentityForEntry(RE::InventoryEntryData* entry, const RE::ExtraDataList* extraList) {
@@ -110,14 +165,8 @@ namespace JunkIt {
         if (formConfig.empty()) {
             return false;
         }
-        const std::string prefix = formConfig + "|";
         std::lock_guard<std::mutex> guard(lock);
-        for (const auto& identity : junkSet) {
-            if (identity.rfind(prefix, 0) == 0) {
-                return true;
-            }
-        }
-        return false;
+        return junkFormConfigs.contains(formConfig);
     }
 
     std::optional<std::string> JunkDataManager::AddJunkItem(RE::InventoryEntryData* entry) {
@@ -125,24 +174,20 @@ namespace JunkIt {
             return std::nullopt;
         }
 
-        std::vector<std::string> identities;
-        if (!entry->extraLists || entry->extraLists->empty()) {
-            identities.push_back(BuildIdentityForEntry(entry, nullptr));
-        } else {
-            for (auto* extraList : *entry->extraLists) {
-                identities.push_back(BuildIdentityForEntry(entry, extraList));
-            }
-        }
+        const auto identities = BuildEntryIdentities(entry);
 
         std::optional<std::string> addedIdentity;
         std::lock_guard<std::mutex> guard(lock);
         for (const auto& identity : identities) {
-            if (!IsCanonicalIdentity(identity)) {
-                SKSE::log::warn("Skipping add for non-canonical identity: {}", identity);
+            if (identity.empty()) {
                 continue;
             }
             if (junkSet.insert(identity).second) {
                 junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
+                const auto formConfig = GetFormConfigFromIdentity(identity);
+                if (!formConfig.empty()) {
+                    junkFormConfigs.insert(formConfig);
+                }
                 if (!addedIdentity) {
                     addedIdentity = identity;
                 }
@@ -164,6 +209,10 @@ namespace JunkIt {
         }
 
         junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
+        const auto formConfig = GetFormConfigFromIdentity(identity);
+        if (!formConfig.empty()) {
+            junkFormConfigs.insert(formConfig);
+        }
         if (autoJunked) {
             autoJunkedSet.insert(identity);
             noAutoJunkSet.erase(identity);
@@ -192,20 +241,20 @@ namespace JunkIt {
             return std::nullopt;
         }
 
-        std::vector<std::string> identities;
-        if (!entry->extraLists || entry->extraLists->empty()) {
-            identities.push_back(BuildIdentityForEntry(entry, nullptr));
-        } else {
-            for (auto* extraList : *entry->extraLists) {
-                identities.push_back(BuildIdentityForEntry(entry, extraList));
-            }
-        }
+        const auto identities = BuildEntryIdentities(entry);
 
         std::optional<std::string> removedIdentity;
+        std::unordered_set<std::string> removedIdentities;
+        std::unordered_set<std::string> removedFormConfigs;
         std::lock_guard<std::mutex> guard(lock);
         for (const auto& identity : identities) {
             if (junkSet.erase(identity) > 0) {
                 ApplyUnmarkLocked(identity);
+                removedIdentities.insert(identity);
+                const auto formConfig = GetFormConfigFromIdentity(identity);
+                if (!formConfig.empty()) {
+                    removedFormConfigs.insert(formConfig);
+                }
                 if (!removedIdentity) {
                     removedIdentity = identity;
                 }
@@ -215,10 +264,11 @@ namespace JunkIt {
             return std::nullopt;
         }
 
-        junkItems.clear();
-        junkItems.reserve(junkSet.size());
-        for (const auto& identity : junkSet) {
-            junkItems.emplace_back(identity, GetDisplayNameFromIdentity(identity));
+        std::erase_if(junkItems, [&](const JunkItem& item) {
+            return removedIdentities.contains(item.identity);
+        });
+        for (const auto& formConfig : removedFormConfigs) {
+            DropFormConfigIfUnusedLocked(formConfig);
         }
         return removedIdentity;
     }
@@ -236,12 +286,14 @@ namespace JunkIt {
             return false;
         }
 
-        if (!entry->extraLists || entry->extraLists->empty()) {
-            return IsJunk(BuildIdentityForEntry(entry, nullptr));
+        if (!IsAnyJunkForForm(entry->object)) {
+            return false;
         }
 
-        for (auto* extraList : *entry->extraLists) {
-            if (IsJunk(BuildIdentityForEntry(entry, extraList))) {
+        const auto identities = BuildEntryIdentities(entry);
+        std::lock_guard<std::mutex> guard(lock);
+        for (const auto& identity : identities) {
+            if (!identity.empty() && junkSet.find(identity) != junkSet.end()) {
                 return true;
             }
         }
@@ -251,6 +303,7 @@ namespace JunkIt {
     void JunkDataManager::Clear() {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
+        junkFormConfigs.clear();
         junkItems.clear();
         autoJunkedSet.clear();
     }
@@ -308,6 +361,7 @@ namespace JunkIt {
             return false;
         }
         ApplyUnmarkLocked(identity);
+        DropFormConfigIfUnusedLocked(GetFormConfigFromIdentity(identity));
         return true;
     }
 
@@ -420,7 +474,7 @@ namespace JunkIt {
         const std::filesystem::path filePath(kJsonJunkPath);
         std::ifstream file(filePath, std::ios::binary);
         if (!file.is_open()) {
-            SKSE::log::error("Failed to open JSON junk list for reading: {}", filePath.string());
+            SKSE::log::warn("Failed to open JSON junk list for reading: {}", filePath.string());
             return false;
         }
 
@@ -502,6 +556,7 @@ namespace JunkIt {
         std::lock_guard<std::mutex> guard(lock);
         if (replace) {
             junkSet.clear();
+            junkFormConfigs.clear();
             junkItems.clear();
             autoJunkedSet.clear();
             if (hasExclusions) {
@@ -515,6 +570,10 @@ namespace JunkIt {
                 continue;
             }
             junkItems.push_back(item);
+            const auto formConfig = GetFormConfigFromIdentity(item.identity);
+            if (!formConfig.empty()) {
+                junkFormConfigs.insert(formConfig);
+            }
             ++added;
         }
 
@@ -580,6 +639,7 @@ namespace JunkIt {
 
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
+        junkFormConfigs.clear();
         junkItems.clear();
 
         if (recordVersion != kJunkRecordVersion) {
@@ -631,6 +691,10 @@ namespace JunkIt {
                 displayName = GetDisplayNameFromIdentity(identity);
             }
             junkItems.emplace_back(identity, displayName);
+            const auto formConfig = GetFormConfigFromIdentity(identity);
+            if (!formConfig.empty()) {
+                junkFormConfigs.insert(formConfig);
+            }
         }
     }
 
@@ -719,6 +783,7 @@ namespace JunkIt {
     void JunkDataManager::Revert(SKSE::SerializationInterface*) {
         std::lock_guard<std::mutex> guard(lock);
         junkSet.clear();
+        junkFormConfigs.clear();
         junkItems.clear();
         autoJunkedSet.clear();
         noAutoJunkSet.clear();

@@ -27,11 +27,24 @@ namespace JunkIt {
         I4Integration() = delete;
 
         static void Install(RE::GFxMovieView* a_view, const char* a_pathToObj);
+        static void InstallProcessEntry(RE::GFxMovieView* a_view);
+        static void SetJunkFlags(RE::GFxValue& obj, bool isJunk);
+        static void ReprocessOpenList(RE::GFxMovieView* movie);
 
     private:
         class ProcessListFunc : public RE::GFxFunctionHandler {
         public:
             ProcessListFunc(const RE::GFxValue& a_oldFunc) : _oldFunc{ a_oldFunc } {}
+
+            void Call(Params& a_params) override;
+
+        private:
+            RE::GFxValue _oldFunc;
+        };
+
+        class ProcessEntryFunc : public RE::GFxFunctionHandler {
+        public:
+            ProcessEntryFunc(const RE::GFxValue& a_oldFunc) : _oldFunc{ a_oldFunc } {}
 
             void Call(Params& a_params) override;
 

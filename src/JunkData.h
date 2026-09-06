@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <string_view>
 #include <optional>
 
 namespace JunkIt {
@@ -42,6 +43,14 @@ namespace JunkIt {
         bool IsJunk(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) const;
         bool IsJunk(const std::string& identity) const;
         bool IsNoAutoJunk(const std::string& identity) const;
+
+        struct IdentityBase {
+            std::string formConfig;
+            std::string displayName;
+        };
+
+        static std::optional<IdentityBase> CaptureIdentityBase(RE::TESBoundObject* object, std::string_view displayName);
+        static std::string BuildIdentity(const IdentityBase& base, const RE::ExtraDataList* extraList);
         static std::string BuildIdentityForEntry(RE::InventoryEntryData* entry, const RE::ExtraDataList* extraList);
 
         void Clear();
@@ -75,14 +84,17 @@ namespace JunkIt {
         static std::string GetEnchantmentFormConfig(const RE::ExtraDataList* extraList);
         static bool IsCanonicalIdentity(const std::string& identity);
         static std::string GetDisplayNameFromIdentity(const std::string& identity);
+        static std::string GetFormConfigFromIdentity(const std::string& identity);
         void ApplyUnmarkLocked(const std::string& identity);
         void PruneAutoJunkedLocked();
+        void DropFormConfigIfUnusedLocked(const std::string& formConfig);
 
         JunkDataManager() = default;
         JunkDataManager(const JunkDataManager&) = delete;
         JunkDataManager& operator=(const JunkDataManager&) = delete;
 
         std::unordered_set<std::string> junkSet;
+        std::unordered_set<std::string> junkFormConfigs;
         std::unordered_set<std::string> autoJunkedSet;
         std::unordered_set<std::string> noAutoJunkSet;
         std::vector<JunkItem> junkItems;

@@ -9,6 +9,7 @@
 #include "Translation.h"
 #include "UI.h"
 #include "SkyPromptIntegration.h"
+#include "QuickLootIntegration.h"
 #include "AutoJunk.h"
 #include "PluginAPI.h"
 #include "Papyrus.h"
@@ -59,6 +60,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 			JunkIt::InputEventHandler::Install();
 			JunkIt::JunkHandler::Install();
 			JunkIt::SkyPromptIntegration::GetSingleton().Install();
+			JunkIt::QuickLootIntegration::Install();
 			JunkIt::AutoJunk::Install();
 			JunkIt::I4JunkConfig::GetSingleton().Load();
 			break;
@@ -75,6 +77,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 				SKSE::log::info("Auto-import: loading junk list from file");
 				if (JunkIt::JunkDataManager::GetSingleton().LoadFromFile(true)) {
 					UIUtil::ItemList::Refresh();
+					JunkIt::QuickLootIntegration::RefreshMenu();
 				} else {
 					SKSE::log::warn("Auto-import failed to load junk list from file");
 				}

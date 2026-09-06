@@ -2,6 +2,7 @@
 
 #include "AutoJunk.h"
 #include "JunkData.h"
+#include "QuickLootIntegration.h"
 #include "SkyPromptIntegration.h"
 #include "Translation.h"
 #include "junk.h"
@@ -520,10 +521,16 @@ namespace JunkIt {
             return changed;
         }
 
-        bool SliderIntRow(const char* labelKey, const char* helpKey, std::int32_t& value, int minValue, int maxValue) {
+        bool SliderIntRow(
+            const char* labelKey,
+            const char* helpKey,
+            std::int32_t& value,
+            int minValue,
+            int maxValue,
+            const char* format = "%d") {
             SettingLabel(labelKey, helpKey);
             ImGui::PushID(labelKey);
-            ImGui::SliderInt("##v", &value, minValue, maxValue);
+            ImGui::SliderInt("##v", &value, minValue, maxValue, format);
             const bool committed = ImGui::IsItemDeactivatedAfterEdit();
             ImGui::PopID();
             return committed;
@@ -625,6 +632,16 @@ namespace JunkIt {
             return items;
         }
 
+        const char* const* LogLevelItems() {
+            static const char* items[5];
+            items[0] = Translation::Get("$JunkIt_LogLevel_Error_ENUM").c_str();
+            items[1] = Translation::Get("$JunkIt_LogLevel_Warn_ENUM").c_str();
+            items[2] = Translation::Get("$JunkIt_LogLevel_Info_ENUM").c_str();
+            items[3] = Translation::Get("$JunkIt_LogLevel_Debug_ENUM").c_str();
+            items[4] = Translation::Get("$JunkIt_LogLevel_Trace_ENUM").c_str();
+            return items;
+        }
+
         void RenderGeneral() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_General");
@@ -649,6 +666,17 @@ namespace JunkIt {
                 SaveIfChanged(CheckboxRow("$JunkIt_NotifyOnMarkUnmark", "$JunkIt_NotifyOnMarkUnmark_Help", Settings::NotifyOnMarkUnmarkValue()));
                 SaveIfChanged(CheckboxRow("$JunkIt_NotifyOnJunkTransfer", "$JunkIt_NotifyOnJunkTransfer_Help", Settings::NotifyOnJunkTransferValue()));
                 SaveIfChanged(CheckboxRow("$JunkIt_NotifyOnJunkSell", "$JunkIt_NotifyOnJunkSell_Help", Settings::NotifyOnJunkSellValue()));
+                ImGui::EndTable();
+            }
+
+            if (BeginSettingsTable("generalOverlay")) {
+                SaveIfChanged(SliderIntRow(
+                    "$JunkIt_OverlayOpacity",
+                    "$JunkIt_OverlayOpacity_Help",
+                    Settings::OverlayOpacityValue(),
+                    0,
+                    100,
+                    "%d%%"));
                 ImGui::EndTable();
             }
 
@@ -917,6 +945,38 @@ namespace JunkIt {
                 if (enabledChanged || placementChanged || countsChanged) {
                     SaveSettings();
                     SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                }
+            }
+
+            ImGui::SeparatorText(Translation::Get("$JunkIt_QuickLootIntegrationHeader").c_str());
+            {
+                const char* statusKey = "$JunkIt_QuickLootNotInstalled";
+                if (Settings::IsQuickLootInstalled()) {
+                    statusKey = QuickLootIntegration::IsReady()
+                        ? "$JunkIt_QuickLootInstalled"
+                        : "$JunkIt_QuickLootApiUnavailable";
+                }
+                ImGui::TextWrapped("%s", Translation::Get(statusKey).c_str());
+            }
+            if (BeginSettingsTable("quickloot")) {
+                const bool quickLootPresent = Settings::IsQuickLootInstalled();
+                const bool apiReady = QuickLootIntegration::IsReady();
+                ImGui::BeginDisabled(!quickLootPresent);
+                const bool enabledChanged = CheckboxRow(
+                    "$JunkIt_QuickLootEnabled",
+                    "$JunkIt_QuickLootEnabled_Help",
+                    Settings::QuickLootEnabledValue());
+                ImGui::BeginDisabled(!Settings::QuickLootEnabledValue() || !apiReady);
+                const bool markChanged = CheckboxRow(
+                    "$JunkIt_QuickLootMarkButton",
+                    "$JunkIt_QuickLootMarkButton_Help",
+                    Settings::QuickLootMarkButtonValue());
+                ImGui::EndDisabled();
+                ImGui::EndDisabled();
+                ImGui::EndTable();
+                if (enabledChanged || markChanged) {
+                    SaveSettings();
+                    QuickLootIntegration::RefreshMenu();
                 }
             }
 
@@ -1216,6 +1276,7 @@ namespace JunkIt {
                         Settings::GetReplaceJunkListOnLoad() ? "$JunkIt_JunkReplaced" : "$JunkIt_JunkLoaded",
                         true);
                     UIUtil::ItemList::Refresh();
+                    QuickLootIntegration::RefreshMenu();
                 } else {
                     SetStatus("$JunkIt_ImportFailed", false);
                 }
@@ -1243,6 +1304,7 @@ namespace JunkIt {
             if (ConfirmPopup("ResetJunk", "$JunkIt_ResetJunk", "$JunkIt_ResetJunkConfirm")) {
                 manager.Clear();
                 UIUtil::ItemList::Refresh();
+                QuickLootIntegration::RefreshMenu();
                 SetStatus("$JunkIt_JunkReset", true);
             }
             if (ConfirmPopup(
@@ -1301,6 +1363,7 @@ namespace JunkIt {
                             manager.RemoveNoAutoJunkIdentity(item.identity);
                         } else if (manager.RemoveJunkItemAtIndex(index)) {
                             UIUtil::ItemList::Refresh();
+                            QuickLootIntegration::RefreshMenu();
                         }
                     }
                     ImGui::PopID();
@@ -1314,6 +1377,22 @@ namespace JunkIt {
         void RenderAdvanced() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_Advanced");
+
+            ImGui::SeparatorText(Translation::Get("$JunkIt_LoggingHeader").c_str());
+            if (BeginSettingsTable("advancedLog")) {
+                std::int32_t comboIndex = 4 - Settings::LogLevelValue();
+                const bool changed = ComboRow(
+                    "$JunkIt_LogLevel",
+                    "$JunkIt_LogLevel_Help",
+                    comboIndex,
+                    LogLevelItems(),
+                    5);
+                if (changed) {
+                    Settings::LogLevelValue() = 4 - comboIndex;
+                }
+                SaveIfChanged(changed);
+                ImGui::EndTable();
+            }
 
             ImGui::SeparatorText(Translation::Get("$AutoloadJunkList_Header").c_str());
             if (BeginSettingsTable("advancedAuto")) {
@@ -1410,7 +1489,7 @@ namespace JunkIt {
         }
 
         if (!SKSEMenuFramework::IsInstalled()) {
-            SKSE::log::error("SKSE Menu Framework is not installed; Junk It settings menu will be unavailable");
+            SKSE::log::warn("SKSE Menu Framework is not installed; Junk It settings menu will be unavailable");
             return;
         }
 
@@ -1454,10 +1533,14 @@ namespace JunkIt {
                 break;
         }
 
+        const auto captured = g_capture;
         SaveSettings();
         g_capture = CaptureSlot::kNone;
         g_captureWaitMouseUp = false;
         SkyPromptIntegration::GetSingleton().RefreshPrompts();
+        if (captured == CaptureSlot::kMark || captured == CaptureSlot::kGamepad) {
+            QuickLootIntegration::RefreshMenu();
+        }
         return true;
     }
 

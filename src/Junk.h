@@ -37,8 +37,14 @@ namespace JunkIt {
         using InventoryCountMap = std::map<TESBoundObject*, Count>;
         using InventoryItemMap = std::map<TESBoundObject*, std::pair<Count, std::unique_ptr<InventoryEntryData>>>;
 
-    public: 
+    public:
+        enum class JunkToggleUi {
+            kItemList,
+            kLootMenu
+        };
+
         static TESForm* ToggleSelectedItemJunk();
+        static TESForm* ToggleEntryJunk(InventoryEntryData* entry, std::uint32_t ownerHandle, JunkToggleUi ui);
         static void ToggleIsJunk();
         static void StartAggressiveRefresh();
 
@@ -74,9 +80,12 @@ namespace JunkIt {
             std::int32_t retrieveCount = 0;
         };
 
+        enum class ContainerPreviewSide { Both, Store, Retrieve };
+
         struct SellPreviewStack {
             std::int32_t count = 0;
             std::int32_t unitPrice = 0;
+            InventoryEntryData* entry = nullptr;
         };
 
         struct SellPreviewCapture {
@@ -86,12 +95,20 @@ namespace JunkIt {
             std::vector<SellPreviewStack> stacks;
         };
 
-        [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview();
+        [[nodiscard]] static std::optional<ContainerPreviewCounts> CaptureContainerPreview(
+            ContainerPreviewSide side = ContainerPreviewSide::Both);
         [[nodiscard]] static SellPreviewCapture CaptureSellPreview();
+        [[nodiscard]] static bool TryPatchSellPreviewStacks(
+            std::vector<SellPreviewStack>& stacks,
+            InventoryEntryData* entry);
         [[nodiscard]] static std::optional<std::int32_t> ComputeSellPreviewGold(
             const std::vector<SellPreviewStack>& stacks);
         static void CollectEntryIdentities(InventoryEntryData* entry, std::vector<std::string>& out);
-        [[nodiscard]] static std::int32_t CountPreviewIdentities(TESObjectREFR* container, const std::vector<std::string>& identities, bool sellFilters);
+        [[nodiscard]] static std::int32_t CountPreviewIdentities(
+            TESObjectREFR* container,
+            const std::vector<std::string>& identities,
+            bool sellFilters,
+            TESBoundObject* objectFilter = nullptr);
         [[nodiscard]] static bool MovedItemIsPreviewableJunk(TESObjectREFR* dest, FormID baseObj, std::uint16_t uniqueID, bool sellFilters);
         [[nodiscard]] static std::int32_t CountJunkUnits(InventoryEntryData* entry);
         struct JunkPreviewUnit {
@@ -172,8 +189,9 @@ namespace JunkIt {
         static void EmptyTrashContainer(TESObjectREFR* chest);
         static void NoteTrashDeposit();
         static void ClearTrashStampIfEmpty();
+        static Count CountInventoryTrashUnits();
         static std::vector<InventoryEntryData*> BuildInventoryTrashList();
-        static void TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to);
+        static Count TrashEntryUnits(InventoryEntryData* a_entry, TESObjectREFR* a_from, TESObjectREFR* a_to);
         static void ExecuteTrash(TESObjectREFR* from, TESBoundObject* item, Count count, ExtraDataList* extraList);
         static void ExecuteBulkTrash(std::vector<InventoryEntryData*> trashList);
         static void HideOpenInventoryMenus();
@@ -200,7 +218,7 @@ namespace JunkIt {
         static void FinishSell(TESObjectREFR* player, TESObjectREFR* vendorActorRef, TESObjectREFR* vendorContainer, Count totalSellValue, Count totalToSell, Count totalPossibleToSell, std::size_t uniqueTypes);
 
         static void ApplyInventoryUIRefresh(TESObjectREFR* primary, TESObjectREFR* secondary);
-        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {});
+        static void ScheduleInventoryUIRefresh(FormID primaryId, FormID secondaryId, int framesRemaining, std::function<void()> onComplete = {}, bool rebuildList = true);
         static void RefreshMenusAfterBulk(TESObjectREFR* primary, TESObjectREFR* secondary, std::size_t uniqueTypes, Count totalItems);
         static void CompleteOperation();
 

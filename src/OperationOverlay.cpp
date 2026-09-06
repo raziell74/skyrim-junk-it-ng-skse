@@ -5,6 +5,8 @@
 #include <imgui_impl_dx11.h>
 #include <WICTextureLoader.h>
 
+#include "settings.h"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -12,6 +14,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace JunkIt {
@@ -26,7 +29,8 @@ namespace JunkIt {
         constexpr float kDoneHoldSeconds = 0.4f;
         constexpr ImVec4 kSplashTint{ 1.0f, 1.0f, 1.0f, 0.25f };
         constexpr const wchar_t* kSplashPath = L"Data\\Interface\\JunkIt\\JunkIt_splash_512x512.png";
-        constexpr const char* kFontPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
+        constexpr const char* kQuicksandPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
+        constexpr const char* kNotoPath = "Data\\Interface\\JunkIt\\NotoSansJP-Bold.ttf";
         constexpr float kFontRasterSize = 96.0f;
 
         using InitD3D_t = void();
@@ -54,6 +58,9 @@ namespace JunkIt {
         std::string g_label;
         std::function<void()> g_pendingWork;
         std::function<void()> g_onHidden;
+        bool g_suppressMenu = false;
+        bool g_menuHiddenByUs = false;
+        std::string_view g_hiddenMenuName;
         ID3D11DeviceContext* g_context = nullptr;
         ID3D11ShaderResourceView* g_splash = nullptr;
         InitD3D_t* g_initD3D = nullptr;
@@ -71,6 +78,28 @@ namespace JunkIt {
                     return "$JunkIt_Overlay_Trashing";
             }
             return "$JunkIt_Overlay_Storing";
+        }
+
+        bool PrefersWideOverlayFont() {
+            const auto language = Translation::Language();
+            return language == "JAPANESE" || language == "RUSSIAN" || language == "CHINESE" ||
+                language == "KOREAN";
+        }
+
+        const ImWchar* NotoGlyphRanges(ImFontAtlas* fonts) {
+            static ImVector<ImWchar> ranges;
+            if (ranges.empty()) {
+                ImFontGlyphRangesBuilder builder;
+                builder.AddRanges(fonts->GetGlyphRangesJapanese());
+                builder.AddRanges(fonts->GetGlyphRangesChineseSimplifiedCommon());
+                builder.BuildRanges(&ranges);
+            }
+            return ranges.Data;
+        }
+
+        bool AddOverlayFont(ImFontAtlas* fonts, const char* path, bool wideRanges) {
+            const ImWchar* ranges = wideRanges ? NotoGlyphRanges(fonts) : nullptr;
+            return fonts->AddFontFromFileTTF(path, kFontRasterSize, nullptr, ranges) != nullptr;
         }
 
         bool TryInitImGui() {
@@ -97,9 +126,15 @@ namespace JunkIt {
             io.LogFilename = nullptr;
             io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
-            if (!io.Fonts->AddFontFromFileTTF(kFontPath, kFontRasterSize)) {
-                SKSE::log::warn("Operation overlay font failed to load, using default");
-                io.Fonts->AddFontDefault();
+            const bool preferNoto = PrefersWideOverlayFont();
+            const char* primary = preferNoto ? kNotoPath : kQuicksandPath;
+            const char* fallback = preferNoto ? kQuicksandPath : kNotoPath;
+            if (!AddOverlayFont(io.Fonts, primary, preferNoto)) {
+                SKSE::log::warn("Operation overlay font failed to load ({}), trying fallback", primary);
+                if (!AddOverlayFont(io.Fonts, fallback, !preferNoto)) {
+                    SKSE::log::warn("Operation overlay fallback font failed to load, using default");
+                    io.Fonts->AddFontDefault();
+                }
             }
 
             ImGui_ImplDX11_Init(device, context);
@@ -115,6 +150,96 @@ namespace JunkIt {
             return true;
         }
 
+        void QueueUITask(std::function<void()> task) {
+            if (!task) {
+                return;
+            }
+            if (auto* tasks = SKSE::GetTaskInterface()) {
+                tasks->AddUITask(std::move(task));
+            } else {
+                task();
+            }
+        }
+
+        RE::GFxMovieView* OpenInventoryLikeMovie(std::string_view& name) {
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui) {
+                return nullptr;
+            }
+            if (auto menu = ui->GetMenu<RE::ContainerMenu>(); menu && menu->uiMovie) {
+                name = RE::ContainerMenu::MENU_NAME;
+                return menu->uiMovie.get();
+            }
+            if (auto menu = ui->GetMenu<RE::BarterMenu>(); menu && menu->uiMovie) {
+                name = RE::BarterMenu::MENU_NAME;
+                return menu->uiMovie.get();
+            }
+            if (auto menu = ui->GetMenu<RE::InventoryMenu>(); menu && menu->uiMovie) {
+                name = RE::InventoryMenu::MENU_NAME;
+                return menu->uiMovie.get();
+            }
+            return nullptr;
+        }
+
+        void HideOpenMenuMovie() {
+            std::string_view name;
+            auto* movie = OpenInventoryLikeMovie(name);
+            if (!movie || !movie->GetVisible()) {
+                return;
+            }
+
+            movie->SetVisible(false);
+            std::lock_guard lock(g_mutex);
+            if (!g_suppressMenu) {
+                movie->SetVisible(true);
+                return;
+            }
+            g_hiddenMenuName = name;
+            g_menuHiddenByUs = true;
+        }
+
+        void RestoreHiddenMenuMovie() {
+            std::string_view name;
+            {
+                std::lock_guard lock(g_mutex);
+                if (!g_menuHiddenByUs) {
+                    return;
+                }
+                name = g_hiddenMenuName;
+                g_menuHiddenByUs = false;
+                g_hiddenMenuName = {};
+            }
+
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui || name.empty()) {
+                return;
+            }
+            if (auto menu = ui->GetMenu(name); menu && menu->uiMovie) {
+                menu->uiMovie->SetVisible(true);
+            }
+        }
+
+        void ApplyMenuMovieVisibility() {
+            bool suppress = false;
+            bool alreadyHidden = false;
+            {
+                std::lock_guard lock(g_mutex);
+                suppress = g_suppressMenu;
+                alreadyHidden = g_menuHiddenByUs;
+            }
+            if (suppress) {
+                if (!alreadyHidden) {
+                    HideOpenMenuMovie();
+                }
+            } else {
+                RestoreHiddenMenuMovie();
+            }
+        }
+
+        void QueueMenuVisibilityApply() {
+            QueueUITask([] { ApplyMenuMovieVisibility(); });
+        }
+
         void BeginVisible(OperationOverlay::Action action) {
             g_label = Translation::Get(TranslationKey(action));
             g_visible = true;
@@ -124,6 +249,8 @@ namespace JunkIt {
             g_settleStart = {};
             g_lastPresent = Clock::now();
             g_onHidden = {};
+            g_suppressMenu = true;
+            QueueMenuVisibilityApply();
         }
 
         void ClearVisibleState() {
@@ -132,6 +259,11 @@ namespace JunkIt {
             g_fade = 0.0f;
             g_fastFrames = 0;
             g_pendingWork = {};
+            const bool restoreMenu = g_suppressMenu || g_menuHiddenByUs;
+            g_suppressMenu = false;
+            if (restoreMenu) {
+                QueueMenuVisibilityApply();
+            }
         }
 
         void QueueCallback(std::function<void()> callback) {
@@ -188,6 +320,8 @@ namespace JunkIt {
                     const float held = std::chrono::duration<float>(now - g_settleStart).count();
                     if (held >= kDoneHoldSeconds) {
                         g_phase = Phase::FadeOut;
+                        g_suppressMenu = false;
+                        QueueMenuVisibilityApply();
                     }
                     break;
                 }
@@ -232,10 +366,14 @@ namespace JunkIt {
                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
             auto* drawList = ImGui::GetWindowDrawList();
+            const float opacity = static_cast<float>(Settings::GetOverlayOpacity()) / 100.0f;
+            const float veilAlpha = opacity * g_fade;
+            const float textAlpha = std::min(1.0f, opacity + 0.5f) * g_fade;
+
             drawList->AddRectFilled(
                 ImVec2(0.0f, 0.0f),
                 io.DisplaySize,
-                IM_COL32(0, 0, 0, static_cast<int>(64.0f * g_fade + 0.5f)));
+                IM_COL32(0, 0, 0, static_cast<int>(255.0f * veilAlpha + 0.5f)));
 
             const float splash = (io.DisplaySize.y < kSplashSize)
                 ? (std::max)(128.0f, io.DisplaySize.y * 0.45f)
@@ -244,7 +382,7 @@ namespace JunkIt {
             if (g_splash) {
                 ImGui::SetCursorPos(splashPos);
                 ImVec4 tint = kSplashTint;
-                tint.w = 0.25f * g_fade;
+                tint.w = veilAlpha;
                 ImGui::ImageWithBg(
                     reinterpret_cast<ImTextureID>(g_splash),
                     ImVec2(splash, splash),
@@ -261,11 +399,11 @@ namespace JunkIt {
             const float textX = (io.DisplaySize.x - textSize.x) * 0.5f;
             const float textY = (io.DisplaySize.y - textSize.y) * 0.5f;
             ImGui::SetCursorPos(ImVec2(textX + 2.0f, textY + 2.0f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, g_fade));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, textAlpha));
             ImGui::TextUnformatted(g_label.c_str());
             ImGui::PopStyleColor();
             ImGui::SetCursorPos(ImVec2(textX, textY));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(194.0f / 255.0f, 194.0f / 255.0f, 194.0f / 255.0f, g_fade));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(194.0f / 255.0f, 194.0f / 255.0f, 194.0f / 255.0f, textAlpha));
             ImGui::TextUnformatted(g_label.c_str());
             ImGui::PopStyleColor();
             ImGui::SetWindowFontScale(1.0f);
@@ -350,6 +488,9 @@ namespace JunkIt {
     }
 
     void OperationOverlay::Show(Action action) {
+        if (Settings::GetOverlayOpacity() <= 0) {
+            return;
+        }
         std::lock_guard lock(g_mutex);
         BeginVisible(action);
     }
@@ -392,7 +533,7 @@ namespace JunkIt {
             return;
         }
 
-        if (!g_hooksInstalled.load()) {
+        if (!g_hooksInstalled.load() || Settings::GetOverlayOpacity() <= 0) {
             work();
             return;
         }

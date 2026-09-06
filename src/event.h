@@ -63,7 +63,8 @@ namespace JunkIt {
             kNone = 0,
             kInventory = 1,
             kContainer = 2,
-            kBarter = 3
+            kBarter = 3,
+            kLootMenu = 4
         };
 
         ActiveMenuType GetActiveMenu();

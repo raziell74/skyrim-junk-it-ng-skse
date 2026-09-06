@@ -109,13 +109,17 @@ namespace JunkIt {
         const std::filesystem::path translationsDir("Data/Interface/translations");
         LoadFile(translationsDir / "junkit_english.txt", strings);
 
-        const auto language = GetGameLanguage();
+        language = GetGameLanguage();
         const auto* fileName = LanguageFileName(language);
         if (!Util::String::iEquals(fileName, "junkit_english.txt")) {
             LoadFile(translationsDir / fileName, strings);
         }
 
         SKSE::log::info("Loaded {} translation strings (language {})", strings.size(), language);
+    }
+
+    std::string_view Translation::Language() {
+        return language;
     }
 
     const std::string& Translation::Get(std::string_view key) {

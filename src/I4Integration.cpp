@@ -1,9 +1,12 @@
 #include "I4Integration.h"
 #include "JunkData.h"
+#include "QuickLootIntegration.h"
 #include "settings.h"
 #include "util.h"
 
 #include <json/json.h>
+#include <map>
+#include <vector>
 
 namespace JunkIt {
 
@@ -66,6 +69,7 @@ namespace JunkIt {
         RE::GFxValue obj;
         a_view->GetVariable(&obj, a_pathToObj);
         if (!obj.IsObject()) {
+            SKSE::log::debug("I4 processList hook skipped, {} is not an object", a_pathToObj);
             return;
         }
 
@@ -78,63 +82,438 @@ namespace JunkIt {
         auto impl = RE::make_gptr<ProcessListFunc>(oldProcessList);
         a_view->CreateFunction(&newProcessList, impl.get());
         obj.SetMember("processList", newProcessList);
+        SKSE::log::debug("Hooked {}.processList existingFunc={}", a_pathToObj, oldProcessList.IsObject());
+    }
+
+    void I4Integration::InstallProcessEntry(RE::GFxMovieView* a_view) {
+        if (!a_view) {
+            return;
+        }
+
+        RE::GFxValue obj;
+        const char* path = "skse.plugins.InventoryInjector";
+        a_view->GetVariable(&obj, path);
+        if (!obj.IsObject()) {
+            path = "_global.skse.plugins.InventoryInjector";
+            a_view->GetVariable(&obj, path);
+        }
+        if (!obj.IsObject()) {
+            SKSE::log::trace("I4 ProcessEntry hook skipped, InventoryInjector is not an object");
+            return;
+        }
+
+        RE::GFxValue oldProcessEntry;
+        if (!obj.GetMember("ProcessEntry", &oldProcessEntry) || oldProcessEntry.IsUndefined()) {
+            SKSE::log::trace("I4 ProcessEntry hook skipped, ProcessEntry is missing");
+            return;
+        }
+
+        RE::GFxValue newProcessEntry;
+        auto impl = RE::make_gptr<ProcessEntryFunc>(oldProcessEntry);
+        a_view->CreateFunction(&newProcessEntry, impl.get());
+        obj.SetMember("ProcessEntry", newProcessEntry);
+        SKSE::log::debug(
+            "Hooked {}.ProcessEntry existingFunc={} type={}",
+            path,
+            oldProcessEntry.IsObject(),
+            static_cast<std::uint32_t>(oldProcessEntry.GetType()));
+    }
+
+    void I4Integration::SetJunkFlags(RE::GFxValue& obj, bool isJunk) {
+        if (!obj.IsObject()) {
+            return;
+        }
+        obj.SetMember("isJunk", isJunk);
+        obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
+        obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+    }
+
+    void I4Integration::ReprocessOpenList(RE::GFxMovieView* movie) {
+        if (!movie) {
+            SKSE::log::debug("ReprocessOpenList skipped, no movie");
+            return;
+        }
+
+        RE::GFxValue itemList;
+        movie->GetVariable(&itemList, "_root.Menu_mc.inventoryLists.itemList");
+        if (!itemList.IsObject()) {
+            SKSE::log::debug("ReprocessOpenList skipped, no itemList");
+            return;
+        }
+
+        RE::GFxValue setter;
+        movie->GetVariable(&setter, "_global.InventoryIconSetter.prototype");
+        if (!setter.IsObject()) {
+            SKSE::log::debug("ReprocessOpenList skipped, no InventoryIconSetter");
+            return;
+        }
+
+        SKSE::log::trace("ReprocessOpenList invoking InventoryIconSetter.processList");
+        setter.Invoke("processList", nullptr, &itemList, 1);
+        SKSE::log::trace("ReprocessOpenList original processList returned");
+    }
+
+    namespace {
+        RE::TESBoundObject* BoundFromGFxEntry(RE::GFxValue& entryObject) {
+            RE::GFxValue formIdVal;
+            if (!entryObject.GetMember("formId", &formIdVal) || !formIdVal.IsNumber()) {
+                return nullptr;
+            }
+            auto* form = RE::TESForm::LookupByID(static_cast<RE::FormID>(formIdVal.GetNumber()));
+            return form ? form->As<RE::TESBoundObject>() : nullptr;
+        }
+
+        void SetGFxString(RE::GFxMovie* movie, RE::GFxValue& value, const char* text) {
+            if (movie) {
+                movie->CreateString(&value, text);
+            } else {
+                value = text;
+            }
+        }
+
+        void ApplyJunkVisuals(RE::GFxMovie* movie, RE::GFxValue& obj, bool isJunk) {
+            if (!isJunk || !obj.IsObject()) {
+                return;
+            }
+
+            const auto& cfg = I4JunkConfig::GetSingleton();
+            if (Settings::GetUpdateItemIcon() && cfg.loaded) {
+                RE::GFxValue source;
+                RE::GFxValue label;
+                SetGFxString(movie, source, cfg.iconSource.c_str());
+                SetGFxString(movie, label, cfg.iconLabel.c_str());
+                obj.SetMember("iconSource", source);
+                obj.SetMember("iconLabel", label);
+                obj.SetMember("iconColor", static_cast<double>(cfg.iconColor));
+            }
+            if (Settings::GetUpdateSubTypeDisplay()) {
+                RE::GFxValue display;
+                SetGFxString(
+                    movie,
+                    display,
+                    cfg.subTypeDisplay.empty() ? "Junk" : cfg.subTypeDisplay.c_str());
+                obj.SetMember("subTypeDisplay", display);
+            }
+        }
+
+        template <class Handle>
+        RE::TESObjectREFR* ResolveOwner(Handle handle) {
+            RE::TESObjectREFRPtr refr;
+            LookupReferenceByHandle(handle, refr);
+            return refr.get();
+        }
+
+        struct LiveInventoryCache {
+            std::map<std::uint32_t, std::vector<RE::InventoryEntryData*>> entries;
+
+            void Include(RE::TESObjectREFR* owner) {
+                if (!owner) {
+                    SKSE::log::trace("Live cache include skipped, null owner");
+                    return;
+                }
+                const auto key = owner->GetHandle().native_handle();
+                if (entries.contains(key)) {
+                    return;
+                }
+
+                auto& list = entries[key];
+                auto* changes = owner->GetInventoryChanges(true);
+                if (!changes || !changes->entryList) {
+                    if (spdlog::should_log(spdlog::level::debug)) {
+                        SKSE::log::debug(
+                            "Live cache include {} [{}] has no inventory changes",
+                            owner->GetName(),
+                            FormUtil::Form::GetFormConfigString(owner));
+                    }
+                    return;
+                }
+                for (auto& entry : *changes->entryList) {
+                    if (entry && entry->object) {
+                        list.push_back(entry);
+                    }
+                }
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug(
+                        "Live cache include {} [{}] entries={}",
+                        owner->GetName(),
+                        FormUtil::Form::GetFormConfigString(owner),
+                        list.size());
+                }
+            }
+
+            bool HasJunk(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
+                if (!owner || !object) {
+                    return false;
+                }
+                Include(owner);
+                const auto key = owner->GetHandle().native_handle();
+                auto it = entries.find(key);
+                if (it == entries.end()) {
+                    return false;
+                }
+
+                auto& junkManager = JunkDataManager::GetSingleton();
+                for (auto* entry : it->second) {
+                    if (entry->object == object && junkManager.IsJunk(entry)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            bool LiveIsJunk(RE::TESObjectREFR* owner, RE::TESBoundObject* object) {
+                if (HasJunk(owner, object)) {
+                    if (spdlog::should_log(spdlog::level::trace) && owner && object) {
+                        SKSE::log::trace(
+                            "     Live junk match on owner {} [{}] for {} [{}]",
+                            owner->GetName(),
+                            FormUtil::Form::GetFormConfigString(owner),
+                            object->GetName(),
+                            FormUtil::Form::GetFormConfigString(object));
+                    }
+                    return true;
+                }
+
+                const auto ui = RE::UI::GetSingleton();
+                if (!ui || !ui->IsMenuOpen("BarterMenu")) {
+                    return false;
+                }
+
+                auto* barterTarget = UIUtil::Menu::GetBarterMenuTargetRef();
+                if (HasJunk(barterTarget, object)) {
+                    if (spdlog::should_log(spdlog::level::trace) && barterTarget && object) {
+                        SKSE::log::trace(
+                            "     Live junk match on vendor {} [{}] for {} [{}]",
+                            barterTarget->GetName(),
+                            FormUtil::Form::GetFormConfigString(barterTarget),
+                            object->GetName(),
+                            FormUtil::Form::GetFormConfigString(object));
+                    }
+                    return true;
+                }
+
+                auto* merchantContainer = UIUtil::Menu::GetMerchantContainer();
+                const bool merchantJunk = HasJunk(merchantContainer, object);
+                if (merchantJunk && spdlog::should_log(spdlog::level::trace) && merchantContainer && object) {
+                    SKSE::log::trace(
+                        "     Live junk match on merchant container {} [{}] for {} [{}]",
+                        merchantContainer->GetName(),
+                        FormUtil::Form::GetFormConfigString(merchantContainer),
+                        object->GetName(),
+                        FormUtil::Form::GetFormConfigString(object));
+                }
+                return merchantJunk;
+            }
+
+            bool LootIsJunk(RE::TESBoundObject* object) {
+                if (auto* container = QuickLootIntegration::GetLootContainer()) {
+                    if (HasJunk(container, object)) {
+                        return true;
+                    }
+                }
+
+                if (auto* pick = RE::CrosshairPickData::GetSingleton()) {
+                    auto target = pick->GetActiveTarget().get();
+                    if (HasJunk(target.get(), object)) {
+                        return true;
+                    }
+                }
+
+                return LiveIsJunk(RE::PlayerCharacter::GetSingleton(), object);
+            }
+        };
     }
 
     void I4Integration::ProcessListFunc::Call(Params& a_params) {
         SKSE::log::trace("Running I4Integration.processList hook");
 
-        auto& junkManager = JunkDataManager::GetSingleton();
         auto* itemList = UIUtil::ItemList::GetOpenList();
+        LiveInventoryCache liveInventories;
+        auto& junkManager = JunkDataManager::GetSingleton();
 
-        if (itemList && itemList->items.size() > 0) {
-            for (std::uint32_t i = 0, size = itemList->items.size(); i < size; i++) {
-                auto* item = itemList->items[i];
-                if (!item || !item->data.objDesc) {
-                    continue;
-                }
-
-                bool isJunk = junkManager.IsJunk(item->data.objDesc);
-                item->obj.SetMember("isJunk", isJunk);
-                item->obj.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
-                item->obj.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
+        const auto ui = RE::UI::GetSingleton();
+        const bool barterOpen = ui && ui->IsMenuOpen("BarterMenu");
+        SKSE::log::debug(
+            "processList itemList={} items={} args={} barter={} inventory={} container={}",
+            itemList != nullptr,
+            itemList ? itemList->items.size() : 0,
+            a_params.argCount,
+            barterOpen,
+            ui && ui->IsMenuOpen("InventoryMenu"),
+            ui && ui->IsMenuOpen("ContainerMenu"));
+        if (barterOpen && spdlog::should_log(spdlog::level::debug)) {
+            if (auto* target = UIUtil::Menu::GetBarterMenuTargetRef()) {
+                SKSE::log::debug(
+                    "     Vendor {} [{}]",
+                    target->GetName(),
+                    FormUtil::Form::GetFormConfigString(target));
+            } else {
+                SKSE::log::debug("     Vendor ref not resolved");
             }
-        } else {
-            if (a_params.argCount >= 1) {
-                auto& a_list = a_params.args[0];
-                RE::GFxValue entryList;
-                if (a_list.IsObject()) {
-                    a_list.GetMember("_entryList", &entryList);
-                }
-
-                if (entryList.IsArray()) {
-                    for (std::uint32_t i = 0, size = entryList.GetArraySize(); i < size; i++) {
-                        RE::GFxValue entryObject;
-                        entryList.GetElement(i, &entryObject);
-                        if (!entryObject.IsObject()) {
-                            continue;
-                        }
-
-                        RE::GFxValue existingIsJunk;
-                        entryObject.GetMember("isJunk", &existingIsJunk);
-                        if (!existingIsJunk.IsBool()) {
-                            continue;
-                        }
-
-                        const bool isJunk = existingIsJunk.GetBool();
-                        entryObject.SetMember("isJunk", isJunk);
-                        entryObject.SetMember("isJunkIcon", isJunk && Settings::GetUpdateItemIcon());
-                        entryObject.SetMember("isJunkSubType", isJunk && Settings::GetUpdateSubTypeDisplay());
-                    }
-                }
+            if (auto* rawTarget = UIUtil::Menu::GetContainer<RE::BarterMenu>()) {
+                SKSE::log::debug(
+                    "     Barter menu target {} [{}] actor={}",
+                    rawTarget->GetName(),
+                    FormUtil::Form::GetFormConfigString(rawTarget),
+                    rawTarget->As<RE::Actor>() != nullptr);
+            } else {
+                SKSE::log::debug("     Barter menu target handle not resolved");
             }
         }
 
+        std::uint32_t descCount = 0;
+        std::uint32_t descJunk = 0;
+        std::uint32_t liveCount = 0;
+        std::uint32_t liveJunk = 0;
+
+        if (itemList && itemList->items.size() > 0) {
+            const auto size = itemList->items.size();
+            SKSE::log::debug("Processing itemList, {} items", size);
+            for (std::uint32_t i = 0; i < size; i++) {
+                auto* item = itemList->items[i];
+                if (!item || !item->obj.IsObject()) {
+                    SKSE::log::trace("     [{}] skipped, item={} gfxObject={}", i, item != nullptr, item && item->obj.IsObject());
+                    continue;
+                }
+
+                if (auto* objDesc = item->data.objDesc) {
+                    const bool isJunk = junkManager.IsJunk(objDesc);
+                    descCount++;
+                    if (isJunk) {
+                        descJunk++;
+                    }
+                    if (spdlog::should_log(spdlog::level::trace) && objDesc->object) {
+                        SKSE::log::trace(
+                            "     [{}] {} [{}] objDesc junk={}",
+                            i,
+                            objDesc->object->GetName(),
+                            FormUtil::Form::GetFormConfigString(objDesc->object),
+                            isJunk);
+                    }
+                    SetJunkFlags(item->obj, isJunk);
+                } else {
+                    auto* bound = BoundFromGFxEntry(item->obj);
+                    const bool isJunk = liveInventories.LiveIsJunk(ResolveOwner(item->data.owner), bound);
+                    liveCount++;
+                    if (isJunk) {
+                        liveJunk++;
+                    }
+                    if (spdlog::should_log(spdlog::level::trace)) {
+                        SKSE::log::trace(
+                            "     [{}] {} [{}] live junk={}",
+                            i,
+                            bound ? bound->GetName() : "",
+                            bound ? FormUtil::Form::GetFormConfigString(bound) : "",
+                            isJunk);
+                    }
+                    SetJunkFlags(item->obj, isJunk);
+                }
+            }
+            SKSE::log::debug(
+                "itemList junk flags objDesc={}/{} live={}/{}",
+                descJunk,
+                descCount,
+                liveJunk,
+                liveCount);
+        } else if (a_params.argCount >= 1) {
+            auto& a_list = a_params.args[0];
+            RE::GFxValue entryList;
+            if (a_list.IsObject()) {
+                a_list.GetMember("_entryList", &entryList);
+            }
+
+            if (entryList.IsArray()) {
+                const auto size = entryList.GetArraySize();
+                SKSE::log::debug("Processing GFx _entryList, {} entries", size);
+                for (std::uint32_t i = 0; i < size; i++) {
+                    RE::GFxValue entryObject;
+                    entryList.GetElement(i, &entryObject);
+                    if (!entryObject.IsObject()) {
+                        SKSE::log::trace("     [{}] skipped, entry is not an object", i);
+                        continue;
+                    }
+
+                    auto* bound = BoundFromGFxEntry(entryObject);
+                    const bool isJunk = liveInventories.LiveIsJunk(RE::PlayerCharacter::GetSingleton(), bound);
+                    liveCount++;
+                    if (isJunk) {
+                        liveJunk++;
+                    }
+                    if (spdlog::should_log(spdlog::level::trace)) {
+                        SKSE::log::trace(
+                            "     [{}] {} [{}] live junk={}",
+                            i,
+                            bound ? bound->GetName() : "",
+                            bound ? FormUtil::Form::GetFormConfigString(bound) : "",
+                            isJunk);
+                    }
+                    SetJunkFlags(entryObject, isJunk);
+                }
+                SKSE::log::debug("entryList junk flags live={}/{}", liveJunk, liveCount);
+            } else {
+                SKSE::log::debug("processList fallback has no _entryList array");
+            }
+        } else {
+            SKSE::log::debug("No itemList or _entryList to process");
+        }
+
         if (_oldFunc.IsObject()) {
+            SKSE::log::trace("Invoking original processList");
             _oldFunc.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
                 static_cast<std::uint32_t>(a_params.argCount) + 1);
+            SKSE::log::trace("Original processList returned");
+        } else {
+            SKSE::log::debug("No original processList function to invoke");
+        }
+    }
+
+    void I4Integration::ProcessEntryFunc::Call(Params& a_params) {
+        bool isJunk = false;
+        if (a_params.argCount >= 1) {
+            auto& entryObject = a_params.args[0];
+            if (entryObject.IsObject()) {
+                LiveInventoryCache liveInventories;
+                auto* bound = BoundFromGFxEntry(entryObject);
+                isJunk = liveInventories.LootIsJunk(bound);
+                SetJunkFlags(entryObject, isJunk);
+                if (spdlog::should_log(spdlog::level::debug)) {
+                    SKSE::log::debug(
+                        "ProcessEntry {} [{}] junk={} oldFunc={} type={}",
+                        bound ? bound->GetName() : "",
+                        bound ? FormUtil::Form::GetFormConfigString(bound) : "",
+                        isJunk,
+                        _oldFunc.IsObject(),
+                        static_cast<std::uint32_t>(_oldFunc.GetType()));
+                }
+            } else {
+                SKSE::log::debug(
+                    "ProcessEntry arg0 is not an object type={} args={}",
+                    static_cast<std::uint32_t>(entryObject.GetType()),
+                    a_params.argCount);
+            }
+        } else {
+            SKSE::log::debug("ProcessEntry skipped, args={}", a_params.argCount);
+        }
+
+        if (_oldFunc.IsObject()) {
+            if (!_oldFunc.Invoke(
+                    "call",
+                    a_params.retVal,
+                    a_params.argsWithThisRef,
+                    static_cast<std::uint32_t>(a_params.argCount) + 1)) {
+                SKSE::log::debug("Original ProcessEntry Invoke(call) failed");
+            }
+        } else {
+            SKSE::log::debug(
+                "No original ProcessEntry function to invoke type={}",
+                static_cast<std::uint32_t>(_oldFunc.GetType()));
+        }
+
+        if (a_params.argCount >= 1) {
+            ApplyJunkVisuals(a_params.movie, a_params.args[0], isJunk);
         }
     }
 }
