@@ -10,12 +10,26 @@
 #include <SKSE/API.h>
 #include <fmt/format.h>
 #include <algorithm>
+#include <string_view>
 #include <vector>
 
 namespace JunkIt {
     namespace {
         constexpr float kMarkHoldProgressMin = 0.01f;
         constexpr float kMarkHoldProgressMax = 0.99f;
+
+        const char* TranslatedPrompt(std::string_view key) {
+            return Translation::Get(key).c_str();
+        }
+
+        bool BindPromptText(SkyPromptAPI::Prompt& prompt, std::string& storage, std::string_view text) {
+            if (prompt.text == text) {
+                return false;
+            }
+            storage.assign(text.data(), text.size());
+            prompt.text = storage;
+            return true;
+        }
 
         std::int32_t ClampNonNegative(std::int32_t value) {
             return value < 0 ? 0 : value;
@@ -552,7 +566,7 @@ namespace JunkIt {
             return nullptr;
         }
 
-        return SelectedItemIsJunk() ? "$JunkIt_Prompt_Unmark" : "$JunkIt_Prompt_Mark";
+        return Translation::Get(SelectedItemIsJunk() ? "$JunkIt_Prompt_Unmark" : "$JunkIt_Prompt_Mark").c_str();
     }
 
     SkyPromptIntegration::SelectedPromptIdentity SkyPromptIntegration::ReadSelectedPromptIdentity() const {
@@ -674,7 +688,7 @@ namespace JunkIt {
         bool visualActive = false;
 
         if (heldDuration >= kMarkHoldTrashDelay) {
-            wantedText = "$JunkIt_Prompt_TrashItem";
+            wantedText = TranslatedPrompt("$JunkIt_Prompt_TrashItem");
             visualActive = true;
             const float span = static_cast<float>(Settings::GetTrashHoldSeconds()) - kMarkHoldTrashDelay;
             const float t = span <= 0.f ? kMarkHoldProgressMax : (heldDuration - kMarkHoldTrashDelay) / span;
@@ -686,11 +700,11 @@ namespace JunkIt {
         }
 
         markHoldVisualActive_ = visualActive;
-        if (markPrompt->text == wantedText && markPrompt->progress == wantedProgress) {
+        const bool textChanged = BindPromptText(*markPrompt, markLabel_, wantedText);
+        if (!textChanged && markPrompt->progress == wantedProgress) {
             return;
         }
 
-        markPrompt->text = wantedText;
         markPrompt->progress = wantedProgress;
         Send();
     }
@@ -705,8 +719,7 @@ namespace JunkIt {
 
         const char* wantedText = MarkPromptText();
         bool changed = false;
-        if (wantedText && markPrompt->text != wantedText) {
-            markPrompt->text = wantedText;
+        if (wantedText && BindPromptText(*markPrompt, markLabel_, wantedText)) {
             changed = true;
         }
         if (markPrompt->progress != 0.f) {
@@ -779,7 +792,7 @@ namespace JunkIt {
 
         if (menu == MenuKind::kInventory) {
             if (canTrash && heldDuration >= kMarkHoldTrashDelay) {
-                wantedText = "$JunkIt_Prompt_TrashingJunk";
+                wantedText = TranslatedPrompt("$JunkIt_Prompt_TrashingJunk");
                 visualActive = true;
                 const float span = trashHold - kMarkHoldTrashDelay;
                 const float t = span <= 0.f ? kMarkHoldProgressMax : (heldDuration - kMarkHoldTrashDelay) / span;
@@ -787,16 +800,16 @@ namespace JunkIt {
             }
         } else if (menu == MenuKind::kContainer || menu == MenuKind::kBarter) {
             const char* opText = menu == MenuKind::kBarter
-                ? "$JunkIt_Prompt_SellingJunk"
+                ? TranslatedPrompt("$JunkIt_Prompt_SellingJunk")
                 : (ContainerMenuIsPlayerSegment()
-                    ? "$JunkIt_Prompt_StoringJunk"
-                    : "$JunkIt_Prompt_RetrievingJunk");
+                    ? TranslatedPrompt("$JunkIt_Prompt_StoringJunk")
+                    : TranslatedPrompt("$JunkIt_Prompt_RetrievingJunk"));
             if (heldDuration < transferHold) {
                 wantedText = opText;
                 visualActive = true;
                 wantedProgress = std::clamp(heldDuration / transferHold, kMarkHoldProgressMin, kMarkHoldProgressMax);
             } else if (canTrash) {
-                wantedText = "$JunkIt_Prompt_TrashingJunk";
+                wantedText = TranslatedPrompt("$JunkIt_Prompt_TrashingJunk");
                 visualActive = true;
                 const float span = trashHold - transferHold;
                 const float t = span <= 0.f ? kMarkHoldProgressMax : (heldDuration - transferHold) / span;
@@ -809,15 +822,15 @@ namespace JunkIt {
         }
 
         if (!wantedText) {
-            wantedText = "$JunkIt_Prompt_Mark";
+            wantedText = TranslatedPrompt("$JunkIt_Prompt_Mark");
         }
 
         gamepadHoldVisualActive_ = visualActive;
-        if (gamepadPrompt->text == wantedText && gamepadPrompt->progress == wantedProgress) {
+        const bool textChanged = BindPromptText(*gamepadPrompt, gamepadLabel_, wantedText);
+        if (!textChanged && gamepadPrompt->progress == wantedProgress) {
             return;
         }
 
-        gamepadPrompt->text = wantedText;
         gamepadPrompt->progress = wantedProgress;
         Send();
     }
@@ -832,12 +845,11 @@ namespace JunkIt {
 
         const char* wantedText = MarkPromptText();
         if (!wantedText) {
-            wantedText = "$JunkIt_Prompt_Mark";
+            wantedText = TranslatedPrompt("$JunkIt_Prompt_Mark");
         }
 
         bool changed = false;
-        if (gamepadPrompt->text != wantedText) {
-            gamepadPrompt->text = wantedText;
+        if (BindPromptText(*gamepadPrompt, gamepadLabel_, wantedText)) {
             changed = true;
         }
         if (gamepadPrompt->progress != 0.f) {
@@ -973,8 +985,7 @@ namespace JunkIt {
                 if (markHoldVisualActive_) {
                     continue;
                 }
-                if (prompt.text != wantedMark) {
-                    prompt.text = wantedMark;
+                if (wantedMark && BindPromptText(prompt, markLabel_, wantedMark)) {
                     changed = true;
                 }
                 if (prompt.progress != 0.f) {
@@ -995,10 +1006,9 @@ namespace JunkIt {
                 }
                 const char* wantedGamepadText = MarkPromptText();
                 if (!wantedGamepadText) {
-                    wantedGamepadText = "$JunkIt_Prompt_Mark";
+                    wantedGamepadText = TranslatedPrompt("$JunkIt_Prompt_Mark");
                 }
-                if (prompt.text != wantedGamepadText) {
-                    prompt.text = wantedGamepadText;
+                if (BindPromptText(prompt, gamepadLabel_, wantedGamepadText)) {
                     changed = true;
                 }
                 if (prompt.progress != 0.f) {
@@ -1052,11 +1062,12 @@ namespace JunkIt {
 
         if (!gamepadInput && !markKeys_.empty()) {
             if (const char* markText = MarkPromptText()) {
+                markLabel_ = markText;
                 const auto markType = MarkHoldTrashEnabled()
                     ? SkyPromptAPI::PromptType::kHint
                     : SkyPromptAPI::PromptType::kSinglePress;
                 prompts_.emplace_back(
-                    markText,
+                    markLabel_,
                     static_cast<SkyPromptAPI::EventID>(PromptEventID::kMark),
                     static_cast<SkyPromptAPI::ActionID>(PromptActionID::kMark),
                     markType,
@@ -1066,8 +1077,9 @@ namespace JunkIt {
         }
 
         if (!gamepadInput && ShouldShowTrashPrompt(menu) && !trashKeys_.empty()) {
+            trashLabel_ = Translation::Get("$JunkIt_Prompt_Trash");
             prompts_.emplace_back(
-                "$JunkIt_Prompt_Trash",
+                trashLabel_,
                 static_cast<SkyPromptAPI::EventID>(PromptEventID::kTrash),
                 static_cast<SkyPromptAPI::ActionID>(PromptActionID::kTrash),
                 KeyboardTrashPromptType(),
@@ -1104,10 +1116,11 @@ namespace JunkIt {
         if (gamepadInput && !gamepadKeys_.empty()) {
             const char* gamepadText = MarkPromptText();
             if (!gamepadText) {
-                gamepadText = "$JunkIt_Prompt_Mark";
+                gamepadText = TranslatedPrompt("$JunkIt_Prompt_Mark");
             }
+            gamepadLabel_ = gamepadText;
             prompts_.emplace_back(
-                gamepadText,
+                gamepadLabel_,
                 static_cast<SkyPromptAPI::EventID>(PromptEventID::kGamepad),
                 static_cast<SkyPromptAPI::ActionID>(PromptActionID::kGamepad),
                 SkyPromptAPI::PromptType::kHint,

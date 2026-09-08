@@ -32,6 +32,20 @@ namespace JunkIt {
                 kError = 4
             };
 
+            enum class LanguageOverride {
+                kMatchGame = 0,
+                kChinese = 1,
+                kCzech = 2,
+                kEnglish = 3,
+                kFrench = 4,
+                kGerman = 5,
+                kItalian = 6,
+                kJapanese = 7,
+                kPolish = 8,
+                kRussian = 9,
+                kSpanish = 10
+            };
+
             // Update after placing the trash container in JunkIt.esp (placed REFR local FormID, not the CONT base).
             static constexpr RE::FormID kTrashContainerFormID = 0x829;
             static constexpr std::string_view kTrashContainerPlugin = "JunkIt.esp";
@@ -63,6 +77,8 @@ namespace JunkIt {
             [[nodiscard]] static bool IsTrashAvailable();
 
             [[nodiscard]] static LogLevel GetLogLevel();
+            [[nodiscard]] static LanguageOverride GetLanguageOverride();
+            [[nodiscard]] static std::string_view EffectiveLanguage(std::string_view gameLanguage);
             [[nodiscard]] static bool GetNotifyOnMarkUnmark();
             [[nodiscard]] static bool GetNotifyOnJunkTransfer();
             [[nodiscard]] static bool GetNotifyOnJunkSell();
@@ -124,6 +140,7 @@ namespace JunkIt {
             static bool& ProtectEnchantedValue();
 
             static std::int32_t& LogLevelValue();
+            static std::int32_t& LanguageOverrideValue();
             static bool& NotifyOnMarkUnmarkValue();
             static bool& NotifyOnJunkTransferValue();
             static bool& NotifyOnJunkSellValue();
@@ -156,5 +173,6 @@ namespace JunkIt {
             static void ClampValues();
             static const char* SortPriorityLabel(SortPriority priority);
             static const char* LogLevelLabel(LogLevel level);
+            static const char* LanguageOverrideLabel(LanguageOverride language);
     };
 }

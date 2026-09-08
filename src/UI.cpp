@@ -8,6 +8,7 @@
 #include "junk.h"
 #include "settings.h"
 #include "util.h"
+#include "OperationOverlay.h"
 
 #define ImGui SKSEMenuImGui
 #include "SKSEMenuFramework.h"
@@ -67,6 +68,8 @@ namespace JunkIt {
         constexpr unsigned kIconSync = 0xf2f1;
         constexpr unsigned kIconRemove = 0xf00d;
         constexpr unsigned kIconSwitch = 0xf362;
+
+        void ApplyLanguageChange();
 
         const char* KeyName(std::uint32_t keyCode) {
             if (keyCode == 0) {
@@ -640,6 +643,29 @@ namespace JunkIt {
             items[3] = Translation::Get("$JunkIt_LogLevel_Debug_ENUM").c_str();
             items[4] = Translation::Get("$JunkIt_LogLevel_Trace_ENUM").c_str();
             return items;
+        }
+
+        const char* const* LanguageOverrideItems() {
+            static const char* items[] = {
+                "Match Game Setting",
+                "Chinese",
+                "Czech",
+                "English",
+                "French",
+                "German",
+                "Italian",
+                "Japanese",
+                "Polish",
+                "Russian",
+                "Spanish"
+            };
+            return items;
+        }
+
+        void ApplyLanguageChange() {
+            Translation::Load();
+            OperationOverlay::ReloadFonts();
+            SkyPromptIntegration::GetSingleton().RefreshPrompts();
         }
 
         void RenderGeneral() {
@@ -1378,6 +1404,24 @@ namespace JunkIt {
             PushBrandColors();
             RenderPageHeader("$JunkIt_Page_Advanced");
 
+            if (BeginSettingsTable("advancedLanguage")) {
+                std::int32_t language = Settings::LanguageOverrideValue();
+                const bool changed = ComboRow(
+                    "$JunkIt_LanguageOverride",
+                    "$JunkIt_LanguageOverride_Help",
+                    language,
+                    LanguageOverrideItems(),
+                    11);
+                if (changed) {
+                    Settings::LanguageOverrideValue() = language;
+                }
+                SaveIfChanged(changed);
+                if (changed) {
+                    ApplyLanguageChange();
+                }
+                ImGui::EndTable();
+            }
+
             ImGui::SeparatorText(Translation::Get("$JunkIt_LoggingHeader").c_str());
             if (BeginSettingsTable("advancedLog")) {
                 std::int32_t comboIndex = 4 - Settings::LogLevelValue();
@@ -1457,7 +1501,7 @@ namespace JunkIt {
             ImGui::Spacing();
             if (IconButton(kIconSync, "$JunkIt_ReloadSettings")) {
                 Settings::LoadFromIni();
-                SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                ApplyLanguageChange();
                 SetStatus("$JunkIt_SettingsReloaded", true);
             }
             HelpMarker("$JunkIt_ReloadSettings_Help");
@@ -1474,7 +1518,7 @@ namespace JunkIt {
                 } else {
                     SetStatus("$JunkIt_SettingsSaveFailed", false);
                 }
-                SkyPromptIntegration::GetSingleton().RefreshPrompts();
+                ApplyLanguageChange();
             }
 
             RenderStatus();

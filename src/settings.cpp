@@ -39,6 +39,7 @@ namespace JunkIt {
             bool notifyOnJunkSell = true;
             std::int32_t overlayOpacity = 50;
             std::int32_t logLevel = 2;
+            std::int32_t languageOverride = 0;
             float heavyLoadDelayMultiplier = 1.0f;
             std::int32_t largeUniqueTypes = 500;
             std::int32_t largeTotalItems = 1000;
@@ -245,6 +246,7 @@ namespace JunkIt {
             complete &= ReadBool(ini, "Misc", "MiscSettings", "bNotifyOnJunkSell", g_values.notifyOnJunkSell);
             complete &= ReadInt(ini, "Overlay", {}, "iOverlayOpacity", g_values.overlayOpacity);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLogLevel", g_values.logLevel);
+            complete &= ReadInt(ini, "Misc", "MiscSettings", "iLanguageOverride", g_values.languageOverride);
             complete &= ReadFloat(ini, "Misc", "MiscSettings", "fHeavyLoadDelayMultiplier", g_values.heavyLoadDelayMultiplier);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeUniqueTypes", g_values.largeUniqueTypes);
             complete &= ReadInt(ini, "Misc", "MiscSettings", "iLargeTotalItems", g_values.largeTotalItems);
@@ -326,8 +328,9 @@ namespace JunkIt {
                 g_values.gamepadTrashHoldSeconds,
                 g_values.trashExpireDays);
             SKSE::log::info(
-                "Misc Settings | LogLevel: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
+                "Misc Settings | LogLevel: {} | LanguageOverride: {} | AggressiveRefresh: {} | AutoExport: {} | AutoImport: {} | HeavyLoadDelayMultiplier: {:.2f} | LargeUniqueTypes: {} | LargeTotalItems: {} | SellChunkSize: {}",
                 Settings::LogLevelLabel(static_cast<Settings::LogLevel>(g_values.logLevel)),
+                Settings::LanguageOverrideLabel(static_cast<Settings::LanguageOverride>(g_values.languageOverride)),
                 g_values.aggressiveRefresh,
                 g_values.autoExport,
                 g_values.autoImport,
@@ -397,6 +400,7 @@ namespace JunkIt {
         g_values.aggressiveRefreshMaxInterval = std::clamp(g_values.aggressiveRefreshMaxInterval, 1, 60);
         g_values.skyPromptButtonPlacement = std::clamp(g_values.skyPromptButtonPlacement, 0, 1);
         g_values.logLevel = std::clamp(g_values.logLevel, 0, 4);
+        g_values.languageOverride = std::clamp(g_values.languageOverride, 0, 10);
         g_values.overlayOpacity = std::clamp(g_values.overlayOpacity, 0, 100);
     }
 
@@ -501,6 +505,7 @@ namespace JunkIt {
             out << "bNotifyOnJunkTransfer=" << (g_values.notifyOnJunkTransfer ? 1 : 0) << "\n";
             out << "bNotifyOnJunkSell=" << (g_values.notifyOnJunkSell ? 1 : 0) << "\n";
             out << "iLogLevel=" << g_values.logLevel << "\n";
+            out << "iLanguageOverride=" << g_values.languageOverride << "\n";
             out << "fHeavyLoadDelayMultiplier=" << g_values.heavyLoadDelayMultiplier << "\n";
             out << "iLargeUniqueTypes=" << g_values.largeUniqueTypes << "\n";
             out << "iLargeTotalItems=" << g_values.largeTotalItems << "\n";
@@ -630,6 +635,25 @@ namespace JunkIt {
     Settings::LogLevel Settings::GetLogLevel() {
         return static_cast<LogLevel>(g_values.logLevel);
     }
+    Settings::LanguageOverride Settings::GetLanguageOverride() {
+        return static_cast<LanguageOverride>(g_values.languageOverride);
+    }
+    std::string_view Settings::EffectiveLanguage(std::string_view gameLanguage) {
+        switch (static_cast<LanguageOverride>(g_values.languageOverride)) {
+            case LanguageOverride::kChinese: return "CHINESE";
+            case LanguageOverride::kCzech: return "CZECH";
+            case LanguageOverride::kEnglish: return "ENGLISH";
+            case LanguageOverride::kFrench: return "FRENCH";
+            case LanguageOverride::kGerman: return "GERMAN";
+            case LanguageOverride::kItalian: return "ITALIAN";
+            case LanguageOverride::kJapanese: return "JAPANESE";
+            case LanguageOverride::kPolish: return "POLISH";
+            case LanguageOverride::kRussian: return "RUSSIAN";
+            case LanguageOverride::kSpanish: return "SPANISH";
+            case LanguageOverride::kMatchGame: break;
+        }
+        return gameLanguage;
+    }
     bool Settings::GetAggressiveRefresh() { return g_values.aggressiveRefresh; }
     std::int32_t Settings::GetAggressiveRefreshMaxInterval() { return g_values.aggressiveRefreshMaxInterval; }
     float Settings::GetHeavyLoadDelayMultiplier() { return g_values.heavyLoadDelayMultiplier; }
@@ -758,6 +782,7 @@ namespace JunkIt {
     bool& Settings::NotifyOnJunkSellValue() { return g_values.notifyOnJunkSell; }
     std::int32_t& Settings::OverlayOpacityValue() { return g_values.overlayOpacity; }
     std::int32_t& Settings::LogLevelValue() { return g_values.logLevel; }
+    std::int32_t& Settings::LanguageOverrideValue() { return g_values.languageOverride; }
     float& Settings::HeavyLoadDelayMultiplierValue() { return g_values.heavyLoadDelayMultiplier; }
     std::int32_t& Settings::LargeUniqueTypesValue() { return g_values.largeUniqueTypes; }
     std::int32_t& Settings::LargeTotalItemsValue() { return g_values.largeTotalItems; }
@@ -803,6 +828,23 @@ namespace JunkIt {
             case LogLevel::kError: return "Error";
         }
         return "Info";
+    }
+
+    const char* Settings::LanguageOverrideLabel(LanguageOverride language) {
+        switch (language) {
+            case LanguageOverride::kMatchGame: return "Match Game Setting";
+            case LanguageOverride::kChinese: return "Chinese";
+            case LanguageOverride::kCzech: return "Czech";
+            case LanguageOverride::kEnglish: return "English";
+            case LanguageOverride::kFrench: return "French";
+            case LanguageOverride::kGerman: return "German";
+            case LanguageOverride::kItalian: return "Italian";
+            case LanguageOverride::kJapanese: return "Japanese";
+            case LanguageOverride::kPolish: return "Polish";
+            case LanguageOverride::kRussian: return "Russian";
+            case LanguageOverride::kSpanish: return "Spanish";
+        }
+        return "Match Game Setting";
     }
 
     void Settings::ApplyLogLevel() {

@@ -13,6 +13,7 @@ namespace JunkIt {
         };
 
         static void Install();
+        static void ReloadFonts();
         static void Show(Action action);
         static void Hide();
         static void NotifyWorkComplete(std::function<void()> onHidden = {});

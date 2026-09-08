@@ -160,8 +160,11 @@ namespace JunkIt {
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> trashKeys_;
         std::vector<std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID>> gamepadKeys_;
         std::vector<SkyPromptAPI::Prompt> prompts_;
+        std::string markLabel_;
         std::string transferLabel_;
         std::string sellLabel_;
+        std::string trashLabel_;
+        std::string gamepadLabel_;
         bool markHoldVisualActive_{ false };
         bool trashHoldVisualActive_{ false };
         bool gamepadHoldVisualActive_{ false };
