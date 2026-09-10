@@ -323,6 +323,7 @@ namespace JunkIt {
             return RE::BSEventNotifyControl::kContinue;
         }
 
+        lastSyncedSelection_ = {};
         if (a_event->opening) {
             if (name == "ContainerMenu") {
                 previewMenu_ = MenuKind::kContainer;
@@ -538,22 +539,12 @@ namespace JunkIt {
     }
 
     bool SkyPromptIntegration::HasSelectedItem() {
-        auto* itemList = UIUtil::ItemList::GetOpenList();
-        if (!itemList) {
-            return false;
-        }
-
-        auto* selectedItem = itemList->GetSelectedItem();
+        auto* selectedItem = UIUtil::ItemList::GetSelectedItem();
         return selectedItem && selectedItem->data.objDesc;
     }
 
     bool SkyPromptIntegration::SelectedItemIsJunk() {
-        auto* itemList = UIUtil::ItemList::GetOpenList();
-        if (!itemList) {
-            return false;
-        }
-
-        auto* selectedItem = itemList->GetSelectedItem();
+        auto* selectedItem = UIUtil::ItemList::GetSelectedItem();
         if (!selectedItem || !selectedItem->data.objDesc) {
             return false;
         }
@@ -571,8 +562,7 @@ namespace JunkIt {
 
     SkyPromptIntegration::SelectedPromptIdentity SkyPromptIntegration::ReadSelectedPromptIdentity() const {
         SelectedPromptIdentity identity;
-        auto* itemList = UIUtil::ItemList::GetOpenList();
-        auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+        auto* selected = UIUtil::ItemList::GetSelectedItem();
         if (!selected || !selected->data.objDesc || !selected->data.objDesc->object) {
             return identity;
         }
@@ -593,7 +583,10 @@ namespace JunkIt {
         if (!Settings::IsTrashAvailable() || Settings::GetTrashHoldSeconds() <= 0) {
             return false;
         }
-        return GetActiveMenu() != MenuKind::kBarter || SelectedRowIsPlayerSide();
+        if (GetActiveMenu() != MenuKind::kBarter) {
+            return true;
+        }
+        return lastSyncedSelection_.hasSelection && lastSyncedSelection_.playerSide;
     }
 
     bool SkyPromptIntegration::KeyboardTrashHoldEnabled() const {
@@ -1390,8 +1383,7 @@ namespace JunkIt {
     }
 
     bool SkyPromptIntegration::SelectedRowIsPlayerSide() const {
-        auto* itemList = UIUtil::ItemList::GetOpenList();
-        auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+        auto* selected = UIUtil::ItemList::GetSelectedItem();
         if (!selected) {
             return previewMenu_ != MenuKind::kContainer;
         }
@@ -1430,8 +1422,7 @@ namespace JunkIt {
             return;
         }
 
-        auto* itemList = UIUtil::ItemList::GetOpenList();
-        auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+        auto* selected = UIUtil::ItemList::GetSelectedItem();
         if (!selected || !selected->data.objDesc || !selected->data.objDesc->object) {
             selectedProtection_ = {};
             return;

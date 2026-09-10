@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstring>
+
 #define PI 3.1415926535897932f
 #define TWOTHIRDS_PI 2.0943951023931955f
 #define TWO_PI 6.2831853071795865f
@@ -534,37 +536,59 @@ namespace NifUtil
 
 namespace UIUtil { // Sourced from JunkIt
     struct ItemList {
-        /**
-         * @brief Get the Item List Menu object from ContainerMenu, BarterMenu, or InventoryMenu
-         * 
-         * @return RE::ItemList* 
-         */
+        static bool ListRootReady(const RE::ItemList* itemList) {
+            if (!itemList || !itemList->view) {
+                return false;
+            }
+
+            const auto& root = itemList->root;
+            if (!root.IsObject()) {
+                return false;
+            }
+
+            // GFxValue::GetMember dereferences ObjectInterface with no null check.
+            void* objectInterface = nullptr;
+            std::memcpy(&objectInterface, &root, sizeof(objectInterface));
+            return objectInterface != nullptr;
+        }
+
+        template <class T>
+        static RE::ItemList* ListFromOpenMenu() {
+            const auto ui = RE::UI::GetSingleton();
+            if (!ui || !ui->IsMenuOpen(T::MENU_NAME)) {
+                return nullptr;
+            }
+
+            auto menu = ui->GetMenu<T>();
+            if (!menu || !menu->uiMovie) {
+                return nullptr;
+            }
+
+            return menu->GetRuntimeData().itemList;
+        }
+
         static RE::ItemList* GetOpenList() {
-            const auto UI = RE::UI::GetSingleton();
-            RE::ItemList* itemListMenu = nullptr;
+            if (auto* itemList = ListFromOpenMenu<ContainerMenu>()) {
+                return itemList;
+            }
+            if (auto* itemList = ListFromOpenMenu<BarterMenu>()) {
+                return itemList;
+            }
+            if (auto* itemList = ListFromOpenMenu<InventoryMenu>()) {
+                return itemList;
+            }
+            return nullptr;
+        }
 
-            if (!UI) {
-                // UI is not available
+        static RE::ItemList::Item* GetSelectedItem(RE::ItemList* itemList) {
+            if (!ListRootReady(itemList)) {
                 return nullptr;
             }
+            return itemList->GetSelectedItem();
+        }
 
-            if (UI->IsMenuOpen("ContainerMenu")) {
-                itemListMenu = UI->GetMenu<ContainerMenu>()->GetRuntimeData().itemList;
-            } else if (UI && UI->IsMenuOpen("BarterMenu")) { 
-                itemListMenu = UI->GetMenu<BarterMenu>()->GetRuntimeData().itemList;
-            } else if (UI && UI->IsMenuOpen("InventoryMenu")) { 
-                itemListMenu = UI->GetMenu<InventoryMenu>()->GetRuntimeData().itemList;
-            } else	{
-                // None of the menus are open
-                return nullptr;
-            }
-
-            if (!itemListMenu) {
-                // Couldn't find an item list menu
-                return nullptr;
-            }
-
-            return itemListMenu;
+        static RE::ItemList::Item* GetSelectedItem() {
+            return GetSelectedItem(GetOpenList());
         }
 
         /**
