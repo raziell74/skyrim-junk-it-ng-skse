@@ -400,7 +400,13 @@ namespace JunkIt {
                 }
 
                 if (auto* objDesc = item->data.objDesc) {
-                    const bool isJunk = junkManager.IsJunk(objDesc);
+                    bool faulted = false;
+                    const bool isJunk = junkManager.IsJunkForMenuRow(objDesc, faulted);
+                    if (faulted) {
+                        SKSE::log::warn("processList row {} skipped, extra data fault", i);
+                        SetJunkFlags(item->obj, false);
+                        continue;
+                    }
                     descCount++;
                     if (isJunk) {
                         descJunk++;

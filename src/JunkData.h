@@ -39,6 +39,7 @@ namespace JunkIt {
         std::optional<std::string> AddJunkIdentity(const std::string& identity, bool autoJunked);
         std::optional<std::string> RemoveJunkItem(RE::InventoryEntryData* entry);
         bool IsJunk(RE::InventoryEntryData* entry) const;
+        bool IsJunkForMenuRow(RE::InventoryEntryData* entry, bool& faulted) const;
         bool IsAnyJunkForForm(RE::TESForm* form) const;
         bool IsJunk(RE::TESBoundObject* object, const RE::ExtraDataList* extraList, std::string_view displayName) const;
         bool IsJunk(const std::string& identity) const;
