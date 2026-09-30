@@ -1,7 +1,9 @@
 #include "Translation.h"
 
+#include "settings.h"
 #include "util.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <windows.h>
@@ -92,6 +94,7 @@ namespace JunkIt {
         }
 
         const char* LanguageFileName(std::string_view language) {
+            if (language == "CHINESE") return "junkit_chinese.txt";
             if (language == "CZECH") return "junkit_czech.txt";
             if (language == "FRENCH") return "junkit_french.txt";
             if (language == "GERMAN") return "junkit_german.txt";
@@ -102,6 +105,18 @@ namespace JunkIt {
             if (language == "SPANISH") return "junkit_spanish.txt";
             return "junkit_english.txt";
         }
+
+        bool CodepointNeedsCjkFont(std::uint32_t cp) {
+            return (cp >= 0x1100 && cp <= 0x11FF) ||
+                (cp >= 0x3000 && cp <= 0x30FF) ||
+                (cp >= 0x3130 && cp <= 0x318F) ||
+                (cp >= 0x31F0 && cp <= 0x31FF) ||
+                (cp >= 0x3400 && cp <= 0x4DBF) ||
+                (cp >= 0x4E00 && cp <= 0x9FFF) ||
+                (cp >= 0xAC00 && cp <= 0xD7AF) ||
+                (cp >= 0xF900 && cp <= 0xFAFF) ||
+                (cp >= 0xFF66 && cp <= 0xFF9D);
+        }
     }
 
     void Translation::Load() {
@@ -109,7 +124,7 @@ namespace JunkIt {
         const std::filesystem::path translationsDir("Data/Interface/translations");
         LoadFile(translationsDir / "junkit_english.txt", strings);
 
-        language = GetGameLanguage();
+        language = Settings::EffectiveLanguage(GetGameLanguage());
         const auto* fileName = LanguageFileName(language);
         if (!Util::String::iEquals(fileName, "junkit_english.txt")) {
             LoadFile(translationsDir / fileName, strings);
@@ -129,5 +144,40 @@ namespace JunkIt {
         }
         missing.assign(key);
         return missing;
+    }
+
+    bool Translation::TextNeedsCjkFont(std::string_view text) {
+        std::size_t i = 0;
+        while (i < text.size()) {
+            const auto lead = static_cast<unsigned char>(text[i]);
+            std::uint32_t cp = 0;
+            std::size_t width = 1;
+            if (lead < 0x80) {
+                cp = lead;
+            } else if ((lead & 0xE0) == 0xC0 && i + 1 < text.size()) {
+                width = 2;
+                cp = (lead & 0x1F) << 6;
+                cp |= static_cast<unsigned char>(text[i + 1]) & 0x3F;
+            } else if ((lead & 0xF0) == 0xE0 && i + 2 < text.size()) {
+                width = 3;
+                cp = (lead & 0x0F) << 12;
+                cp |= (static_cast<unsigned char>(text[i + 1]) & 0x3F) << 6;
+                cp |= static_cast<unsigned char>(text[i + 2]) & 0x3F;
+            } else if ((lead & 0xF8) == 0xF0 && i + 3 < text.size()) {
+                width = 4;
+                cp = (lead & 0x07) << 18;
+                cp |= (static_cast<unsigned char>(text[i + 1]) & 0x3F) << 12;
+                cp |= (static_cast<unsigned char>(text[i + 2]) & 0x3F) << 6;
+                cp |= static_cast<unsigned char>(text[i + 3]) & 0x3F;
+            } else {
+                ++i;
+                continue;
+            }
+            if (CodepointNeedsCjkFont(cp)) {
+                return true;
+            }
+            i += width;
+        }
+        return false;
     }
 }

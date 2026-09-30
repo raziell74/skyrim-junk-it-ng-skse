@@ -30,6 +30,7 @@ namespace JunkIt {
         constexpr ImVec4 kSplashTint{ 1.0f, 1.0f, 1.0f, 0.25f };
         constexpr const wchar_t* kSplashPath = L"Data\\Interface\\JunkIt\\JunkIt_splash_512x512.png";
         constexpr const char* kQuicksandPath = "Data\\Interface\\JunkIt\\Quicksand-Bold.ttf";
+        constexpr const char* kCjkPath = "Data\\Interface\\JunkIt\\JunkItOverlay-CJK.ttf";
         constexpr const char* kNotoPath = "Data\\Interface\\JunkIt\\NotoSansJP-Bold.ttf";
         constexpr float kFontRasterSize = 96.0f;
 
@@ -49,6 +50,7 @@ namespace JunkIt {
         std::mutex g_mutex;
         std::atomic<bool> g_hooksInstalled{ false };
         bool g_imguiReady = false;
+        bool g_fontsNeedReload = false;
         bool g_visible = false;
         Phase g_phase = Phase::Hidden;
         float g_fade = 0.0f;
@@ -80,26 +82,65 @@ namespace JunkIt {
             return "$JunkIt_Overlay_Storing";
         }
 
-        bool PrefersWideOverlayFont() {
-            const auto language = Translation::Language();
-            return language == "JAPANESE" || language == "RUSSIAN" || language == "CHINESE" ||
-                language == "KOREAN";
-        }
+        constexpr const char* kOverlayTextKeys[] = {
+            "$JunkIt_Overlay_Storing",
+            "$JunkIt_Overlay_Retrieving",
+            "$JunkIt_Overlay_Selling",
+            "$JunkIt_Overlay_Trashing",
+            "$JunkIt_Overlay_Done"
+        };
 
-        const ImWchar* NotoGlyphRanges(ImFontAtlas* fonts) {
-            static ImVector<ImWchar> ranges;
-            if (ranges.empty()) {
-                ImFontGlyphRangesBuilder builder;
-                builder.AddRanges(fonts->GetGlyphRangesJapanese());
-                builder.AddRanges(fonts->GetGlyphRangesChineseSimplifiedCommon());
-                builder.BuildRanges(&ranges);
+        ImVector<ImWchar> g_overlayRanges;
+
+        bool OverlayStringsNeedCjkFont() {
+            for (const char* key : kOverlayTextKeys) {
+                if (Translation::TextNeedsCjkFont(Translation::Get(key))) {
+                    return true;
+                }
             }
-            return ranges.Data;
+            return false;
         }
 
-        bool AddOverlayFont(ImFontAtlas* fonts, const char* path, bool wideRanges) {
-            const ImWchar* ranges = wideRanges ? NotoGlyphRanges(fonts) : nullptr;
-            return fonts->AddFontFromFileTTF(path, kFontRasterSize, nullptr, ranges) != nullptr;
+        const ImWchar* OverlayGlyphRanges(ImFontAtlas* fonts) {
+            g_overlayRanges.clear();
+            ImFontGlyphRangesBuilder builder;
+            builder.AddRanges(fonts->GetGlyphRangesDefault());
+            for (const char* key : kOverlayTextKeys) {
+                builder.AddText(Translation::Get(key).c_str());
+            }
+            builder.BuildRanges(&g_overlayRanges);
+            return g_overlayRanges.Data;
+        }
+
+        bool LoadOverlayFonts(ImFontAtlas* fonts) {
+            const ImWchar* ranges = OverlayGlyphRanges(fonts);
+            if (!fonts->AddFontFromFileTTF(kQuicksandPath, kFontRasterSize, nullptr, ranges)) {
+                SKSE::log::warn("Operation overlay font failed to load ({}), using default", kQuicksandPath);
+                fonts->AddFontDefault();
+                return false;
+            }
+
+            const char* merged = nullptr;
+            if (OverlayStringsNeedCjkFont()) {
+                ImFontConfig cfg;
+                cfg.MergeMode = true;
+                cfg.PixelSnapH = true;
+                if (fonts->AddFontFromFileTTF(kCjkPath, kFontRasterSize, &cfg, ranges)) {
+                    merged = kCjkPath;
+                } else if (fonts->AddFontFromFileTTF(kNotoPath, kFontRasterSize, &cfg, ranges)) {
+                    merged = kNotoPath;
+                    SKSE::log::warn("Operation overlay CJK font failed ({}), merged fallback", kCjkPath);
+                } else {
+                    SKSE::log::warn("Operation overlay CJK merge failed");
+                }
+            }
+
+            if (merged) {
+                SKSE::log::info("Operation overlay fonts: {} + {}", kQuicksandPath, merged);
+            } else {
+                SKSE::log::info("Operation overlay fonts: {}", kQuicksandPath);
+            }
+            return true;
         }
 
         bool TryInitImGui() {
@@ -126,16 +167,7 @@ namespace JunkIt {
             io.LogFilename = nullptr;
             io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
-            const bool preferNoto = PrefersWideOverlayFont();
-            const char* primary = preferNoto ? kNotoPath : kQuicksandPath;
-            const char* fallback = preferNoto ? kQuicksandPath : kNotoPath;
-            if (!AddOverlayFont(io.Fonts, primary, preferNoto)) {
-                SKSE::log::warn("Operation overlay font failed to load ({}), trying fallback", primary);
-                if (!AddOverlayFont(io.Fonts, fallback, !preferNoto)) {
-                    SKSE::log::warn("Operation overlay fallback font failed to load, using default");
-                    io.Fonts->AddFontDefault();
-                }
-            }
+            LoadOverlayFonts(io.Fonts);
 
             ImGui_ImplDX11_Init(device, context);
 
@@ -423,11 +455,30 @@ namespace JunkIt {
             TryInitImGui();
         }
 
+        void RebuildOverlayFonts() {
+            if (!g_imguiReady) {
+                return;
+            }
+            auto& io = ImGui::GetIO();
+            io.Fonts->Clear();
+            LoadOverlayFonts(io.Fonts);
+            ImGui_ImplDX11_InvalidateDeviceObjects();
+            ImGui_ImplDX11_CreateDeviceObjects();
+        }
+
         void PresentHook(std::uint32_t a_timer) {
             std::function<void()> work;
             std::function<void()> onHidden;
             {
                 std::lock_guard lock(g_mutex);
+                if (g_fontsNeedReload) {
+                    if (!g_imguiReady) {
+                        g_fontsNeedReload = false;
+                    } else if (g_visible) {
+                        RebuildOverlayFonts();
+                        g_fontsNeedReload = false;
+                    }
+                }
                 if (g_visible) {
                     if (TryInitImGui()) {
                         TickOverlay(work, onHidden);
@@ -485,6 +536,11 @@ namespace JunkIt {
         }
 
         SKSE::log::info("Operation overlay hooks installed");
+    }
+
+    void OperationOverlay::ReloadFonts() {
+        std::lock_guard lock(g_mutex);
+        g_fontsNeedReload = true;
     }
 
     void OperationOverlay::Show(Action action) {

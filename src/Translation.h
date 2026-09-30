@@ -11,6 +11,7 @@ namespace JunkIt {
             static void Load();
             static std::string_view Language();
             static const std::string& Get(std::string_view key);
+            static bool TextNeedsCjkFont(std::string_view text);
 
             template <class... Args>
             static std::string Format(std::string_view key, Args&&... args) {

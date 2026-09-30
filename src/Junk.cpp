@@ -2061,12 +2061,12 @@ namespace JunkIt {
             return nullptr;
         }
 
-        ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
+        ItemList::Item* selectedItem = UIUtil::ItemList::GetSelectedItem(itemListMenu);
         if (!selectedItem) {
             SKSE::log::debug("No item selected in ItemListMenu. Updating UI and trying again");
             itemListMenu->Update();
 
-            selectedItem = itemListMenu->GetSelectedItem();
+            selectedItem = UIUtil::ItemList::GetSelectedItem(itemListMenu);
             if (!selectedItem) {
                 SKSE::log::debug("No item selected in ItemListMenu");
                 SendHUDMessage::ShowHUDMessage(Translation::Get("$JunkIt_TrashNoItem").c_str());
@@ -2537,10 +2537,10 @@ namespace JunkIt {
             return;
         }
 
-        ItemList::Item* selectedItem = itemListMenu->GetSelectedItem();
+        ItemList::Item* selectedItem = UIUtil::ItemList::GetSelectedItem(itemListMenu);
         if (!selectedItem) {
             itemListMenu->Update();
-            selectedItem = itemListMenu->GetSelectedItem();
+            selectedItem = UIUtil::ItemList::GetSelectedItem(itemListMenu);
         }
         if (!selectedItem || !selectedItem->data.objDesc) {
             SendHUDMessage::ShowHUDMessage(Translation::Get("$JunkIt_TrashNoItem").c_str());
