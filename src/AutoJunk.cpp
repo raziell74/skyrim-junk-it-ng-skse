@@ -1,6 +1,7 @@
 #include "AutoJunk.h"
 
 #include "I4Integration.h"
+#include "I5Integration.h"
 #include "InventoryWalk.h"
 #include "JunkData.h"
 #include "QuickLootIntegration.h"
@@ -930,7 +931,11 @@ namespace JunkIt {
             if (manager.IsNoAutoJunk(identity) || manager.IsJunk(identity)) {
                 return false;
             }
-            return manager.AddJunkIdentity(identity, true).has_value();
+            if (!manager.AddJunkIdentity(identity, true)) {
+                return false;
+            }
+            I5Integration::InvalidateItem(entry->object->GetFormID());
+            return true;
         }
 
         bool ApplyToReference(RE::TESObjectREFR* container) {

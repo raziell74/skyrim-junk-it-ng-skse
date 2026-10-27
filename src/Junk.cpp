@@ -1,5 +1,6 @@
 #include "junk.h"
 #include "I4Integration.h"
+#include "I5Integration.h"
 #include "InventoryWalk.h"
 #include "JunkData.h"
 #include "OperationOverlay.h"
@@ -2171,6 +2172,9 @@ namespace JunkIt {
                             }
 
                             SkyPromptIntegration::GetSingleton().ScheduleLabelSync();
+                            if (addedIdentity) {
+                                I5Integration::InvalidateItem(itemObject->GetFormID());
+                            }
                             RefreshAfterJunkToggle(ui, itemObject, ownerHandle, true);
                             NotifyJunkToggle(itemForm, true, addedIdentity);
                         } else {
@@ -2206,6 +2210,9 @@ namespace JunkIt {
             SkyPromptIntegration::GetSingleton().OnJunkToggled(inventoryEntry, isNowJunk, playerOwned);
         }
 
+        if (junkIdentity) {
+            I5Integration::InvalidateItem(itemObject->GetFormID());
+        }
         RefreshAfterJunkToggle(ui, itemObject, ownerHandle, isNowJunk);
         NotifyJunkToggle(itemForm, isNowJunk, junkIdentity);
 

@@ -6,6 +6,7 @@
 #include "DIIIIntegration.h"
 #include "I4MovieHook.h"
 #include "I4Integration.h"
+#include "I5Integration.h"
 #include "Translation.h"
 #include "UI.h"
 #include "SkyPromptIntegration.h"
@@ -106,6 +107,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 	JunkIt::Translation::Load();
 
 	DIII::ListenForRegistration(&DIIIMessageHandler);
+	JunkIt::I5Integration::Install();
 
 	auto papyrus = SKSE::GetPapyrusInterface();
 	if (!papyrus || !papyrus->Register(JunkIt::Papyrus::Register)) {
