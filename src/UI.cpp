@@ -1,6 +1,7 @@
 #include "UI.h"
 
 #include "AutoJunk.h"
+#include "I5Integration.h"
 #include "JunkData.h"
 #include "QuickLootIntegration.h"
 #include "SkyPromptIntegration.h"
@@ -18,6 +19,7 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace JunkIt {
@@ -1278,6 +1280,33 @@ namespace JunkIt {
             PopBrandColors();
         }
 
+        void InvalidateChangedJunkIdentities(
+            const std::vector<JunkItem>& before,
+            const std::vector<JunkItem>& after) {
+            std::unordered_set<std::string> beforeIds;
+            beforeIds.reserve(before.size());
+            for (const auto& item : before) {
+                beforeIds.insert(item.identity);
+            }
+
+            std::unordered_set<std::string> afterIds;
+            afterIds.reserve(after.size());
+            for (const auto& item : after) {
+                afterIds.insert(item.identity);
+            }
+
+            for (const auto& identity : beforeIds) {
+                if (!afterIds.contains(identity)) {
+                    I5Integration::InvalidateIdentity(identity);
+                }
+            }
+            for (const auto& identity : afterIds) {
+                if (!beforeIds.contains(identity)) {
+                    I5Integration::InvalidateIdentity(identity);
+                }
+            }
+        }
+
         void RenderJunkList() {
             PushBrandColors();
             RenderPageHeader("$JunkIt_JunkList_Page");
@@ -1297,7 +1326,9 @@ namespace JunkIt {
             HelpMarker("$JunkIt_SaveJunkListToFile_Help");
             ImGui::SameLine();
             if (IconButton(kIconImport, "$JunkIt_LoadJunkListFromFile")) {
+                const auto before = manager.GetAllJunkItems();
                 if (manager.LoadFromFile(Settings::GetReplaceJunkListOnLoad())) {
+                    InvalidateChangedJunkIdentities(before, manager.GetAllJunkItems());
                     SetStatus(
                         Settings::GetReplaceJunkListOnLoad() ? "$JunkIt_JunkReplaced" : "$JunkIt_JunkLoaded",
                         true);
@@ -1328,7 +1359,11 @@ namespace JunkIt {
             }
 
             if (ConfirmPopup("ResetJunk", "$JunkIt_ResetJunk", "$JunkIt_ResetJunkConfirm")) {
+                const auto removed = manager.GetAllJunkItems();
                 manager.Clear();
+                for (const auto& item : removed) {
+                    I5Integration::InvalidateIdentity(item.identity);
+                }
                 UIUtil::ItemList::Refresh();
                 QuickLootIntegration::RefreshMenu();
                 SetStatus("$JunkIt_JunkReset", true);
@@ -1388,6 +1423,7 @@ namespace JunkIt {
                         if (g_showAutoJunkExclusions) {
                             manager.RemoveNoAutoJunkIdentity(item.identity);
                         } else if (manager.RemoveJunkItemAtIndex(index)) {
+                            I5Integration::InvalidateIdentity(item.identity);
                             UIUtil::ItemList::Refresh();
                             QuickLootIntegration::RefreshMenu();
                         }

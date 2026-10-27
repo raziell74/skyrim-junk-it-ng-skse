@@ -6,6 +6,7 @@
 #include "DIIIIntegration.h"
 #include "I4MovieHook.h"
 #include "I4Integration.h"
+#include "I5Integration.h"
 #include "Translation.h"
 #include "UI.h"
 #include "SkyPromptIntegration.h"
@@ -18,7 +19,7 @@
 SKSE_EXPORT constinit SKSE::PluginVersionData SKSEPlugin_Version = []() noexcept {
 	SKSE::PluginVersionData v;
 	v.PluginName("JunkIt");
-	v.PluginVersion({ 0, 2, 1, 3 });
+	v.PluginVersion({ 0, 2, 1, 4 });
 	v.UsesAddressLibrary();
 	v.UsesUpdatedStructs();
 	return v;
@@ -106,6 +107,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
 	JunkIt::Translation::Load();
 
 	DIII::ListenForRegistration(&DIIIMessageHandler);
+	JunkIt::I5Integration::Install();
 
 	auto papyrus = SKSE::GetPapyrusInterface();
 	if (!papyrus || !papyrus->Register(JunkIt::Papyrus::Register)) {

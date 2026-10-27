@@ -4,6 +4,7 @@
 #include "util.h"
 #include <json/json.h>
 #include <algorithm>
+#include <excpt.h>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -24,6 +25,26 @@ namespace JunkIt {
         const std::regex kCanonicalIdentityRegex(
             R"(^(0x[0-9A-Fa-f]+(?:~[^|]+)?)\|([^|]+)\|((?:0x[0-9A-Fa-f]+(?:~[^|]+)?)|none)$)");
 
+        // HasQuestObjectAlias jumps through a corrupt extra list after a large sale.
+        constexpr unsigned long kAccessViolation = 0xC0000005;
+
+        long MenuRowAvFilter(unsigned long code) {
+            return code == kAccessViolation ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
+        }
+
+        __declspec(noinline) bool ReadQuestObject(RE::InventoryEntryData* entry) {
+            return entry->IsQuestObject();
+        }
+
+        bool ReadQuestObjectSeh(RE::InventoryEntryData* entry, bool* faulted) {
+            __try {
+                return ReadQuestObject(entry);
+            } __except (MenuRowAvFilter(GetExceptionCode())) {
+                *faulted = true;
+                return false;
+            }
+        }
+
         std::vector<std::string> BuildEntryIdentities(RE::InventoryEntryData* entry) {
             std::vector<std::string> identities;
             if (!entry || !entry->object) {
@@ -41,6 +62,20 @@ namespace JunkIt {
                 }
             }
             return identities;
+        }
+
+        __declspec(noinline) void ReadEntryIdentities(RE::InventoryEntryData* entry, std::vector<std::string>* out) {
+            *out = BuildEntryIdentities(entry);
+        }
+
+        bool ReadEntryIdentitiesSeh(RE::InventoryEntryData* entry, std::vector<std::string>* out, bool* faulted) {
+            __try {
+                ReadEntryIdentities(entry, out);
+                return true;
+            } __except (MenuRowAvFilter(GetExceptionCode())) {
+                *faulted = true;
+                return false;
+            }
         }
     }
 
@@ -291,6 +326,34 @@ namespace JunkIt {
         }
 
         const auto identities = BuildEntryIdentities(entry);
+        std::lock_guard<std::mutex> guard(lock);
+        for (const auto& identity : identities) {
+            if (!identity.empty() && junkSet.find(identity) != junkSet.end()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool JunkDataManager::IsJunkForMenuRow(RE::InventoryEntryData* entry, bool& faulted) const {
+        faulted = false;
+        if (!entry || !entry->object) {
+            return false;
+        }
+
+        if (ReadQuestObjectSeh(entry, &faulted) || faulted) {
+            return false;
+        }
+
+        if (!IsAnyJunkForForm(entry->object)) {
+            return false;
+        }
+
+        std::vector<std::string> identities;
+        if (!ReadEntryIdentitiesSeh(entry, &identities, &faulted)) {
+            return false;
+        }
+
         std::lock_guard<std::mutex> guard(lock);
         for (const auto& identity : identities) {
             if (!identity.empty() && junkSet.find(identity) != junkSet.end()) {

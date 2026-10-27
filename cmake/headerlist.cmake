@@ -12,6 +12,8 @@ set(headers ${headers}
     src/DIIIIntegration.h
     src/I4Integration.h
     src/I4MovieHook.h
+    src/I5API.h
+    src/I5Integration.h
     src/QuickLootAPI.h
     src/QuickLootIntegration.h
     src/Translation.h
